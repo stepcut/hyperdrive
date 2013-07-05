@@ -1,0 +1,47 @@
+Name:                hyperdrive
+Version:             0.4
+Synopsis:            a fast, trustworthy HTTP(s) server built
+Description:         hyperdrive aims to provide an HTTP server which is not only
+                     extremely fast, but also provides a high-level of proof that
+                     its implementation is correct.
+                     .
+                     hyperdrive is still in alpha and not at all suitable for
+                     use. The current implementation is relatively fast, but does
+                     not yet use any of the techniques for proof-of-correctness. It
+                     also does not implement many essential features yet.
+License:             BSD3
+License-file:        LICENSE
+Author:              Jeremy Shaw
+Maintainer:          jeremy@n-heptane.com
+Copyright:           2012 Jeremy Shaw
+Category:            Web
+Build-type:          Simple
+Cabal-version:       >=1.6
+
+source-repository head
+    type:     git
+    location: https://github.com/stepcut/hyperdrive.git
+
+Library
+  Exposed-modules:   Response
+                     Request
+                     Serve
+                     Types
+  Build-depends:     base                  > 4.2 && <5,
+                     attoparsec            == 0.10.*,
+                     bytestring            == 0.10.*,
+                     bytestring-lexing     == 0.4.*,
+                     either                == 3.4.*,
+                     mtl                   >= 2.0 && < 2.2,
+                     network               == 2.4.*,
+                     pipes                 >= 4.0,
+                     pipes-network         >= 0.5,
+                     pipes-attoparsec      >= 0.3,
+                     pipes-parse           >= 1.0,
+                     pretty                == 1.1.*
+  GHC-Options: -O2
+
+Executable pong
+  Main-Is: Pong.hs
+  GHC-Options: -threaded -O2
+  Buildable: True
