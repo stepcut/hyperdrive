@@ -46,7 +46,15 @@ Executable pong
   GHC-Options: -threaded -O2
   Buildable: True
 
-Test-Suite test-hyperdrive
+benchmark hyperdrive-benchmark
+  type:              exitcode-stdio-1.0
+  Hs-source-dirs:    .
+  Main-is:           Criterion.hs
+  build-depends:     criterion
+  GHC-Options:       -threaded -O2
+
+
+Test-Suite hyperdrive-test
   type:              detailed-0.9
   test-module:       Test.Hyperdrive
   build-depends:     base,
