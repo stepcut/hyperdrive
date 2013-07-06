@@ -1,0 +1,2 @@
+{-# LANGUAGE FlexibleInstances #-}
+module Test.Hyperdrive where

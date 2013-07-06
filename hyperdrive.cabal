@@ -45,3 +45,9 @@ Executable pong
   Main-Is: Pong.hs
   GHC-Options: -threaded -O2
   Buildable: True
+
+Test-Suite test-hyperdrive
+  type:              detailed-0.9
+  test-module:       Test.Hyperdrive
+  build-depends:     base,
+                     Cabal >= 1.9.2
