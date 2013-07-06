@@ -1,7 +1,11 @@
 {-# LANGUAGE RankNTypes, RecordWildCards, OverloadedStrings #-}
 module Response where
 
+import Control.Monad.Error
+import Control.Monad.State.Strict
 import Pipes
+import Pipes.Attoparsec
+import Pipes.Parse               (Draw)
 import Data.ByteString           (ByteString)
 import qualified Data.ByteString as B
 import Types                     (Response(..))
@@ -11,20 +15,14 @@ import Types                     (Response(..))
 ------------------------------------------------------------------------------
 -- responseWriter
 ------------------------------------------------------------------------------
-{-
-responseWriter :: Monad m =>
-                  Response m
-               -> Pipe ByteString ByteString m ()
--}
 
--- responseWriter :: () -> Pipe Response ByteString IO ()
-responseWriter () =
-    do Response{..} <- request ()
-       respond $ B.concat [ statusLine rsCode
+responseWriter :: (MonadIO m) => Response -> Proxy Draw (Maybe ByteString) () ByteString (ErrorT ParsingError (StateT [ByteString] m)) ()
+responseWriter Response{..} =
+    do respond $ B.concat [ statusLine rsCode
                           , renderHeaders rsHeaders
                           , "\r\n"
                           ]
---       rsBody
+       hoist (lift . lift . liftIO) $ rsBody
 
 ------------------------------------------------------------------------------
 -- Status Lines

@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, OverloadedStrings #-}
+{-# LANGUAGE RankNTypes, DeriveDataTypeable, OverloadedStrings #-}
 module Request where
 
 import Control.Applicative
@@ -134,6 +134,34 @@ pHTTPVersion :: Parser HTTPVersion
 pHTTPVersion =
     string "HTTP/1.1" >> return HTTP11
 
+
+-- | an almost completely wrong implementation of pToken
+pToken :: Parser ByteString
+pToken = A.takeWhile (\c -> notElem c " :\r\n")
+
+crlf = A.string "\r\n"
+
+notCR = A.takeWhile (/= '\r')
+
+{-
+       message-header = field-name ":" [ field-value ]
+       field-name     = token
+       field-value    = *( field-content | LWS )
+       field-content  = <the OCTETs making up the field-value
+                        and consisting of either *TEXT or combinations
+                        of token, separators, and quoted-string>
+-}
+
+
+-- | this is also wrong
+pMessageHeader :: Parser (ByteString, ByteString)
+pMessageHeader =
+    do fieldName <- pToken
+       A.char8 ':'
+       fieldValue <- notCR
+       crlf
+       return (fieldName, fieldValue)
+
 pRequest :: Bool -> SockAddr -> Parser Request
 pRequest secure addr =
     do m <- pMethod
@@ -141,10 +169,13 @@ pRequest secure addr =
        uri <- pRequestURI
        A.char8 ' '
        httpVersion <- pHTTPVersion
+       crlf
+       hdrs <- many pMessageHeader
+       crlf
        let request = Request { rqMethod = m
                              , rqURIbs  = uri
                              , rqHTTPVersion = httpVersion
-                             , rqHeaders = []
+                             , rqHeaders = hdrs
                              , rqSecure = secure
                              , rqClient = addr
                              }
@@ -154,9 +185,12 @@ pRequest secure addr =
 pRequest_test :: IO (Either ParsingError (), [ByteString])
 pRequest_test = runStateT (runEitherT $ runEffect $ ((wrap (\_ -> respond "GET /foo HTTP/1.1")) >-> parse pRequest >-> (\() -> do c <- request ()  ; liftIO (print c))) ()) []
 -}
-parseRequest :: (Monad m) => Bool -> SockAddr -> () -> Proxy Draw (Maybe ByteString) () Request (ErrorT ParsingError (StateT [ByteString] m)) ()
-parseRequest secure clientAddr = parse (pRequest secure clientAddr)
+parseRequest :: forall m y y'. (Monad m) => Bool -> SockAddr -> Proxy Draw (Maybe ByteString) y' y (ErrorT ParsingError (StateT [ByteString] m)) Request
+parseRequest secure clientAddr = parseOne (pRequest secure clientAddr)
 
+------------------------------------------------------------------------------
+-- will remove this garbage shortly, not quite ready to yet
+------------------------------------------------------------------------------
 
 -- pMethod_test :: Proxy p => () -> p a b c Method f (Either e r)
 --pMethod_test :: (Monad m, Proxy p) =>
@@ -215,7 +249,7 @@ sp = char ' '
 
 crlf :: (Monad m) => ParseT ProxyFast String m String
 crlf = string "\r\n"
-
+o
 requestLine :: (Monad m) => ParseT ProxyFast String m (Method, ByteString, HTTPVersion)
 requestLine =
     do m <- method

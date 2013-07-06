@@ -12,15 +12,13 @@ import Types                           (Handler, Response(..))
 ------------------------------------------------------------------------------
 
 pong :: Handler IO
-pong () =
-    do req <- request ()
-       let body = "PONG"
+pong req =
+    do let body = "PONG"
            res = Response { rsCode    = 200
                           , rsHeaders = [("Content-Length", C.pack (show (B.length body)))]
---                          , rsBody    = respond body
+                          , rsBody    = respond body
                           }
-       respond res
-       return ()
+       return res
 
 ------------------------------------------------------------------------------
 -- main

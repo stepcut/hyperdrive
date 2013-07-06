@@ -3,10 +3,11 @@ module Serve where
 
 import Control.Concurrent         (forkIO)
 import Control.Monad.State.Strict (StateT(runStateT))
-import Control.Monad.Trans.Error  (runErrorT)
+import Control.Monad.Trans.Error  (ErrorT(runErrorT))
+import Control.Monad.Trans        (liftIO)
 import Control.Exception          (bracket, finally)
 import Pipes                      (Consumer, Producer, Proxy, (>->), hoist, lift, runEffect)
-import Pipes.Attoparsec            (ParsingError)
+import Pipes.Attoparsec            (ParsingError, isEndOfParserInput)
 import Pipes.Parse                (Draw, wrap)
 import Pipes.Network.TCP          ( HostPreference(Host), acceptFork, listen
                                   , socketReadS, socketWriteD
@@ -53,7 +54,7 @@ serveSocket listenSocket httpPipe' handler =
          let reader = socketReadS 4096 acceptedSocket
              writer = socketWriteD acceptedSocket
          in do e <- runHTTPPipe False clientAddr reader writer httpPipe' handler
-               print e
+--               print e
                return ()
 
 -- | this is where we construct the pipe that reads from the socket,
@@ -66,8 +67,17 @@ runHTTPPipe :: Bool     -- ^ is this an HTTPS connection
             -> Handler IO -- ^ handler
             -> IO (Either ParsingError (), [ByteString])
 runHTTPPipe secure addr reader writer httpPipe' handler =
-    runStateT ( runErrorT  (runEffect $ wrap (hoist (lift . lift) . reader) >-> (httpPipe secure addr handler) >-> (hoist (lift . lift) . writer) $ ())) []
+    runStateT ( runErrorT  (runEffect $ wrap (hoist (lift . lift) . reader) >-> (httpPipe' secure addr handler) >-> (hoist (lift . lift) . writer) $ ())) []
 
-httpPipe :: HTTPPipe
-httpPipe secure addr handler =
-    parseRequest secure addr >-> handler >-> responseWriter
+httpPipe ::HTTPPipe
+httpPipe secure addr handler () = go
+    where
+      go = do eof <- hoist lift $ isEndOfParserInput
+--              liftIO $ putStrLn "Not eof"
+              if eof
+               then return ()
+               else do req  <- parseRequest secure addr
+--                       liftIO $ print req
+                       resp <- handler req
+                       responseWriter resp
+                       go

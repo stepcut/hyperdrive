@@ -63,7 +63,7 @@ ppMethod (EXTENSION ext) = text (C.unpack ext)
 -- The Pipe allows use to incrementally read 'ByteString' chuncks from
 -- the Request body and incrementally write 'ByteString' chunks in the
 -- 'Response' body.
-type Handler m = () -> Proxy () Request () (Response) (ErrorT ParsingError (StateT [ByteString] m)) ()
+type Handler m = Request -> Proxy Draw (Maybe ByteString) () ByteString (ErrorT ParsingError (StateT [ByteString] m)) Response
 
 ------------------------------------------------------------------------------
 -- HTTPPipe
@@ -72,7 +72,7 @@ type Handler m = () -> Proxy () Request () (Response) (ErrorT ParsingError (Stat
 type HTTPPipe = Bool
               -> SockAddr
               -> Handler IO
-              -> (() -> Proxy Draw (Maybe ByteString) () ByteString (ErrorT ParsingError (StateT [ByteString] IO)) ())
+              -> () -> Proxy Draw (Maybe ByteString) () ByteString (ErrorT ParsingError (StateT [ByteString] IO)) ()
 
 ------------------------------------------------------------------------------
 -- MessageBody
@@ -120,7 +120,7 @@ ppHeader (fieldName, fieldValue) =
 data Response = Response
     { rsCode    :: {-# UNPACK #-} !Int
     , rsHeaders :: [(ByteString, ByteString)]
---    , rsBody    :: Pipe ByteString MessageBody IO ()
+    , rsBody    :: Proxy Draw (Maybe ByteString) () MessageBody IO ()
     }
 
 instance Show (Response) where

@@ -48,7 +48,7 @@ Executable pong
 
 benchmark hyperdrive-benchmark
   type:              exitcode-stdio-1.0
-  Hs-source-dirs:    .
+  Hs-source-dirs:    bench .
   Main-is:           Criterion.hs
   build-depends:     criterion
   GHC-Options:       -threaded -O2
