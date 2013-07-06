@@ -10,8 +10,7 @@ import Text.PrettyPrint.HughesPJ
 import Pipes.Attoparsec
 import Pipes.Parse
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Either
-
+import Control.Monad.Trans.Error       (ErrorT)
 ------------------------------------------------------------------------------
 -- HTTPVersion
 ------------------------------------------------------------------------------
@@ -64,7 +63,7 @@ ppMethod (EXTENSION ext) = text (C.unpack ext)
 -- The Pipe allows use to incrementally read 'ByteString' chuncks from
 -- the Request body and incrementally write 'ByteString' chunks in the
 -- 'Response' body.
-type Handler m = () -> Proxy () Request () (Response) (EitherT ParsingError (StateT [ByteString] m)) ()
+type Handler m = () -> Proxy () Request () (Response) (ErrorT ParsingError (StateT [ByteString] m)) ()
 
 ------------------------------------------------------------------------------
 -- HTTPPipe
@@ -73,7 +72,7 @@ type Handler m = () -> Proxy () Request () (Response) (EitherT ParsingError (Sta
 type HTTPPipe = Bool
               -> SockAddr
               -> Handler IO
-              -> (() -> Proxy Draw (Maybe ByteString) () ByteString (EitherT ParsingError (StateT [ByteString] IO)) ())
+              -> (() -> Proxy Draw (Maybe ByteString) () ByteString (ErrorT ParsingError (StateT [ByteString] IO)) ())
 
 ------------------------------------------------------------------------------
 -- MessageBody
@@ -121,16 +120,12 @@ ppHeader (fieldName, fieldValue) =
 data Response = Response
     { rsCode    :: {-# UNPACK #-} !Int
     , rsHeaders :: [(ByteString, ByteString)]
---    , rsBody    :: Pipe ByteString MessageBody m ()
+--    , rsBody    :: Pipe ByteString MessageBody IO ()
     }
 
 instance Show (Response) where
     show = show . ppResponse
-{-
-data ResponseBody
-    = SendFile     FilePath (Maybe Int) (Maybe Int)
-    | ResponsePipe (Pipe ByteString MessageBody (ResourceT IO) ())
--}
+
 ppResponse :: Response -> Doc
 ppResponse Response{..} =
     text "Response {"  $+$

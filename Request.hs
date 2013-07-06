@@ -10,7 +10,7 @@ import Pipes.Parse
 import qualified Pipes.Prelude as P
 import Control.Exception (Exception, throw)
 import Control.Monad.Trans
-import Control.Monad.Trans.Either
+import Control.Monad.Trans.Error    (ErrorT(runErrorT))
 import           Data.Attoparsec.ByteString.Char8 (Parser, string)
 import qualified Data.Attoparsec.ByteString.Char8 as A
 import           Data.ByteString    (ByteString)
@@ -125,7 +125,7 @@ pMethod =
 
 
 pMethod_test :: IO (Either ParsingError (), [ByteString])
-pMethod_test = runStateT (runEitherT $ runEffect $ ((wrap (\_ -> respond "GET")) >-> parse pMethod >-> (\() -> do c <- request ()  ; liftIO (print c))) ()) []
+pMethod_test = runStateT (runErrorT $ runEffect $ ((wrap (\_ -> respond "GET")) >-> parse pMethod >-> (\() -> do c <- request ()  ; liftIO (print c))) ()) []
 
 pRequestURI :: Parser ByteString
 pRequestURI = A.takeWhile (/= ' ')
@@ -154,7 +154,7 @@ pRequest secure addr =
 pRequest_test :: IO (Either ParsingError (), [ByteString])
 pRequest_test = runStateT (runEitherT $ runEffect $ ((wrap (\_ -> respond "GET /foo HTTP/1.1")) >-> parse pRequest >-> (\() -> do c <- request ()  ; liftIO (print c))) ()) []
 -}
-parseRequest :: (Monad m) => Bool -> SockAddr -> () -> Proxy Draw (Maybe ByteString) () Request (EitherT ParsingError (StateT [ByteString] m)) ()
+parseRequest :: (Monad m) => Bool -> SockAddr -> () -> Proxy Draw (Maybe ByteString) () Request (ErrorT ParsingError (StateT [ByteString] m)) ()
 parseRequest secure clientAddr = parse (pRequest secure clientAddr)
 
 

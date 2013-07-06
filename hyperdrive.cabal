@@ -31,14 +31,14 @@ Library
                      attoparsec            == 0.10.*,
                      bytestring            == 0.10.*,
                      bytestring-lexing     == 0.4.*,
-                     either                == 3.4.*,
                      mtl                   >= 2.0 && < 2.2,
                      network               == 2.4.*,
                      pipes                 >= 4.0,
                      pipes-network         >= 0.5,
                      pipes-attoparsec      >= 0.3,
                      pipes-parse           >= 1.0,
-                     pretty                == 1.1.*
+                     pretty                == 1.1.*,
+                     transformers          == 0.3.*
   GHC-Options: -O2
 
 Executable pong

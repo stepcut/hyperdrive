@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, OverloadedStrings #-}
+{-# LANGUAGE RankNTypes, RecordWildCards, OverloadedStrings #-}
 module Response where
 
 import Pipes
@@ -17,29 +17,13 @@ responseWriter :: Monad m =>
                -> Pipe ByteString ByteString m ()
 -}
 
+-- responseWriter :: () -> Pipe Response ByteString IO ()
 responseWriter () =
     do Response{..} <- request ()
        respond $ B.concat [ statusLine rsCode
                           , renderHeaders rsHeaders
                           , "\r\n"
-                          , "PONG"
                           ]
-
-responseWriter' Response{..} =
-    do respond $ B.concat [ statusLine rsCode
-                          , renderHeaders rsHeaders
-                          , "\r\n"
-                          , "PONG"
-                          ]
-
-
-{-
-responseWriter Response{..} =
-    do respond $ B.concat [ statusLine rsCode
-                          , renderHeaders rsHeaders
-                          , "\r\n"
-                          ]
--}
 --       rsBody
 
 ------------------------------------------------------------------------------
@@ -71,4 +55,3 @@ renderHeaders = B.concat . map renderHeader
 renderHeader :: (ByteString, ByteString) -> ByteString
 renderHeader (fieldName, fieldValue) =
     B.concat [fieldName, ": ", fieldValue, "\r\n"]
-
