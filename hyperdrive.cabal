@@ -38,7 +38,8 @@ Library
                      pipes-attoparsec      >= 0.3,
                      pipes-parse           >= 1.0,
                      pretty                == 1.1.*,
-                     transformers          == 0.3.*
+                     transformers          == 0.3.*,
+                     void                  == 0.6.*
   GHC-Options: -O2
 
 Executable pong
