@@ -123,10 +123,10 @@ pMethod =
 
 -- pMethod_testD = runEffect $ evalStateK [] $ runEitherK $ (\() -> respond $ Just "GET") >-> parse pMethod
 
-
+{-
 pMethod_test :: IO (Either ParsingError (), [ByteString])
-pMethod_test = runStateT (runErrorT $ runEffect $ ((wrap (\_ -> respond "GET")) >-> parse pMethod >-> (\() -> do c <- request ()  ; liftIO (print c))) ()) []
-
+pMethod_test = runStateT (runErrorT $ runEffect $ ((wrap (\_ -> yield "GET")) >-> parse pMethod >-> (\() -> do c <- await ()  ; liftIO (print c))) ()) []
+-}
 pRequestURI :: Parser ByteString
 pRequestURI = A.takeWhile (/= ' ')
 
@@ -185,8 +185,12 @@ pRequest secure addr =
 pRequest_test :: IO (Either ParsingError (), [ByteString])
 pRequest_test = runStateT (runEitherT $ runEffect $ ((wrap (\_ -> respond "GET /foo HTTP/1.1")) >-> parse pRequest >-> (\() -> do c <- request ()  ; liftIO (print c))) ()) []
 -}
-parseRequest :: forall m y y'. (Monad m) => Bool -> SockAddr -> Proxy Draw (Maybe ByteString) y' y (ErrorT ParsingError (StateT [ByteString] m)) Request
-parseRequest secure clientAddr = parseOne (pRequest secure clientAddr)
+-- parseRequest :: forall m y y'. (Monad m) => Bool -> SockAddr -> Proxy () (Maybe ByteString) y' y (ErrorT ParsingError (StateT [ByteString] m)) Request
+parseRequest :: Monad m =>
+                Bool
+             -> SockAddr
+             -> StateT (Producer ByteString m r) m (Either ParsingError (Int, Request))
+parseRequest secure clientAddr = parse (pRequest secure clientAddr)
 
 ------------------------------------------------------------------------------
 -- will remove this garbage shortly, not quite ready to yet

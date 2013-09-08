@@ -5,7 +5,7 @@ import Control.Monad.Error
 import Control.Monad.State.Strict
 import Pipes
 import Pipes.Attoparsec
-import Pipes.Parse               (Draw)
+import Pipes.Parse               
 import Data.ByteString           (ByteString)
 import qualified Data.ByteString as B
 import Types                     (Response(..))
@@ -15,14 +15,26 @@ import Types                     (Response(..))
 ------------------------------------------------------------------------------
 -- responseWriter
 ------------------------------------------------------------------------------
-
-responseWriter :: (MonadIO m) => Response -> Proxy Draw (Maybe ByteString) () ByteString (ErrorT ParsingError (StateT [ByteString] m)) ()
+{-
+responseWriter :: (MonadIO m) => Response -> Proxy () (Maybe ByteString) () ByteString (ErrorT ParsingError (StateT [ByteString] m)) ()
 responseWriter Response{..} =
-    do respond $ B.concat [ statusLine rsCode
+    do yield $ B.concat [ statusLine rsCode
+                        , renderHeaders rsHeaders
+                        , "\r\n"
+                        ]
+       hoist (lift . lift . liftIO) $ rsBody
+-}
+responsePipe :: (MonadIO m) => Proxy () Response () ByteString m  a
+responsePipe =
+    forever $
+      do Response{..}  <- await
+         yield $ B.concat [ statusLine rsCode
                           , renderHeaders rsHeaders
                           , "\r\n"
                           ]
-       hoist (lift . lift . liftIO) $ rsBody
+         hoist liftIO $ rsBody
+--       hoist (lift . lift . liftIO) $ rsBody
+
 
 ------------------------------------------------------------------------------
 -- Status Lines

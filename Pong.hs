@@ -11,14 +11,15 @@ import Types                           (Handler, Response(..))
 -- pong handler
 ------------------------------------------------------------------------------
 
-pong :: Handler IO
-pong req =
+-- pong :: Handler IO
+pong =
     do let body = "PONG"
            res = Response { rsCode    = 200
                           , rsHeaders = [("Content-Length", C.pack (show (B.length body)))]
-                          , rsBody    = respond body
+                          , rsBody    = yield body
                           }
-       return res
+       yield res
+       pong
 
 ------------------------------------------------------------------------------
 -- main
