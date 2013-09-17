@@ -75,7 +75,7 @@ readRequestBody :: Request -> Producer ByteString IO ()
 readRequestBody _ =
     do return ()
 
-server :: (forall r. Request -> IO (Response, Pipe ByteString ByteString IO ()))
+server :: (Request -> IO (Response, Pipe ByteString ByteString IO ()))
          -> (Requests -> Responses)
 server f requests = FreeT $ do
   x <- runFreeT requests
