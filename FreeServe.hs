@@ -42,32 +42,32 @@ data ResponseF next = ResponseF
 -- next request.
 type Requests = FreeT RequestF IO ()
 
--- The stream of responses also uses `FreeT` to delimit each response
+-- The stream of responses also uses `FreeT` to delimit each responses
 type Responses = FreeT ResponseF IO ()
 
-writeResponses :: Socket -> Responses -> IO ()
-writeResponses socket responses =
+writeResponses :: Consumer ByteString IO Responses -> Responses -> IO ()
+writeResponses consumer responses =
     do x <- runFreeT responses
        case x of
          (Pure ()) ->  return ()
          (Free (ResponseF Response{..} body)) ->
-             do sendAll socket $ B.concat [ statusLine rsCode
-                                          , renderHeaders rsHeaders
-                                          , "\r\n"
-                                          ]
-                res <- runEffect $ body >-> (toSocket socket)
-                writeResponses socket res
+             do let header = B.concat [ statusLine rsCode
+                                      , renderHeaders rsHeaders
+                                      , "\r\n"
+                                      ]
+                res <- runEffect $ (yield header >> body) >-> consumer
+                writeResponses consumer res
 
-readRequests :: Socket -> SockAddr -> Requests
-readRequests socket clientAddr =
-    do (r, p) <- P.runStateT (parseRequest False clientAddr) (fromSocket socket 4096)
+readRequests :: Producer ByteString IO () -> SockAddr -> Requests
+readRequests producer clientAddr =
+    do (r, p) <- P.runStateT (parseRequest False clientAddr) (hoist lift $ producer)
        case r of
          (Left parseError) -> error $ show parseError
          (Right (bytesRead, request)) ->
              let requestBody :: Producer ByteString IO Requests
                  requestBody =
                      do readRequestBody request
-                        return (readRequests socket clientAddr)
+                        return (readRequests producer clientAddr)
              in FreeT $ return (Free (RequestF request requestBody))
 
 -- | for POST and PUT requests this should actually parse the message body and 'yield' the contents
@@ -102,4 +102,6 @@ main =
     listen (Host "127.0.0.1") port $ \(listenSocket, listenAddr) ->
     forever $
       acceptFork listenSocket $ \(acceptedSocket, clientAddr) ->
-          writeResponses acceptedSocket ((server pong) (readRequests acceptedSocket clientAddr))
+          let writer = toSocket acceptedSocket
+              reader = fromSocket acceptedSocket 4096
+          in writeResponses writer ((server pong) (readRequests reader clientAddr))
