@@ -24,6 +24,7 @@ import Data.Typeable                (Typeable)
 import Data.Word                    (Word8)
 import Network.Socket               (SockAddr(..))
 import Types                        (Method(..), Request(..), Response(..), HTTPPipe(..), HTTPVersion(..))
+import Pipes.Parse
 
 {-
 

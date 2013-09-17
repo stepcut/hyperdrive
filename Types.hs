@@ -120,7 +120,7 @@ ppHeader (fieldName, fieldValue) =
 data Response = Response
     { rsCode    :: {-# UNPACK #-} !Int
     , rsHeaders :: [(ByteString, ByteString)]
-    , rsBody    :: Proxy () Response () MessageBody IO ()
+--    , rsBody    :: Proxy () Response () MessageBody IO ()
     }
 
 instance Show (Response) where

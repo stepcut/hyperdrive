@@ -31,7 +31,7 @@ import Control.Monad.Trans.Error  (ErrorT(runErrorT))
 import Control.Monad.Trans        (MonadIO(liftIO))
 import Control.Exception          (bracket, finally)
 import Data.Void                  (Void)
-import Pipes                      (Consumer, Producer, Proxy, (>->), hoist, lift, runEffect)
+import Pipes                      (Consumer, Producer, Pipe, Proxy, (>->), hoist, lift, runEffect)
 import Pipes.Attoparsec           (ParsingError, parseMany)
 import Pipes.Parse                ()
 import Pipes.Network.TCP          {- ( HostPreference(Host), acceptFork, listen
@@ -121,7 +121,7 @@ runHTTPPipe :: Bool     -- ^ is this an HTTPS connection
 -}
 
 serve :: String -- ^ port number to listen on
-       -> Proxy () (Int, Request) () Response IO (Either (ParsingError, Producer ByteString IO ()) ())
+      -> Pipe (Int, Request) Response IO (Either (ParsingError, Producer ByteString IO ()) ())
       -> IO ()
 serve port handler =
     listen (Host "127.0.0.1") port $ \(listenSocket, listenAddr) ->
@@ -129,39 +129,23 @@ serve port handler =
 
 serveSocket :: MonadIO m =>
                Socket
-            -> Proxy () (Int, Request) () Response IO (Either (ParsingError, Producer ByteString IO ()) ())
+            -> Pipe (Int, Request) Response IO (Either (ParsingError, Producer ByteString IO ()) ())
             -> m b
-
 serveSocket listenSocket handler =
     forever $
       acceptFork listenSocket $ \(acceptedSocket, clientAddr) ->
          let reader = fromSocket acceptedSocket 4096
-             writer = toSocket acceptedSocket
+             writer = toSocket   acceptedSocket
          in do e <- runHTTPPipe reader writer False clientAddr handler
---               print e
                return ()
 
-
-runHTTPPipe
-  :: MonadIO m =>
-     Producer ByteString m r
-     -> Proxy
-          ()
-          ByteString
-          ()
-          Void
-          m
-          (Either (ParsingError, Producer ByteString m r) r)
-     -> Bool
-     -> SockAddr
-     -> Proxy
-          ()
-          (Int, Request)
-          ()
-          Response
-          m
-          (Either (ParsingError, Producer ByteString m r) r)
-     -> m (Either (ParsingError, Producer ByteString m r) r)
+runHTTPPipe :: MonadIO m =>
+               Producer ByteString m r
+            -> Consumer ByteString m (Either (ParsingError, Producer ByteString m r) r)
+            -> Bool
+            -> SockAddr
+            -> Pipe (Int, Request) Response m (Either (ParsingError, Producer ByteString m r) r)
+            -> m (Either (ParsingError, Producer ByteString m r) r)
 runHTTPPipe producer consumer secure clientAddr handler =
     runEffect $ httpPipe producer secure clientAddr handler >-> consumer
 
@@ -169,11 +153,7 @@ httpPipe :: MonadIO m =>
             Producer ByteString m r
          -> Bool
          -> SockAddr
-         -> Proxy () (Int, Request) () Response m (Either (ParsingError, Producer ByteString m r) r)
-         -> Proxy a' a () ByteString m (Either (ParsingError, Producer ByteString m r) r)
+         -> Pipe (Int, Request) Response m (Either (ParsingError, Producer ByteString m r) r)
+         -> Producer ByteString m (Either (ParsingError, Producer ByteString m r) r)
 httpPipe producer secure clientAddr handler =
     (parseMany (pRequest secure clientAddr) producer) >-> handler >-> responsePipe
-------------------------------------------------------------------------------
--- new
-------------------------------------------------------------------------------
-
