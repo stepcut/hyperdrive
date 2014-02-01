@@ -1,4 +1,13 @@
 {-# LANGUAGE NoMonomorphismRestriction, OverloadedStrings, RankNTypes #-}
+{-
+
+Sample parser for a simplified HTTP. We just have a single Content-Length header, a blank line, and the body. e.g.,
+
+    Content-Length: 4
+    
+    1234
+
+-}
 module Main where
 
 import Control.Applicative              ((<$>))
