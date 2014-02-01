@@ -1,0 +1,17 @@
+module Main where
+
+import Data.IORef             (IORef(..), newIORef, readIORef, writeIORef)
+import           Pipes
+import qualified Pipes.Prelude as P
+
+-- | this a pure producer
+pure10 :: (Monad m) => Producer Int m ()
+pure10 = mapM_ yield [1..10]
+
+-- | if we run the producer twice it will produce the same results --
+-- starting from 1 each time.
+pure10_test :: IO ()
+pure10_test =
+    do runEffect $ pure10 >-> P.take 5 >-> P.print
+       putStrLn "<<Intermission>>"
+       runEffect $ pure10 >-> P.take 5 >-> P.print
