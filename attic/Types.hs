@@ -91,6 +91,8 @@ data Request = Request
     , rqHeaders     :: ![(ByteString, ByteString)]
     , rqSecure      :: !Bool
     , rqClient      :: !SockAddr
+    , rqBody        :: Producer ByteString IO ()
+--    , rqBody        :: Producer' ByteString (StateT (Producer ByteString IO ()) IO) ()
     }
     deriving Typeable
 
@@ -106,6 +108,8 @@ ppRequest Request{..} =
              , field ", rqHTTPVersion" (ppHTTPVersion       rqHTTPVersion)
              , field ", rqHeaders"     (vcat $ map ppHeader rqHeaders)
              , field ", rqSecure"      (text $ show         rqSecure)
+             , field ", rqClient"      (text $ show         rqClient)
+             , field ", rqBody"        (text $ show         "<not shown>")
              ]) $+$
     text "}"
 
@@ -120,7 +124,7 @@ ppHeader (fieldName, fieldValue) =
 data Response = Response
     { rsCode    :: {-# UNPACK #-} !Int
     , rsHeaders :: [(ByteString, ByteString)]
---    , rsBody    :: Proxy () Response () MessageBody IO ()
+    , rsBody    :: Producer' ByteString IO ()
     }
 
 instance Show (Response) where
@@ -131,6 +135,7 @@ ppResponse Response{..} =
     text "Response {"  $+$
       nest 2 (vcat [ field "rsCode"      (text $ show rsCode)
                    , field "rsHeaders"   (vcat $ map ppHeader rsHeaders)
+                   , field "rsBody   "   (text "<not shown>")
                    ])  $+$
     text "}"
 

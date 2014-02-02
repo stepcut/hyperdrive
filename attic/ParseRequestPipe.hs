@@ -1,18 +1,12 @@
-{-# LANGUAGE RankNTypes, DeriveDataTypeable, OverloadedStrings #-}
-module Request where
+{-# LANGUAGE DeriveDataTypeable, OverloadedStrings #-}
+module ParseRequestPipe where
 
 import Control.Applicative
 import Control.Exception
 import Control.Monad                (forever)
-import Pipes
-import Pipes.Attoparsec
+import Pipes --                (C, Consumer, Pipe, Proxy, ProxyFast, (>->), liftP, request, respond, mapD, unitD, unitU)
 import Pipes.Parse
-import qualified Pipes.Prelude as P
-import Control.Exception (Exception, throw)
-import Control.Monad.Trans
-import Control.Monad.Trans.Error    (ErrorT(runErrorT))
-import           Data.Attoparsec.ByteString.Char8 (Parser, string)
-import qualified Data.Attoparsec.ByteString.Char8 as A
+import Control.Exception.Extensible (Exception, throw)
 import           Data.ByteString    (ByteString)
 import qualified Data.ByteString    as B
 import qualified Data.ByteString.Char8 as C
@@ -20,242 +14,18 @@ import Data.ByteString.Lex.Integral (readDecimal)
 import Data.ByteString.Internal     (c2w)
 import Data.ByteString.Unsafe       (unsafeDrop, unsafeIndex, unsafeTake)
 import Data.Monoid                  (mappend)
+-- import Data.Text                    (Text, unpack)
 import Data.Typeable                (Typeable)
 import Data.Word                    (Word8)
 import Network.Socket               (SockAddr(..))
 import Types                        (Method(..), Request(..), Response(..), HTTPPipe(..), HTTPVersion(..))
-import Pipes.Parse
 
-{-
-
-Concerns:
-
-Header Limits
--------------
-
-We need to limit the size of headers we accept. If we know that we are
-going to reject headers over a certain size, and that total header
-size is rather small, should we start by drawing all the header data
-before we start parsing.
-
-The downside to doing that is we might block on waiting for data when
-we could be busy parsing stuff. In general we do not reject headers
-for being too big, so we don't care about wasting CPU decoding headers
-that could be rejected.
-
-With pipes we are, in theory, interleaving the fetching and
-parsing. We fetch data when it is available, parse as much as we can,
-and then if we need more, we fetch more. If the parsing is faster than
-the transfers, then we willspend time blocked on the fetching, but
-when that is happening, we will not have any work around we could be
-doing.
-
-Also, while we are parsing,that gives time for more data to arrive. If
-transfer is faster than parsing, then the parser will be kept at 100%,
-since there will always be data available when it tries to fetch. If
-the parsing is slow compared to the fetching, then we might want to
-start the parsing as soon as possible. However, if it is much larger,
-then waiting a little bit for the data to arrive will not matter. So,
-by getting it all at once, we can perhaps eliminate some extra runtime
-overhead which will make up for the initial latency in starting to
-parse.
-
-If we do not know the relative speeds then jumping back and forth will
-give us good performance at the cost of some pontential overhead.
-
-Character Oriented Parsing Efficiency
--------------------------------------
-
-parsing HTTP involves a lot of character orientedp parsing. But we get
-ByteStrings in chunks, and don't really want to draw/undraw a single
-character at a time from a bytestring.
-
-Additionally, we want to makes sure that when working with a
-ByteString, we do not pin the whole thing in RAM when we do not mean
-to. That may mean calling an explicit copy on the ByteString values we
-want to use directly in our data structure.
-
-When parsing something like the method line, we have two different
-types of behaviors. We match on a string that defines a method like
-GET or PUT, but we return a constructor value. So, the original
-ByteString value is not retained. But for the URI, we want to copy
-that part of the bytestring into our Request type. So, there we could
-be pinning things.
-
-And, for most headers, we will be copying the key/value pairs into the
-Request type. Doing that can cause sneaky problems though.If we are
-not careful, we could pin the rest of the ByteString in RAM. Except,
-wait! We are not processing a lazy ByteString but rather a stream of
-strict ByteString chunks. So each time we draw a new ByteString, we
-are getting a new, unconnected ByteString value. So, perhaps that is
-not an issue.
-
-Partial Chunk
--------------
-
-When parsing something like the request method, we need to match on a
-string like GET, PUT, POST, etc. But, we may not have a complete thing
-to match on.
-
-
-
-drawWhile :: (Monad m, Proxy p) =>
-             (Char -> Bool)
-          -> Consumer (StateP [ByteString] p) (Maybe ByteString) m (Maybe ByteString)
-drawWhile p =
-    do bs <- draw
-       case C.span p bs of
-         (before, after)
-             | C.null after ->
-                 do rest <- drawWhile p
-       return Nothing
--}
-
-pMethod :: Parser Method
-pMethod =
-         string "GET"     *> pure GET
-     <|> string "POST"    *> pure POST
-     <|> string "HEAD"    *> pure HEAD
-     <|> string "OPTIONS" *> pure OPTIONS
-     <|> string "PUT"     *> pure PUT
-     <|> string "DELETE"  *> pure DELETE
-     <|> string "CONNECT" *> pure CONNECT
---     <|> ((EXTENSION . C.pack) <$> token)
-
--- pMethod_testD = runEffect $ evalStateK [] $ runEitherK $ (\() -> respond $ Just "GET") >-> parse pMethod
-
-{-
-pMethod_test :: IO (Either ParsingError (), [ByteString])
-pMethod_test = runStateT (runErrorT $ runEffect $ ((wrap (\_ -> yield "GET")) >-> parse pMethod >-> (\() -> do c <- await ()  ; liftIO (print c))) ()) []
--}
-pRequestURI :: Parser ByteString
-pRequestURI = A.takeWhile (/= ' ')
-
-pHTTPVersion :: Parser HTTPVersion
-pHTTPVersion =
-    string "HTTP/1.1" >> return HTTP11
-
-
--- | an almost completely wrong implementation of pToken
-pToken :: Parser ByteString
-pToken = A.takeWhile (\c -> notElem c " :\r\n")
-
-crlf = A.string "\r\n"
-
-notCR = A.takeWhile (/= '\r')
-
-{-
-       message-header = field-name ":" [ field-value ]
-       field-name     = token
-       field-value    = *( field-content | LWS )
-       field-content  = <the OCTETs making up the field-value
-                        and consisting of either *TEXT or combinations
-                        of token, separators, and quoted-string>
--}
-
-
--- | this is also wrong
-pMessageHeader :: Parser (ByteString, ByteString)
-pMessageHeader =
-    do fieldName <- pToken
-       A.char8 ':'
-       fieldValue <- notCR
-       crlf
-       return (fieldName, fieldValue)
-
-pRequestHead :: Bool -> SockAddr -> Parser Request
-pRequestHead secure addr =
-    do m <- pMethod
-       A.char8 ' '
-       uri <- pRequestURI
-       A.char8 ' '
-       httpVersion <- pHTTPVersion
-       crlf
-       hdrs <- many pMessageHeader
-       crlf
-       let request = Request { rqMethod = m
-                             , rqURIbs  = uri
-                             , rqHTTPVersion = httpVersion
-                             , rqHeaders = hdrs
-                             , rqSecure = secure
-                             , rqClient = addr
-                             , rqBody   = return ()
-                             }
-       return request
-
-{-
-pRequest_test :: IO (Either ParsingError (), [ByteString])
-pRequest_test = runStateT (runEitherT $ runEffect $ ((wrap (\_ -> respond "GET /foo HTTP/1.1")) >-> parse pRequest >-> (\() -> do c <- request ()  ; liftIO (print c))) ()) []
--}
--- parseRequest :: forall m y y'. (Monad m) => Bool -> SockAddr -> Proxy () (Maybe ByteString) y' y (ErrorT ParsingError (StateT [ByteString] m)) Request
-parseRequestHead :: Monad m =>
-                Bool
-             -> SockAddr
-             -> StateT (Producer ByteString m r) m (Either ParsingError (Int, Request))
-parseRequestHead secure clientAddr = parse (pRequestHead secure clientAddr)
-
-------------------------------------------------------------------------------
--- will remove this garbage shortly, not quite ready to yet
-------------------------------------------------------------------------------
-
--- pMethod_test :: Proxy p => () -> p a b c Method f (Either e r)
---pMethod_test :: (Monad m, Proxy p) =>
---                ()
---             -> p () (Maybe ByteString) () Method m (Either ParsingError (), [ByteString])
--- pMethod_testD = runEffect $ evalStateK [] $ runEitherK $ (\() -> respond $ Just "GET") >-> parseD pMethod
-{-
--- pMethod_test2 = runProxy $ evalStateK [] $ runEitherK $ (\() -> respond $ Just "GET") >-> parse pMethod
-
--- pMethod_test2 = evalStateP [] $ runEitherP $ parse pMethod
--- pMethod_test2 = (wrap (\_ -> respond "GET")) >-> (\_ -> parse pMethod)
---pMethod_test =
---    runProxy $ evalStateK [] $ runEitherK $
---     (\() -> wrap (respond "G" >> respond "ET")) >-> (\() -> parse pMethod)
-
-test_p p bs=
-    runProxy $ evalStateK [] $ runEitherK $
-     (\() -> wrap (respond bs)) >-> (\() -> parse p)
-
-pMethod_test_1 = test_p pMethod "GET"
-pMethod_test_2 = test_p pMethod "GOT"
-
-
-
-
-{-
-method :: (Monad m, Proxy p) => StateP [ByteString] p () (Maybe ByteString) y' y m (Maybe Method)
-method =
-    do mbs <- draw
-       case mbs of
-         Nothing -> return Nothing
-         (Just bs)
-             | bs == "GET" -> return (Just GET)
-
--- requestLine :: (Monad m, Proxy p) => StateP String m (Method, ByteString, HTTPVersion)
-
-requestLine :: (Monad m, Proxy p) => StateP [ByteString] p () (Maybe ByteString) y' y m (Maybe (Method, ByteString, HTTPVersion)) 
-requestLine =
-    do Just m <- method
-       return $ Just (m, empty, HTTP11)
--}
-
-{-
-    do m <- method
-       sp
-       uri <- requestURI
-       sp
-       v <- httpVersion
-       crlf
-       return (m, uri, v)
--}
-
-{-
 sp :: (Monad m) => ParseT ProxyFast String m Char
 sp = char ' '
-
+{-
 crlf :: (Monad m) => ParseT ProxyFast String m String
 crlf = string "\r\n"
-o
+
 requestLine :: (Monad m) => ParseT ProxyFast String m (Method, ByteString, HTTPVersion)
 requestLine =
     do m <- method
@@ -667,4 +437,4 @@ parse parser str =
                 >+> discard
 -}
 -}
--}-}
+-}

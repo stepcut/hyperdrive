@@ -5,7 +5,7 @@ import Control.Monad.Error
 import Control.Monad.State.Strict
 import Pipes
 import Pipes.Attoparsec
-import Pipes.Parse               
+import Pipes.Parse
 import Data.ByteString           (ByteString)
 import qualified Data.ByteString as B
 import Types                     (Response(..))
@@ -24,7 +24,7 @@ responseWriter Response{..} =
                         ]
        hoist (lift . lift . liftIO) $ rsBody
 -}
-responsePipe :: (MonadIO m) => Proxy () Response () ByteString m  a
+responsePipe :: (MonadIO m) => Pipe Response ByteString m a
 responsePipe =
     forever $
       do Response{..}  <- await
@@ -32,9 +32,7 @@ responsePipe =
                           , renderHeaders rsHeaders
                           , "\r\n"
                           ]
---         hoist liftIO $ rsBody
---       hoist (lift . lift . liftIO) $ rsBody
-
+         hoist liftIO rsBody
 
 ------------------------------------------------------------------------------
 -- Status Lines
