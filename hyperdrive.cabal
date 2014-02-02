@@ -1,5 +1,5 @@
 Name:                hyperdrive
-Version:             0.4
+Version:             0.5.0
 Synopsis:            a fast, trustworthy HTTP(s) server built
 Description:         hyperdrive aims to provide an HTTP server which is not only
                      extremely fast, but also provides a high-level of proof that
@@ -23,29 +23,23 @@ source-repository head
     location: https://github.com/stepcut/hyperdrive.git
 
 Library
-  Exposed-modules:   Response
-                     Request
-                     Serve
-                     Types
-  Build-depends:     base                  > 4.2 && <5,
-                     attoparsec            == 0.10.*,
-                     bytestring            == 0.10.*,
-                     bytestring-lexing     == 0.4.*,
-                     mtl                   >= 2.0 && < 2.2,
-                     network               == 2.4.*,
+  Exposed-modules:   
+  Build-depends:     base                  > 4.2   && <5,
+                     attoparsec            >= 0.11 && < 0.12,
+                     bytestring            >= 0.10 && < 0.11,
+                     bytestring-lexing     >= 0.4  && < 0.5,
+                     mtl                   >= 2.0  && < 2.2,
+                     network               >= 2.4  && < 2.5,
                      pipes                 >= 4.0,
-                     pipes-network         >= 0.5,
                      pipes-attoparsec      >= 0.3,
                      pipes-parse           >= 1.0,
-                     pretty                == 1.1.*,
-                     transformers          == 0.3.*,
-                     void                  == 0.6.*
+                     pretty                >= 1.1 && < 1.2
   GHC-Options: -O2
 
 Executable pong
   Main-Is: Pong.hs
   GHC-Options: -threaded -O2
-  Buildable: True
+  Buildable: False
 
 benchmark hyperdrive-benchmark
   type:              exitcode-stdio-1.0
