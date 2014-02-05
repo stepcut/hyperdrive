@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, DeriveGeneric #-}
+{-# LANGUAGE DeriveDataTypeable, DeriveGeneric, StandaloneDeriving, TemplateHaskell #-}
 module Hyperdrive.Types where
 
 import Pipes              (Producer)
@@ -14,6 +14,13 @@ import Network.Socket     (SockAddr)
 -- Request
 ------------------------------------------------------------------------------
 
+data RequestBodyLength
+    = ChunkedBody
+    | KnownLength Word64
+    deriving (Eq, Ord, Read, Show, Data, Typeable, Generic)
+
+deriving instance Show ByteRange
+
 data Request = Request
     { _rqSecure         :: !Bool
     , _rqMethod         :: !Method
@@ -26,15 +33,10 @@ data Request = Request
     , _rqQueryString    :: !Query
     , _rqCookies        :: ![(Text, Text)]
     , _rqBodyLength     :: !RequestBodyLength
-    , _rqHeadeHost      :: !ByteString
+    , _rqHeaderHost     :: !ByteString
     , _rqHeaderRange    :: !(Maybe ByteRange)
     }
-    deriving (Typeable, Generic)
-
-data RequestBodyLength
-    = ChunkedBody
-    | KnownLength Word64
-    deriving (Eq, Ord, Read, Show, Data, Typeable, Generic)
+    deriving (Show, Typeable, Generic)
 
 ------------------------------------------------------------------------------
 -- Response

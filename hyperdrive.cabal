@@ -23,18 +23,16 @@ source-repository head
     location: https://github.com/stepcut/hyperdrive.git
 
 Library
-  Exposed-modules:   Hyperdrive.Types
+  Exposed-modules:   Hyperdrive.Serve
+                     Hyperdrive.Types
   Build-depends:     base                  > 4.2   && <5,
---                     attoparsec            >= 0.11 && < 0.12,
                      bytestring            >= 0.10 && < 0.11,
---                     bytestring-lexing     >= 0.4  && < 0.5,
                      http-types            >= 0.8  && < 0.9,
---                     mtl                   >= 2.0  && < 2.2,
+                     lens-family-core      >= 1.0  && < 1.1,
                      network               >= 2.4  && < 2.5,
                      pipes                 >= 4.0  && < 4.2,
---                     pipes-attoparsec      >= 0.3,
---                     pipes-parse           >= 1.0,
---                     pretty                >= 1.1 && < 1.2
+                     pipes-bytestring      >= 2.0  && < 2.1,
+                     pipes-parse           >= 3.0  && < 3.1,
                      text                  >= 1.1 && < 1.2
   GHC-Options: -O2
 
