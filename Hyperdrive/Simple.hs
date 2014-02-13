@@ -11,7 +11,8 @@ and then later drop in a solid parser.
 module Hyperdrive.Simple where
 
 import Control.Applicative ((*>), pure, many)
-import Control.Monad.Trans       (MonadIO)
+import Control.Monad             (forever)
+import Control.Monad.Trans       (MonadIO(liftIO))
 import qualified Data.Attoparsec as A
 import qualified Data.Attoparsec.ByteString as AB
 import qualified Data.Attoparsec.ByteString.Char8 as AC
@@ -22,12 +23,15 @@ import Data.String (fromString)
 import Hyperdrive.Serve (handleOne)
 import Hyperdrive.Types (Request(..), RequestBodyLength(..), Response(..), ResponseBody(..))
 import Network.HTTP.Types        (HeaderName, ResponseHeaders, Status(..), HttpVersion(..), status200)
-import Network.Socket            (SockAddr(..))
-import Pipes                     (Producer, (>->), runEffect, lift, yield)
+import Network.Socket            (Socket, SockAddr(..))
+import Network.Simple.TCP        (HostPreference(..), ServiceName(..))
+import Pipes                     (Producer, Producer', (>->), await, runEffect, lift, yield)
 import qualified Pipes.Prelude   as P
 import qualified Pipes.Attoparsec as Pa
 import qualified Pipes.ByteString as Pb
 import qualified Pipes.Parse     as Pp
+import Pipes.Network.TCP.Safe (serve, toSocket,fromSocket)
+import Pipes.Safe (runSafeT)
 
 ------------------------------------------------------------------------------
 -- Request
@@ -41,8 +45,11 @@ seperators =
     , '{' , '}' , ' ' , '\t'
     ]
 
+ctls :: [Char]
+ctls = '\DEL' : ['\0' .. '\31']
+
 pToken :: A.Parser ByteString
-pToken = AC.takeWhile1 (\c -> notElem c seperators)
+pToken = AC.takeWhile1 (\c -> notElem c (seperators ++ ctls))
 
  -- a very incorrect header parser
 pHeader :: A.Parser (HeaderName, ByteString)
@@ -147,17 +154,69 @@ hello req =
                , _rsBody    = ResponseProducer (yield body)
                }
 
+hello' :: (MonadIO m) =>
+         Request
+      -> Pp.Parser ByteString m (Either Pa.ParsingError (Response m))
+hello' req = do
+    lift $ liftIO $ print "hello'"
+    let body = "hello"
+    return $ Right $ Response
+               { _rsStatus  = status200
+               , _rsHeaders = [("Content-Length", fromString $ show $ B.length body)]
+               , _rsBody    = ResponseProducer (yield body)
+               }
+
+
 simpleRequest :: ByteString
 simpleRequest = B.concat
     [ "GET / HTTP/1.1\r\n"
     , "Host: localhost\r\n"
+    , "User-Agent: curl/7.22.0 (x86_64-pc-linux-gnu) libcurl/7.22.0 OpenSSL/1.0.1 zlib/1.2.3.4 libidn/1.23 librtmp/2.3\r\n"
+    , "Accept: */*\r\n"
     , "\r\n"
     ]
 
+anotherRequest :: ByteString
+anotherRequest = "GET / HTTP/1.1\r\nUser-Agent: curl/7.22.0 (x86_64-pc-linux-gnu) libcurl/7.22.0 OpenSSL/1.0.1 zlib/1.2.3.4 libidn/1.23 librtmp/2.3\r\nHost: localhost:8000\r\nAccept: */*\r\n\r\n"
+
+block = block
 
 simpleTest :: IO ()
 simpleTest =
-    do r <- Pp.evalStateT (simpleOne stdoutResponse hello) (yield simpleRequest)
+    do r <- Pp.evalStateT (simpleOne stdoutResponse hello) (yield simpleRequest >> block)
        case r of
          Nothing -> return ()
          (Just e) -> error (show e)
+
+socketResponse :: (MonadIO m) =>
+                  Socket
+               -> Response m
+               -> Pp.Parser ByteString m (Maybe e)
+socketResponse csock res =
+    lift $ runEffect $ ((responseProducer res) >-> (toSocket csock)) >> return Nothing
+
+fromVerboseSocket :: (MonadIO m) =>
+                     Socket
+                  -> Int
+                  -> Producer' ByteString m ()
+fromVerboseSocket socket limit =
+    fromSocket socket limit >->
+     (forever $
+       do bs <- await
+          lift $ liftIO $ print bs
+          yield bs
+          yield " "
+     )
+
+simpleServe :: HostPreference
+            -> ServiceName
+            -> (Request -> Pp.Parser ByteString IO (Either Pa.ParsingError (Response IO)))
+            -> IO ()
+simpleServe hp port handler =
+    runSafeT $ serve hp port $ \(csock, clienAddr) ->
+        do r <- Pp.evalStateT (simpleOne (socketResponse csock) handler) (fromSocket csock 4096)
+           case r of
+             Nothing  -> return ()
+             (Just e) -> error (show e)
+
+serveTest = simpleServe HostAny "8000" hello
