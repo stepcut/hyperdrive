@@ -46,6 +46,7 @@ data Response m = Response
     { _rsStatus  :: !Status
     , _rsHeaders :: !ResponseHeaders
     , _rsBody    :: !(ResponseBody m)
+    , _rsClose   :: Bool
     }
 
 data ResponseBody m

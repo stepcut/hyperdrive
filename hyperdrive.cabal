@@ -26,27 +26,27 @@ Library
   Exposed-modules:   Hyperdrive.Serve
                      Hyperdrive.Simple
                      Hyperdrive.Types
-  Build-depends:     base                  > 4.2   && <5,
-                     attoparsec            >= 0.11 && < 0.12,
-                     bytestring            >= 0.10 && < 0.11,
-                     case-insensitive      >= 1.1  && < 1.2,
-                     http-types            >= 0.8  && < 0.9,
-                     lens-family-core      >= 1.0  && < 1.1,
-                     mtl                   >= 2.1  && < 2.2,
-                     network               >= 2.4  && < 2.5,
-                     network-simple        >= 0.3  && < 0.4,
-                     pipes                 >= 4.0  && < 4.2,
-                     pipes-attoparsec      >= 0.4  && < 0.5,
-                     pipes-bytestring      >= 2.0  && < 2.1,
-                     pipes-parse           >= 3.0  && < 3.1,
+  Build-depends:     base                  > 4.2    && <5,
+                     attoparsec            >= 0.11  && < 0.12,
+                     bytestring            >= 0.10  && < 0.11,
+                     case-insensitive      >= 1.1   && < 1.2,
+                     http-types            >= 0.8   && < 0.9,
+                     lens-family-core      >= 1.0   && < 1.1,
+                     mtl                   >= 2.1   && < 2.2,
+                     network               >= 2.4   && < 2.5,
+                     network-simple        >= 0.3   && < 0.4,
+                     pipes                 >= 4.0   && < 4.2,
+                     pipes-attoparsec      >= 0.4   && < 0.5,
+                     pipes-bytestring      >= 2.0   && < 2.1,
+                     pipes-parse           >= 3.0   && < 3.1,
                      pipes-network         >= 0.6.2 && < 0.7,
                      pipes-safe            >= 2.0.2 && < 2.1,
-                     text                  >= 1.1 && < 1.2
+                     text                  >= 0.11  && < 1.2
   GHC-Options: -O2
 
 Executable pong
   Main-Is: Pong.hs
-  GHC-Options: -threaded -O2
+  GHC-Options: -threaded -O2 -rtsopts
   Buildable: False
 
 benchmark hyperdrive-benchmark

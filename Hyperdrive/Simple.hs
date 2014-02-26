@@ -23,7 +23,7 @@ import Data.String (fromString)
 import Hyperdrive.Serve (handleOne)
 import Hyperdrive.Types (Request(..), RequestBodyLength(..), Response(..), ResponseBody(..))
 import Network.HTTP.Types        (HeaderName, ResponseHeaders, Status(..), HttpVersion(..), status200)
-import Network.Socket            (Socket, SockAddr(..))
+import Network.Socket            (Socket, SockAddr(..), close)
 import Network.Simple.TCP        (HostPreference(..), ServiceName(..))
 import Pipes                     (Producer, Producer', (>->), await, runEffect, lift, yield)
 import qualified Pipes.Prelude   as P
@@ -138,10 +138,9 @@ ppRequest = Pa.parse (pRequest False)
 simpleOne :: (Functor m, MonadIO m) =>
              (Response m -> Pp.Parser ByteString m (Maybe Pa.ParsingError))
           -> (Request -> Pp.Parser ByteString m (Either Pa.ParsingError (Response m)))
-          -> Pp.Parser ByteString m (Maybe Pa.ParsingError)
+          -> Pp.Parser ByteString m (Maybe Pa.ParsingError, Bool)
 simpleOne sendResponse handler =
-    handleOne ppRequest sendResponse handler
-
+    handleOne ppRequest (\res -> sendResponse res) handler
 
 hello :: (Monad m) =>
          Request
@@ -150,8 +149,10 @@ hello req =
     let body = "hello" in
     return $ Right $ Response
                { _rsStatus  = status200
-               , _rsHeaders = [("Content-Length", fromString $ show $ B.length body)]
+               , _rsHeaders = [("Content-Length", fromString $ show $ B.length body)
+                              ]
                , _rsBody    = ResponseProducer (yield body)
+               , _rsClose   = False
                }
 
 hello' :: (MonadIO m) =>
@@ -162,10 +163,11 @@ hello' req = do
     let body = "hello"
     return $ Right $ Response
                { _rsStatus  = status200
-               , _rsHeaders = [("Content-Length", fromString $ show $ B.length body)]
+               , _rsHeaders = [("Content-Length", fromString $ show $ B.length body)
+                              ]
                , _rsBody    = ResponseProducer (yield body)
+               , _rsClose   = False
                }
-
 
 simpleRequest :: ByteString
 simpleRequest = B.concat
@@ -179,21 +181,32 @@ simpleRequest = B.concat
 anotherRequest :: ByteString
 anotherRequest = "GET / HTTP/1.1\r\nUser-Agent: curl/7.22.0 (x86_64-pc-linux-gnu) libcurl/7.22.0 OpenSSL/1.0.1 zlib/1.2.3.4 libidn/1.23 librtmp/2.3\r\nHost: localhost:8000\r\nAccept: */*\r\n\r\n"
 
-block = block
+{-
 
+We need to read a Response and write  Request.
+
+If the Requset contains a connection-close header, then we should close the connection after sending the Response.
+If the Response contains a connection-close header, then we should also close the connection after sending the Response.
+
+If a 100-continue is in play, things are a bit more complicated.
+
+-}
 simpleTest :: IO ()
 simpleTest =
-    do r <- Pp.evalStateT (simpleOne stdoutResponse hello) (yield simpleRequest >> block)
+    do r <- Pp.evalStateT (simpleOne stdoutResponse hello) (yield simpleRequest)
        case r of
-         Nothing -> return ()
-         (Just e) -> error (show e)
+         (Nothing, close) -> return ()
+         (Just e, _) -> error  (show e)
 
 socketResponse :: (MonadIO m) =>
                   Socket
                -> Response m
                -> Pp.Parser ByteString m (Maybe e)
 socketResponse csock res =
-    lift $ runEffect $ ((responseProducer res) >-> (toSocket csock)) >> return Nothing
+    do -- liftIO $ putStrLn "sending response..."
+       e <- lift $ runEffect $ ((responseProducer res) >-> (toSocket csock)) >> return Nothing
+       -- liftIO  $ putStrLn "sent."
+       return e
 
 fromVerboseSocket :: (MonadIO m) =>
                      Socket
@@ -208,15 +221,40 @@ fromVerboseSocket socket limit =
           yield " "
      )
 
+{-
+
+-}
 simpleServe :: HostPreference
             -> ServiceName
             -> (Request -> Pp.Parser ByteString IO (Either Pa.ParsingError (Response IO)))
             -> IO ()
 simpleServe hp port handler =
+    runSafeT $ serve hp port $ \(csock, clientAddr) ->
+        Pp.evalStateT (go (csock, clientAddr)) (fromSocket csock 4096)
+    where
+      go (csock, clientAddr) =
+        do r <- simpleOne (socketResponse csock) handler
+           case r of
+             (Nothing, True) ->
+                 do liftIO $ close csock
+                    return ()
+             (Nothing, False) ->
+                 do go (csock, clientAddr)
+             (Just e, _) ->
+                 do liftIO $ close csock
+                    error (show e)
+{-
+simpleServePersistent :: HostPreference
+            -> ServiceName
+            -> (Request -> Pp.Parser ByteString IO (Either Pa.ParsingError (Response IO)))
+            -> IO ()
+simpleServePersistent hp port handler =
     runSafeT $ serve hp port $ \(csock, clienAddr) ->
         do r <- Pp.evalStateT (simpleOne (socketResponse csock) handler) (fromSocket csock 4096)
            case r of
-             Nothing  -> return ()
+             Nothing  ->
              (Just e) -> error (show e)
 
+
+-}
 serveTest = simpleServe HostAny "8000" hello
