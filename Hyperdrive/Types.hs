@@ -19,7 +19,7 @@ data RequestBodyLength
     | KnownLength Word64
     deriving (Eq, Ord, Read, Show, Data, Typeable, Generic)
 
-deriving instance Show ByteRange
+-- deriving instance Show ByteRange
 
 data Request = Request
     { _rqSecure         :: !Bool
