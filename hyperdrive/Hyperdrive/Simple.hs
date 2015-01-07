@@ -27,10 +27,11 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString  as B
 import Data.CaseInsensitive       (mk, original)
 import Data.String                (fromString)
-import Hyperdrive.FakeParser      (fakeParseRequest)
-import Hyperdrive.Serve           (RequestParser, handleOne)
-import Hyperdrive.Types           (Request(..), RequestBodyLength(..)
-                                  , Response(..), ResponseBody(..))
+-- import Hyperdrive.FakeParser      (fakeParseRequest)
+import Hyperdrive.Parser.ABNF.Attoparsec (requestParser)
+import Hyperdrive.Serve           (handleOne)
+import Hyperdrive.Types           ( Request(..), RequestBodyLength(..)
+                                  , RequestParser, Response(..), ResponseBody(..))
 import Network.HTTP.Types         (HeaderName, ResponseHeaders, Status(..)
                                   , HttpVersion(..), status200)
 import Network.Socket             (Socket, SockAddr(..), close)
@@ -89,10 +90,13 @@ stdoutResponse res =
 ------------------------------------------------------------------------------
 -- serve
 ------------------------------------------------------------------------------
-
+{-
 ppRequest :: (Monad m) =>
              RequestParser Pa.ParsingError m
 ppRequest = Pa.parse (fakeParseRequest False)
+-}
+
+
 
 simpleOne :: (Functor m, MonadIO m) =>
              RequestParser Pa.ParsingError m
@@ -427,6 +431,7 @@ simpleServe7 _ _ handler =
 
 
 -}
+
 serveTest :: IO ()
-serveTest = simpleServe5 ppRequest HostAny "8000" hello
+serveTest = simpleServe5 (Pa.parse requestParser) HostAny "8000" hello
 

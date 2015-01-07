@@ -5,16 +5,14 @@ import Control.Applicative        ((<*))
 import Data.ByteString            (ByteString)
 import Data.CaseInsensitive       (mk)
 import Data.Monoid                (mempty)
-import Hyperdrive.Types           (Request(..), Response(..), RequestBodyLength(KnownLength))
+import Hyperdrive.Types           (Request(..), RequestRaw(..), Response(..), RequestParser, RequestBodyLength(KnownLength))
 import Lens.Family.State.Strict   (zoom)
 import qualified Pipes.ByteString as Pb
 import qualified Pipes.Parse      as Pp
 
-type RequestParser e m = Pp.Parser ByteString m (Maybe (Either e Request))
-
 hasConnectionClose :: Request -> Bool
 hasConnectionClose req =
-    case lookup "connection" (_rqHeaders req) of
+    case lookup "connection" (_rrHeaders (_rqRequestRaw req)) of
       Nothing  -> False
       (Just _) -> True
 
@@ -28,8 +26,9 @@ parseOne pRequest handler =
        case me of
          Nothing -> return (Nothing, True)
          (Just (Left e)) -> return (Just $ Left e, True)
-         (Just (Right req)) ->
-             do let (KnownLength len) = _rqBodyLength req
+         (Just (Right rreq)) ->
+             do let req = Request rreq (KnownLength 0)
+                    (KnownLength len) = _rqBodyLength req
                 me' <- zoom (Pb.splitAt len) ((handler req) <* Pp.skipAll)
                 return (Just $ me', hasConnectionClose req)
 
