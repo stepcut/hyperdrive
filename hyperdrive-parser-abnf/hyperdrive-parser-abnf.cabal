@@ -14,18 +14,18 @@ library
   exposed-modules:     Hyperdrive.Parser.ABNF.Attoparsec
                        Hyperdrive.Parser.ABNF.Parser
   other-extensions:    TemplateHaskell, OverloadedStrings, QuasiQuotes
-  build-depends:       base                  >= 4.7  && < 4.8,
-                       abnf                  >= 0.1  && < 0.2,
+  build-depends:       base                  >= 4.7  && < 4.12,
+                       abnf                  >= 0.1  && < 0.5,
                        abnf-parser-generator >= 0.1  && < 0.2,
-                       attoparsec            >= 0.12 && < 0.13,
+                       attoparsec            >= 0.12 && < 0.14,
                        bytestring            >= 0.10 && < 0.11,
                        case-insensitive      >= 1.2  && < 1.3,
-                       containers            >= 0.5  && < 0.6,
+                       containers            >= 0.5  && < 0.7,
                        hyperdrive-core       >= 0.1  && < 0.2,
                        http-types            >= 0.8  && < 0.9,
                        mtl                   >= 2.1  && < 2.3,
-                       network               >= 2.6  && < 2.7,
-                       template-haskell      >= 2.9  && < 2.10,
+                       network               >= 2.6  && < 2.8,
+                       template-haskell      >= 2.9  && < 2.14,
                        text                  >= 1.2  && < 1.3,
                        th-lift               >= 0.6  && < 0.8,
                        th-lift-instances     >= 0.1  && < 0.2
