@@ -1,0 +1,42 @@
+cabal-version:      3.0
+name:               hyperdrive-semantics
+version:            0.1.0.0
+synopsis:           Version-independent HTTP semantics (RFC 9110)
+description:
+  The HTTP semantics shared by every version of the protocol, as
+  defined in RFC 9110. This package does no IO and knows nothing
+  about the wire format of HTTP/1.1, HTTP/2 or HTTP/3.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Jeremy Shaw
+maintainer:         jeremy@seereason.com
+category:           Web
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  default-language: GHC2021
+  exposed-modules:  Hyperdrive.Semantics.Field
+                    Hyperdrive.Semantics.Internal
+                    Hyperdrive.Semantics.Method
+                    Hyperdrive.Semantics.Status
+                    Hyperdrive.Semantics.Syntax
+  build-depends:    base       >= 4.18 && < 5
+                  , bytestring >= 0.11 && < 0.13
+
+test-suite hyperdrive-semantics-tests
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  default-language: GHC2021
+  build-depends:    base
+                  , bytestring
+                  , hyperdrive-semantics
+                  , QuickCheck       >= 2.14 && < 2.18
+                  , tasty            >= 1.4  && < 1.6
+                  , tasty-quickcheck >= 0.10 && < 0.12

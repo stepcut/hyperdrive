@@ -115,6 +115,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    enables it.
 
   SECTION: [Field Names](#section-5.1)
+    TEXT[implementation,test]:      field-name     = token
+    TEXT[implementation,test]:    Field names are case-insensitive
     TEXT[!MUST]:    A proxy MUST forward unrecognized header fields unless the field name
     TEXT[!MUST]:    is listed in the Connection header field (Section 7.6.1) or the proxy
     TEXT[!MUST]:    is specifically configured to block, or otherwise transform, such
@@ -123,13 +125,16 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    trailer fields.
 
   SECTION: [Field Order](#section-5.3)
-    TEXT[!MAY]:    A recipient MAY combine multiple field lines within a field section
-    TEXT[!MAY]:    that have the same field name into one field line, without changing
-    TEXT[!MAY]:    the semantics of the message, by appending each subsequent field line
-    TEXT[!MAY]:    value to the initial field line value in order, separated by a comma
-    TEXT[!MAY]:    (",") and optional whitespace (OWS, defined in Section 5.6.3).
-    TEXT[!MUST]:    The order in which field lines with the same name are received is
-    TEXT[!MUST]:    therefore significant to the interpretation of the field value; a
+    TEXT[!MAY,implementation]:    A recipient MAY combine multiple field lines within a field section
+    TEXT[!MAY,implementation]:    that have the same field name into one field line, without changing
+    TEXT[!MAY,implementation]:    the semantics of the message, by appending each subsequent field line
+    TEXT[!MAY,implementation]:    value to the initial field line value in order, separated by a comma
+    TEXT[!MAY,implementation]:    (",") and optional whitespace (OWS, defined in Section 5.6.3).
+    TEXT[implementation]:   For
+    TEXT[implementation]:    consistency, use comma SP.
+    TEXT[!MUST,implementation,test]:    The order in which field lines with the same name are received is
+    TEXT[!MUST,implementation,test]:    therefore significant to the interpretation of the field value
+    TEXT[!MUST]: ; a
     TEXT[!MUST]:    proxy MUST NOT change the order of these field line values when
     TEXT[!MUST]:    forwarding a message.
     TEXT[!MUST]:    This means that, aside from the well-known exception noted below, a
@@ -156,25 +161,32 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    message framing or response semantics.
 
   SECTION: [Field Values](#section-5.5)
-    TEXT[!MUST]: When
-    TEXT[!MUST]:    a specific version of HTTP allows such whitespace to appear in a
-    TEXT[!MUST]:    message, a field parsing implementation MUST exclude such whitespace
-    TEXT[!MUST]:    prior to evaluating the field value.
+    TEXT[implementation,test]:      field-value    = *field-content
+    TEXT[implementation,test]:      field-content  = field-vchar
+    TEXT[implementation,test]:                       [ 1*( SP / HTAB / field-vchar ) field-vchar ]
+    TEXT[implementation]:      field-vchar    = VCHAR / obs-text
+    TEXT[implementation]:      obs-text       = %x80-FF
+    TEXT[!MUST,implementation]: When
+    TEXT[!MUST,implementation]:    a specific version of HTTP allows such whitespace to appear in a
+    TEXT[!MUST,implementation]:    message,
+    TEXT[!MUST,implementation,test]: a field parsing implementation MUST exclude such whitespace
+    TEXT[!MUST,implementation,test]:    prior to evaluating the field value.
     TEXT[!SHOULD]: Specifications for newly defined fields SHOULD
     TEXT[!SHOULD]:    limit their values to visible US-ASCII octets (VCHAR), SP, and HTAB.
     TEXT[!SHOULD]:    A recipient SHOULD treat other allowed octets in field content (i.e.,
     TEXT[!SHOULD]:    obs-text) as opaque data.
-    TEXT[!MUST]:    Field values containing CR, LF, or NUL characters are invalid and
-    TEXT[!MUST]:    dangerous, due to the varying ways that implementations might parse
-    TEXT[!MUST]:    and interpret those characters; a recipient of CR, LF, or NUL within
-    TEXT[!MUST]:    a field value MUST either reject the message or replace each of those
-    TEXT[!MUST]:    characters with SP before further processing or forwarding of that
-    TEXT[!MUST]:    message.
-    TEXT[!MAY]: Field values containing other CTL characters are also
-    TEXT[!MAY]:    invalid; however, recipients MAY retain such characters for the sake
-    TEXT[!MAY]:    of robustness when they appear within a safe context (e.g., an
-    TEXT[!MAY]:    application-specific quoted string that will not be processed by any
-    TEXT[!MAY]:    downstream HTTP parser).
+    TEXT[!MUST,implementation]:    Field values containing CR, LF, or NUL characters are invalid and
+    TEXT[!MUST,implementation]:    dangerous, due to the varying ways that implementations might parse
+    TEXT[!MUST,implementation]:    and interpret those characters;
+    TEXT[!MUST,implementation,test]: a recipient of CR, LF, or NUL within
+    TEXT[!MUST,implementation,test]:    a field value MUST either reject the message or replace each of those
+    TEXT[!MUST,implementation,test]:    characters with SP before further processing or forwarding of that
+    TEXT[!MUST,implementation,test]:    message.
+    TEXT[!MAY,implementation]: Field values containing other CTL characters are also
+    TEXT[!MAY,implementation]:    invalid; however, recipients MAY retain such characters for the sake
+    TEXT[!MAY,implementation]:    of robustness when they appear within a safe context (e.g., an
+    TEXT[!MAY,implementation]:    application-specific quoted string that will not be processed by any
+    TEXT[!MAY,implementation]:    downstream HTTP parser).
 
   SECTION: [Sender Requirements](#section-5.6.1.1)
     TEXT[!MUST]:    In any production that uses the list construct, a sender MUST NOT
@@ -187,6 +199,17 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    service mechanism.
     TEXT[!MUST]: In other words, a recipient MUST accept lists
     TEXT[!MUST]:    that satisfy the following syntax:
+
+  SECTION: [Tokens](#section-5.6.2)
+    TEXT[implementation]:    Tokens are short textual identifiers that do not include whitespace
+    TEXT[implementation]:    or delimiters.
+    TEXT[implementation,test]:      token          = 1*tchar
+    TEXT[implementation]:      tchar          = "!" / "#" / "$" / "%" / "&" / "'" / "*"
+    TEXT[implementation]:                     / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+    TEXT[implementation]:                     / DIGIT / ALPHA
+    TEXT[test]:                     ; any VCHAR, except delimiters
+    TEXT[test]:    Delimiters are chosen from the set of US-ASCII visual characters not
+    TEXT[test]:    allowed in a token (DQUOTE and "(),/:;<=>?@[\]{}").
 
   SECTION: [Whitespace](#section-5.6.3)
     TEXT[!SHOULD]: For protocol elements where optional whitespace is
@@ -205,6 +228,7 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    it before interpreting the protocol element.
     TEXT[!MAY]: Any content known to be defined as BWS MAY be
     TEXT[!MAY]:    removed before interpreting it or forwarding the message downstream.
+    TEXT[implementation]:      OWS            = *( SP / HTAB )
 
   SECTION: [Quoted Strings](#section-5.6.4)
     TEXT[!MUST]: Recipients
@@ -608,6 +632,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    scalability, and reliability.
 
   SECTION: [Overview](#section-9.1)
+    TEXT[implementation,test]:      method = token
+    TEXT[implementation,test]:    The method token is case-sensitive
     TEXT[!MUST]:    All general-purpose servers MUST support the methods GET and HEAD.
     TEXT[!MAY]:    All other methods are OPTIONAL.
     TEXT[!SHOULD]: An origin server that receives a
@@ -619,6 +645,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    Not Allowed) status code.
 
   SECTION: [Safe Methods](#section-9.2.1)
+    TEXT[implementation,test]:    Of the request methods defined by this specification, the GET, HEAD,
+    TEXT[implementation,test]:    OPTIONS, and TRACE methods are defined to be safe.
     TEXT[!SHOULD]:    A user agent SHOULD distinguish between safe and unsafe methods when
     TEXT[!SHOULD]:    presenting potential actions to a user, such that the user can be
     TEXT[!SHOULD]:    made aware of an unsafe action before it is requested.
@@ -628,6 +656,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    request method.
 
   SECTION: [Idempotent Methods](#section-9.2.2)
+    TEXT[implementation,test]: Of the request methods
+    TEXT[implementation,test]:    defined by this specification, PUT, DELETE, and safe request methods
+    TEXT[implementation,test]:    are idempotent.
     TEXT[!SHOULD]:    A client SHOULD NOT automatically retry a request with a non-
     TEXT[!SHOULD]:    idempotent method unless it has some means to know that the request
     TEXT[!SHOULD]:    semantics are actually idempotent, regardless of the method, or some
@@ -1259,6 +1290,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    not support partial PUT requests.
 
   SECTION: [Status Codes](#section-15)
+    TEXT[implementation]:    The status code of a response is a three-digit integer code
+    TEXT[implementation,test]: All valid status codes are within the
+    TEXT[implementation,test]:    range of 100 to 599, inclusive.
+    TEXT[implementation,test]:    The first digit of the status code defines the class of response.
     TEXT[!MUST]: However, a client MUST
     TEXT[!MUST]:    understand the class of any status code, as indicated by the first
     TEXT[!MUST]:    digit, and treat an unrecognized status code as being equivalent to

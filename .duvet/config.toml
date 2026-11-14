@@ -3,11 +3,11 @@
 # Haskell comment style: `--=` and `--#` would lex as operators, so the
 # prefixes need a space after the dashes.
 [[source]]
-pattern = "hyperdrive*/**/*.hs"
+pattern = "hyperdrive*/src/**/*.hs"
 comment-style = { meta = "-- =", content = "-- #" }
 
 [[source]]
-pattern = "test/**/*.hs"
+pattern = "hyperdrive*/test/**/*.hs"
 type = "test"
 comment-style = { meta = "-- =", content = "-- #" }
 
