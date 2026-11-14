@@ -14,6 +14,9 @@ comment-style = { meta = "-- =", content = "-- #" }
 [[specification]]
 source = "https://www.rfc-editor.org/rfc/rfc9110"
 
+[[specification]]
+source = "https://www.rfc-editor.org/rfc/rfc3986"
+
 [report.html]
 enabled = true
 

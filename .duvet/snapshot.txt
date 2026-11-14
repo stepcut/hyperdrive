@@ -1,3 +1,63 @@
+SPECIFICATION: https://www.rfc-editor.org/rfc/rfc3986
+  SECTION: [Percent-Encoding](#section-2.1)
+    TEXT[implementation]:       pct-encoded = "%" HEXDIG HEXDIG
+
+  SECTION: [Reserved Characters](#section-2.2)
+    TEXT[implementation]:       sub-delims  = "!" / "$" / "&" / "'" / "(" / ")"
+    TEXT[implementation]:                   / "*" / "+" / "," / ";" / "="
+
+  SECTION: [Unreserved Characters](#section-2.3)
+    TEXT[implementation]:       unreserved  = ALPHA / DIGIT / "-" / "." / "_" / "~"
+
+  SECTION: [Scheme](#section-3.1)
+    TEXT[implementation,test]: Although schemes are case-
+    TEXT[implementation,test]:    insensitive, the canonical form is lowercase
+    TEXT[implementation]:       scheme      = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+
+  SECTION: [Host](#section-3.2.2)
+    TEXT[implementation,test]: The host subcomponent is case-
+    TEXT[implementation,test]:    insensitive.
+    TEXT[implementation]:       host        = IP-literal / IPv4address / reg-name
+    TEXT[implementation,test]:    If host matches the rule for IPv4address, then it should be
+    TEXT[implementation,test]:    considered an IPv4 address literal and not a reg-name.
+    TEXT[implementation]: Although host
+    TEXT[implementation]:    is case-insensitive, producers and normalizers should use lowercase
+    TEXT[implementation]:    for registered names and hexadecimal addresses for the sake of
+    TEXT[implementation]:    uniformity, while only using uppercase letters for percent-encodings.
+    TEXT[implementation]:       IP-literal = "[" ( IPv6address / IPvFuture  ) "]"
+    TEXT[implementation]:       IPvFuture  = "v" 1*HEXDIG "." 1*( unreserved / sub-delims / ":" )
+    TEXT[test]:    A 128-bit IPv6 address is divided into eight 16-bit pieces.
+    TEXT[implementation]:       IPv6address =                            6( h16 ":" ) ls32
+    TEXT[implementation]:                   /                       "::" 5( h16 ":" ) ls32
+    TEXT[implementation]:                   / [               h16 ] "::" 4( h16 ":" ) ls32
+    TEXT[implementation]:                   / [ *1( h16 ":" ) h16 ] "::" 3( h16 ":" ) ls32
+    TEXT[implementation]:                   / [ *2( h16 ":" ) h16 ] "::" 2( h16 ":" ) ls32
+    TEXT[implementation]:                   / [ *3( h16 ":" ) h16 ] "::"    h16 ":"   ls32
+    TEXT[implementation]:                   / [ *4( h16 ":" ) h16 ] "::"              ls32
+    TEXT[implementation]:                   / [ *5( h16 ":" ) h16 ] "::"              h16
+    TEXT[implementation]:                   / [ *6( h16 ":" ) h16 ] "::"
+    TEXT[implementation]:       h16         = 1*4HEXDIG
+    TEXT[implementation]:       IPv4address = dec-octet "." dec-octet "." dec-octet "." dec-octet
+    TEXT[implementation]:       dec-octet   = DIGIT                 ; 0-9
+    TEXT[implementation]:                   / %x31-39 DIGIT         ; 10-99
+    TEXT[implementation]:                   / "1" 2DIGIT            ; 100-199
+    TEXT[implementation]:                   / "2" %x30-34 DIGIT     ; 200-249
+    TEXT[implementation]:                   / "25" %x30-35          ; 250-255
+    TEXT[implementation]:       reg-name    = *( unreserved / pct-encoded / sub-delims )
+
+  SECTION: [Port](#section-3.2.3)
+    TEXT[implementation]:       port        = *DIGIT
+
+  SECTION: [Path](#section-3.3)
+    TEXT[implementation]:       path-abempty  = *( "/" segment )
+    TEXT[implementation]:       segment       = *pchar
+    TEXT[implementation]:       pchar         = unreserved / pct-encoded / sub-delims / ":" / "@"
+    TEXT[implementation,test]:    The path segments "." and "..", also known as dot-segments, are
+    TEXT[implementation,test]:    defined for relative reference within the path name hierarchy.
+
+  SECTION: [Query](#section-3.4)
+    TEXT[implementation]:       query       = *( pchar / "/" / "?" )
+
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Requirements Notation](#section-2.2)
     TEXT[!MUST]:    A sender MUST NOT generate protocol elements that do not match the
@@ -44,8 +104,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [http URI Scheme](#section-4.2.1)
     TEXT[!MUST]:    A sender MUST NOT generate an "http" URI with an empty host
     TEXT[!MUST]:    identifier.
-    TEXT[!MUST]: A recipient that processes such a URI reference MUST
-    TEXT[!MUST]:    reject it as invalid.
+    TEXT[!MUST,implementation,test]: A recipient that processes such a URI reference MUST
+    TEXT[!MUST,implementation,test]:    reject it as invalid.
 
   SECTION: [https URI Scheme](#section-4.2.2)
     TEXT[!MUST]:    A sender MUST NOT generate an "https" URI with an empty host
@@ -57,6 +117,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    secured responses to those requests.
 
   SECTION: [http(s) Normalization and Comparison](#section-4.2.3)
+    TEXT[implementation,test]: When not being used as the target of an OPTIONS request, an empty
+    TEXT[implementation,test]:       path component is equivalent to an absolute path of "/"
+    TEXT[implementation]: , so the
+    TEXT[implementation]:       normal form is to provide a path of "/" instead.
     TEXT[!MAY]:    Two HTTP URIs that are equivalent after normalization (using any
     TEXT[!MAY]:    method) can be assumed to identify the same resource, and any HTTP
     TEXT[!MAY]:    component MAY perform normalization.
@@ -68,10 +132,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    A sender MUST NOT generate the userinfo subcomponent (and its "@"
     TEXT[!MUST]:    delimiter) when an "http" or "https" URI reference is generated
     TEXT[!MUST]:    within a message as a target URI or field value.
-    TEXT[!SHOULD]:    Before making use of an "http" or "https" URI reference received from
-    TEXT[!SHOULD]:    an untrusted source, a recipient SHOULD parse for userinfo and treat
-    TEXT[!SHOULD]:    its presence as an error; it is likely being used to obscure the
-    TEXT[!SHOULD]:    authority for the sake of phishing attacks.
+    TEXT[!SHOULD,implementation,test]:    Before making use of an "http" or "https" URI reference received from
+    TEXT[!SHOULD,implementation,test]:    an untrusted source, a recipient SHOULD parse for userinfo and treat
+    TEXT[!SHOULD,implementation,test]:    its presence as an error
+    TEXT[!SHOULD,implementation]: ; it is likely being used to obscure the
+    TEXT[!SHOULD,implementation]:    authority for the sake of phishing attacks.
 
   SECTION: [http Origins](#section-4.3.2)
     TEXT[!MAY]:    When an "http" URI is used within a context that calls for access to
@@ -332,10 +397,16 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    trailers.
 
   SECTION: [Determining the Target Resource](#section-7.1)
-    TEXT[!MUST]: These forms MUST
-    TEXT[!MUST]:    NOT be used with other methods.
+    TEXT[implementation]:    There are two unusual cases for which the request target components
+    TEXT[implementation]:    are in a method-specific form:
+    TEXT[!MUST,implementation,test]: These forms MUST
+    TEXT[!MUST,implementation,test]:    NOT be used with other methods.
+    TEXT[implementation]:    Upon receipt of a client's request, a server reconstructs the target
+    TEXT[implementation]:    URI from the received components in accordance with their local
+    TEXT[implementation]:    configuration and incoming connection context.
 
   SECTION: [Host and :authority](#section-7.2)
+    TEXT[implementation]:      Host = uri-host [ ":" port ] ; Section 4
     TEXT[!MUST]: A user agent MUST generate a Host header field in a request
     TEXT[!MUST]:    unless it sends that information as an ":authority" pseudo-header
     TEXT[!MUST]:    field.
@@ -762,13 +833,17 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    intermediaries along the request chain.
 
   SECTION: [CONNECT](#section-9.3.6)
+    TEXT[implementation]:    CONNECT uses a special form of request target, unique to this method,
+    TEXT[implementation]:    consisting of only the host and port number of the tunnel
+    TEXT[implementation]:    destination, separated by a colon.
     TEXT[!MUST]: There is no default port; a
     TEXT[!MUST]:    client MUST send the port number even if the CONNECT request is based
     TEXT[!MUST]:    on a URI reference that contains an authority component with an
     TEXT[!MUST]:    elided port (Section 4.1).
-    TEXT[!MUST]:    A server MUST reject a CONNECT request that targets an empty or
-    TEXT[!MUST]:    invalid port number, typically by responding with a 400 (Bad Request)
-    TEXT[!MUST]:    status code.
+    TEXT[!MUST,implementation,test]:    A server MUST reject a CONNECT request that targets an empty or
+    TEXT[!MUST,implementation,test]:    invalid port number
+    TEXT[!MUST,implementation]: , typically by responding with a 400 (Bad Request)
+    TEXT[!MUST,implementation]:    status code.
     TEXT[!MAY]:    An origin server MAY accept a CONNECT request, but most origin
     TEXT[!MAY]:    servers do not implement CONNECT.
     TEXT[!MUST]:    A tunnel is closed when a tunnel intermediary detects that either

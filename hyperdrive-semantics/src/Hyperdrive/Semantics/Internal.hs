@@ -11,6 +11,11 @@ module Hyperdrive.Semantics.Internal
   , FieldValue(..)
   , Fields(..)
   , Status(..)
+  , Scheme(..)
+  , RegName(..)
+  , IPvFuture(..)
+  , Path(..)
+  , Query(..)
   ) where
 
 import Data.ByteString (ByteString)
@@ -35,4 +40,26 @@ newtype Fields = Fields [(FieldName, FieldValue)]
 
 -- | Invariant: @100 <= code <= 599@.
 newtype Status = Status Int
+  deriving (Eq, Ord, Show)
+
+-- | Invariant: the bytes match @scheme@ and are in lower case.
+newtype Scheme = Scheme ByteString
+  deriving (Eq, Ord, Show)
+
+-- | Invariant: the bytes match @reg-name@, are not empty, have no
+-- upper case letters, except that the hex digits of percent-encodings
+-- are upper case.
+newtype RegName = RegName ByteString
+  deriving (Eq, Ord, Show)
+
+-- | Invariant: the bytes match @IPvFuture@ and are in lower case.
+newtype IPvFuture = IPvFuture ByteString
+  deriving (Eq, Ord, Show)
+
+-- | Invariant: the bytes match @path-abempty@.
+newtype Path = Path ByteString
+  deriving (Eq, Ord, Show)
+
+-- | Invariant: the bytes match @query@.
+newtype Query = Query ByteString
   deriving (Eq, Ord, Show)

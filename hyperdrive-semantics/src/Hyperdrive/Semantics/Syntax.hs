@@ -7,6 +7,13 @@ module Hyperdrive.Semantics.Syntax
   , isObsText
   , isFieldVChar
   , isOWS
+    -- * URI character classes (RFC 3986)
+  , isALPHA
+  , isDIGIT
+  , isHEXDIG
+  , isUnreserved
+  , isSubDelim
+  , isPChar
   ) where
 
 import Data.ByteString (ByteString)
@@ -57,3 +64,43 @@ isFieldVChar w = isVChar w || isObsText w
 -- | a single octet of @OWS@ (@SP@ or @HTAB@)
 isOWS :: Word8 -> Bool
 isOWS w = w == 0x20 || w == 0x09
+
+------------------------------------------------------------------------------
+-- URI character classes
+------------------------------------------------------------------------------
+
+-- | @ALPHA@ from RFC 5234
+isALPHA :: Word8 -> Bool
+isALPHA w = (w >= 0x41 && w <= 0x5A) || (w >= 0x61 && w <= 0x7A)
+
+-- | @DIGIT@ from RFC 5234
+isDIGIT :: Word8 -> Bool
+isDIGIT w = w >= 0x30 && w <= 0x39
+
+-- | @HEXDIG@ from RFC 5234. ABNF strings are case-insensitive, so this
+-- includes the lower case letters.
+isHEXDIG :: Word8 -> Bool
+isHEXDIG w = isDIGIT w || (w >= 0x41 && w <= 0x46) || (w >= 0x61 && w <= 0x66)
+
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-2.3
+-- # unreserved  = ALPHA / DIGIT / "-" / "." / "_" / "~"
+
+-- | @unreserved@
+isUnreserved :: Word8 -> Bool
+isUnreserved w = isALPHA w || isDIGIT w || B.elem w "-._~"
+
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-2.2
+-- # sub-delims  = "!" / "$" / "&" / "'" / "(" / ")"
+-- # / "*" / "+" / "," / ";" / "="
+
+-- | @sub-delims@
+isSubDelim :: Word8 -> Bool
+isSubDelim w = B.elem w "!$&'()*+,;="
+
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-3.3
+-- # pchar         = unreserved / pct-encoded / sub-delims / ":" / "@"
+
+-- | @pchar@, except for @pct-encoded@, which spans three octets and so
+-- has to be checked separately.
+isPChar :: Word8 -> Bool
+isPChar w = isUnreserved w || isSubDelim w || w == 0x3A || w == 0x40
