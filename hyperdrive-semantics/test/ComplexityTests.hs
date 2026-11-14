@@ -1,0 +1,85 @@
+{-# LANGUAGE OverloadedStrings #-}
+-- | Checks that functions scale linearly with the size of their input.
+--
+-- Every function here can be fed attacker-controlled input, so
+-- anything worse than linear is a denial-of-service risk. Timing tests
+-- are flaky, so we measure allocation instead: each function is run on
+-- an input of size n and of size 8n, and the ratio of the bytes
+-- allocated is checked. Linear code gives a ratio of about 8, quadratic
+-- code about 64.
+module ComplexityTests (complexityTests) where
+
+import Control.Exception (evaluate)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as C
+import Data.Int (Int64)
+import Data.Maybe (fromMaybe)
+import Hyperdrive.Semantics.Field
+import Hyperdrive.Semantics.Method
+import Hyperdrive.Semantics.URI
+import System.Mem (getAllocationCounter)
+import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.QuickCheck (testProperty)
+
+complexityTests :: TestTree
+complexityTests = testGroup "Complexity (allocation is linear in input size)"
+  [ linear "appendField"   1000  $ \n ->
+      length (fieldsToList (foldl (\fs v -> appendField hHost v fs) emptyFields (values n)))
+  , linear "fieldsFromList, lookupAll" 1000 $ \n ->
+      length (lookupAll hHost (fieldsFromList [ (hHost, v) | v <- values n ]))
+  , linear "combineValues" 1000  $ \n ->
+      maybe 0 (B.length . fieldValueBytes) (combineValues (values n))
+  , linear "mkFieldName"   10000 $ \n ->
+      maybe 0 (B.length . fieldNameBytes) (mkFieldName (C.replicate n 'A'))
+  , linear "mkFieldValue"  10000 $ \n ->
+      either (const 0) (B.length . fieldValueBytes)
+        (mkFieldValue (C.replicate n ' ' <> C.replicate n 'a' <> C.replicate n '\t'))
+  , linear "mkMethod"      10000 $ \n ->
+      maybe 0 (B.length . methodBytes) (mkMethod (C.replicate n 'G'))
+  , linear "mkScheme"      10000 $ \n ->
+      maybe 0 (B.length . schemeBytes) (mkScheme ("h" <> C.replicate n '+'))
+  , linear "parseAuthority (reg-name)" 10000 $ \n ->
+      authority (C.replicate n 'A' <> "%2f")
+  , linear "parseAuthority (port)" 10000 $ \n ->
+      authority ("x:" <> C.replicate n '0' <> "80")
+  , linear "parseAuthority (IPv6 pieces)" 10000 $ \n ->
+      authority ("[" <> B.intercalate ":" (replicate n "1") <> "]")
+  , linear "parseAuthority (colons)" 10000 $ \n ->
+      authority ("[" <> C.replicate n ':' <> "]")
+  , linear "mkPath"        10000 $ \n ->
+      maybe 0 (B.length . pathBytes) (mkPath (path n))
+  , linear "pathSegments"  10000 $ \n ->
+      either (const 0) length (pathSegments (fromMaybe (error "invalid path") (mkPath (path n))))
+  , linear "mkQuery"       10000 $ \n ->
+      maybe 0 (B.length . queryBytes) (mkQuery (C.replicate n '?' <> "%20"))
+  , linear "percentDecode" 10000 $ \n ->
+      maybe 0 B.length (percentDecode (mconcat (replicate n "a%2F")))
+  ]
+  where
+    values n = [ v | i <- [1 .. n], Right v <- [mkFieldValue (C.pack (show i))] ]
+    path n = mconcat (replicate n "/a%2F")
+    authority bs = either (const 0) (B.length . renderAuthority) (parseAuthority bs)
+
+-- | bytes allocated by evaluating the 'Int' result
+allocation :: Int -> IO Int64
+allocation x = do
+  start <- getAllocationCounter -- counts down as the thread allocates
+  _ <- evaluate x
+  end <- getAllocationCounter
+  pure (start - end)
+
+-- | Run the function on n and 8n and check that allocation grew by a
+-- factor of at most 12. The function must fully evaluate its result
+-- when the 'Int' it returns is evaluated.
+linear :: String -> Int -> (Int -> Int) -> TestTree
+linear name n f = testProperty name $ once $ ioProperty $ do
+  -- build the inputs inside f, but make sure each call is evaluated
+  -- afresh rather than shared
+  small <- allocation (f n)
+  large <- allocation (f (8 * n))
+  let ratio = fromIntegral large / fromIntegral (max 1 small) :: Double
+  pure $ counterexample
+           (name ++ ": allocated " ++ show small ++ " bytes for n = " ++ show n
+                 ++ " and " ++ show large ++ " bytes for 8n (ratio " ++ show ratio ++ ")")
+           (ratio <= 12)

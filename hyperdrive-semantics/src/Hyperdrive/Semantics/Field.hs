@@ -30,7 +30,10 @@ module Hyperdrive.Semantics.Field
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import Data.Foldable (toList)
 import Data.Maybe (listToMaybe)
+import Data.Sequence ((|>))
+import qualified Data.Sequence as Seq
 import Data.Word (Word8)
 import Hyperdrive.Semantics.Internal (FieldName(..), FieldValue(..), Fields(..))
 import Hyperdrive.Semantics.Syntax (isFieldVChar, isOWS, isToken)
@@ -152,23 +155,23 @@ combineValues vs =
 -- # therefore significant to the interpretation of the field value
 
 emptyFields :: Fields
-emptyFields = Fields []
+emptyFields = Fields Seq.empty
 
 fieldsFromList :: [(FieldName, FieldValue)] -> Fields
-fieldsFromList = Fields
+fieldsFromList = Fields . Seq.fromList
 
 -- | the field lines, in order
 fieldsToList :: Fields -> [(FieldName, FieldValue)]
-fieldsToList (Fields fs) = fs
+fieldsToList (Fields fs) = toList fs
 
--- | add a field line after all existing field lines
+-- | add a field line after all existing field lines. /O(1)/
 appendField :: FieldName -> FieldValue -> Fields -> Fields
-appendField n v (Fields fs) = Fields (fs ++ [(n, v)])
+appendField n v (Fields fs) = Fields (fs |> (n, v))
 
--- | the value of the first field line with this name
+-- | the value of the first field line with this name. /O(n)/
 lookupField :: FieldName -> Fields -> Maybe FieldValue
 lookupField n = listToMaybe . lookupAll n
 
--- | the values of every field line with this name, in order
+-- | the values of every field line with this name, in order. /O(n)/
 lookupAll :: FieldName -> Fields -> [FieldValue]
-lookupAll n (Fields fs) = [ v | (n', v) <- fs, n' == n ]
+lookupAll n (Fields fs) = [ v | (n', v) <- toList fs, n' == n ]

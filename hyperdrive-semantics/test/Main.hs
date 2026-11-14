@@ -14,6 +14,7 @@ import Hyperdrive.Semantics.Syntax
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
+import ComplexityTests (complexityTests)
 import URITests (uriTests)
 
 main :: IO ()
@@ -41,6 +42,7 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
     , testProperty "class is the first digit"         prop_statusClass
     ]
   , uriTests
+  , complexityTests
   ]
 
 ------------------------------------------------------------------------------

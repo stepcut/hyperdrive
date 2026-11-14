@@ -19,6 +19,7 @@ module Hyperdrive.Semantics.Internal
   ) where
 
 import Data.ByteString (ByteString)
+import Data.Sequence (Seq)
 
 -- | Invariant: the bytes are a @token@.
 newtype Method = Method ByteString
@@ -35,7 +36,11 @@ newtype FieldValue = FieldValue ByteString
   deriving (Eq, Ord, Show)
 
 -- | A field section (headers or trailers), in the order received.
-newtype Fields = Fields [(FieldName, FieldValue)]
+--
+-- A 'Seq' rather than a list, so that appending a field line is cheap.
+-- With a list, building a section one field line at a time would be
+-- quadratic in the number of field lines, which a client controls.
+newtype Fields = Fields (Seq (FieldName, FieldValue))
   deriving (Eq, Show)
 
 -- | Invariant: @100 <= code <= 599@.
