@@ -1,0 +1,26 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6"
+
+# 205 Reset Content
+#
+#    The 205 (Reset Content) status code indicates that the server has
+#    fulfilled the request and desires that the user agent reset the
+#    "document view", which caused the request to be sent, to its original
+#    state as received from the origin server.
+# 
+#    This response is intended to support a common data entry use case
+#    where the user receives content that supports data entry (a form,
+#    notepad, canvas, etc.), enters or manipulates data in that space,
+#    causes the entered data to be submitted in a request, and then the
+#    data entry mechanism is reset for the next entry so that the user can
+#    easily initiate another input action.
+# 
+#    Since the 205 status code implies that no additional content will be
+#    provided, a server MUST NOT generate content in a 205 response.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Since the 205 status code implies that no additional content will be
+provided, a server MUST NOT generate content in a 205 response.
+'''
+

@@ -1,0 +1,27 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.3.7.1"
+
+# Single Part
+#
+#    If a single part is being transferred, the server generating the 206
+#    response MUST generate a Content-Range header field, describing what
+#    range of the selected representation is enclosed, and a content
+#    consisting of the range.  For example:
+# 
+#    HTTP/1.1 206 Partial Content
+#    Date: Wed, 15 Nov 1995 06:25:24 GMT
+#    Last-Modified: Wed, 15 Nov 1995 04:58:08 GMT
+#    Content-Range: bytes 21010-47021/47022
+#    Content-Length: 26012
+#    Content-Type: image/gif
+# 
+#    ... 26012 bytes of partial image data ...
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a single part is being transferred, the server generating the 206
+response MUST generate a Content-Range header field, describing what
+range of the selected representation is enclosed, and a content
+consisting of the range.
+'''
+

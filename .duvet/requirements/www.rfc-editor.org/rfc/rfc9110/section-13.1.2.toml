@@ -1,0 +1,111 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2"
+
+# If-None-Match
+#
+#    The "If-None-Match" header field makes the request method conditional
+#    on a recipient cache or origin server either not having any current
+#    representation of the target resource, when the field value is "*",
+#    or having a selected representation with an entity tag that does not
+#    match any of those listed in the field value.
+# 
+#    A recipient MUST use the weak comparison function when comparing
+#    entity tags for If-None-Match (Section 8.8.3.2), since weak entity
+#    tags can be used for cache validation even if there have been changes
+#    to the representation data.
+# 
+#      If-None-Match = "*" / #entity-tag
+# 
+#    Examples:
+# 
+#    If-None-Match: "xyzzy"
+#    If-None-Match: W/"xyzzy"
+#    If-None-Match: "xyzzy", "r2d2xxxx", "c3piozzzz"
+#    If-None-Match: W/"xyzzy", W/"r2d2xxxx", W/"c3piozzzz"
+#    If-None-Match: *
+# 
+#    If-None-Match is primarily used in conditional GET requests to enable
+#    efficient updates of cached information with a minimum amount of
+#    transaction overhead.  When a client desires to update one or more
+#    stored responses that have entity tags, the client SHOULD generate an
+#    If-None-Match header field containing a list of those entity tags
+#    when making a GET request; this allows recipient servers to send a
+#    304 (Not Modified) response to indicate when one of those stored
+#    responses matches the selected representation.
+# 
+#    If-None-Match can also be used with a value of "*" to prevent an
+#    unsafe request method (e.g., PUT) from inadvertently modifying an
+#    existing representation of the target resource when the client
+#    believes that the resource does not have a current representation
+#    (Section 9.2.1).  This is a variation on the "lost update" problem
+#    that might arise if more than one client attempts to create an
+#    initial representation for the target resource.
+# 
+#    When an origin server receives a request that selects a
+#    representation and that request includes an If-None-Match header
+#    field, the origin server MUST evaluate the If-None-Match condition
+#    per Section 13.2 prior to performing the method.
+# 
+#    To evaluate a received If-None-Match header field:
+# 
+#    1.  If the field value is "*", the condition is false if the origin
+#        server has a current representation for the target resource.
+# 
+#    2.  If the field value is a list of entity tags, the condition is
+#        false if one of the listed tags matches the entity tag of the
+#        selected representation.
+# 
+#    3.  Otherwise, the condition is true.
+# 
+#    An origin server that evaluates an If-None-Match condition MUST NOT
+#    perform the requested method if the condition evaluates to false;
+#    instead, the origin server MUST respond with either a) the 304 (Not
+#    Modified) status code if the request method is GET or HEAD or b) the
+#    412 (Precondition Failed) status code for all other request methods.
+# 
+#    Requirements on cache handling of a received If-None-Match header
+#    field are defined in Section 4.3.2 of [CACHING].
+# 
+#    Note that an If-None-Match header field with a list value containing
+#    "*" and other values (including other instances of "*") is
+#    syntactically invalid (therefore not allowed to be generated) and
+#    furthermore is unlikely to be interoperable.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient MUST use the weak comparison function when comparing
+entity tags for If-None-Match (Section 8.8.3.2), since weak entity
+tags can be used for cache validation even if there have been changes
+to the representation data.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+When a client desires to update one or more
+stored responses that have entity tags, the client SHOULD generate an
+If-None-Match header field containing a list of those entity tags
+when making a GET request; this allows recipient servers to send a
+304 (Not Modified) response to indicate when one of those stored
+responses matches the selected representation.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+When an origin server receives a request that selects a
+representation and that request includes an If-None-Match header
+field, the origin server MUST evaluate the If-None-Match condition
+per Section 13.2 prior to performing the method.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server that evaluates an If-None-Match condition MUST NOT
+perform the requested method if the condition evaluates to false;
+instead, the origin server MUST respond with either a) the 304 (Not
+Modified) status code if the request method is GET or HEAD or b) the
+412 (Precondition Failed) status code for all other request methods.
+'''
+

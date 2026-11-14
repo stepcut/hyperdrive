@@ -1,0 +1,41 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-6.5.2"
+
+# Processing Trailer Fields
+#
+#    The "Trailer" header field (Section 6.6.2) can be sent to indicate
+#    fields likely to be sent in the trailer section, which allows
+#    recipients to prepare for their receipt before processing the
+#    content.  For example, this could be useful if a field name indicates
+#    that a dynamic checksum should be calculated as the content is
+#    received and then immediately checked upon receipt of the trailer
+#    field value.
+# 
+#    Like header fields, trailer fields with the same name are processed
+#    in the order received; multiple trailer field lines with the same
+#    name have the equivalent semantics as appending the multiple values
+#    as a list of members.  Trailer fields that might be generated more
+#    than once during a message MUST be defined as a list-based field even
+#    if each member value is only processed once per field line received.
+# 
+#    At the end of a message, a recipient MAY treat the set of received
+#    trailer fields as a data structure of name/value pairs, similar to
+#    (but separate from) the header fields.  Additional processing
+#    expectations, if any, can be defined within the field specification
+#    for a field intended for use in trailers.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Trailer fields that might be generated more
+than once during a message MUST be defined as a list-based field even
+if each member value is only processed once per field line received.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+At the end of a message, a recipient MAY treat the set of received
+trailer fields as a data structure of name/value pairs, similar to
+(but separate from) the header fields.
+'''
+

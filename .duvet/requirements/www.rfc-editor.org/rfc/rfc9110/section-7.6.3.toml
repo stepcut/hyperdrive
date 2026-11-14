@@ -1,0 +1,166 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-7.6.3"
+
+# Via
+#
+#    The "Via" header field indicates the presence of intermediate
+#    protocols and recipients between the user agent and the server (on
+#    requests) or between the origin server and the client (on responses),
+#    similar to the "Received" header field in email (Section 3.6.7 of
+#    [RFC5322]).  Via can be used for tracking message forwards, avoiding
+#    request loops, and identifying the protocol capabilities of senders
+#    along the request/response chain.
+# 
+#      Via = #( received-protocol RWS received-by [ RWS comment ] )
+# 
+#      received-protocol = [ protocol-name "/" ] protocol-version
+#                        ; see Section 7.8
+#      received-by       = pseudonym [ ":" port ]
+#      pseudonym         = token
+# 
+#    Each member of the Via field value represents a proxy or gateway that
+#    has forwarded the message.  Each intermediary appends its own
+#    information about how the message was received, such that the end
+#    result is ordered according to the sequence of forwarding recipients.
+# 
+#    A proxy MUST send an appropriate Via header field, as described
+#    below, in each message that it forwards.  An HTTP-to-HTTP gateway
+#    MUST send an appropriate Via header field in each inbound request
+#    message and MAY send a Via header field in forwarded response
+#    messages.
+# 
+#    For each intermediary, the received-protocol indicates the protocol
+#    and protocol version used by the upstream sender of the message.
+#    Hence, the Via field value records the advertised protocol
+#    capabilities of the request/response chain such that they remain
+#    visible to downstream recipients; this can be useful for determining
+#    what backwards-incompatible features might be safe to use in
+#    response, or within a later request, as described in Section 2.5.
+#    For brevity, the protocol-name is omitted when the received protocol
+#    is HTTP.
+# 
+#    The received-by portion is normally the host and optional port number
+#    of a recipient server or client that subsequently forwarded the
+#    message.  However, if the real host is considered to be sensitive
+#    information, a sender MAY replace it with a pseudonym.  If a port is
+#    not provided, a recipient MAY interpret that as meaning it was
+#    received on the default port, if any, for the received-protocol.
+# 
+#    A sender MAY generate comments to identify the software of each
+#    recipient, analogous to the User-Agent and Server header fields.
+#    However, comments in Via are optional, and a recipient MAY remove
+#    them prior to forwarding the message.
+# 
+#    For example, a request message could be sent from an HTTP/1.0 user
+#    agent to an internal proxy code-named "fred", which uses HTTP/1.1 to
+#    forward the request to a public proxy at p.example.net, which
+#    completes the request by forwarding it to the origin server at
+#    www.example.com.  The request received by www.example.com would then
+#    have the following Via header field:
+# 
+#    Via: 1.0 fred, 1.1 p.example.net
+# 
+#    An intermediary used as a portal through a network firewall SHOULD
+#    NOT forward the names and ports of hosts within the firewall region
+#    unless it is explicitly enabled to do so.  If not enabled, such an
+#    intermediary SHOULD replace each received-by host of any host behind
+#    the firewall by an appropriate pseudonym for that host.
+# 
+#    An intermediary MAY combine an ordered subsequence of Via header
+#    field list members into a single member if the entries have identical
+#    received-protocol values.  For example,
+# 
+#    Via: 1.0 ricky, 1.1 ethel, 1.1 fred, 1.0 lucy
+# 
+#    could be collapsed to
+# 
+#    Via: 1.0 ricky, 1.1 mertz, 1.0 lucy
+# 
+#    A sender SHOULD NOT combine multiple list members unless they are all
+#    under the same organizational control and the hosts have already been
+#    replaced by pseudonyms.  A sender MUST NOT combine members that have
+#    different received-protocol values.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy MUST send an appropriate Via header field, as described
+below, in each message that it forwards.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An HTTP-to-HTTP gateway
+MUST send an appropriate Via header field in each inbound request
+message and MAY send a Via header field in forwarded response
+messages.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+However, if the real host is considered to be sensitive
+information, a sender MAY replace it with a pseudonym.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If a port is
+not provided, a recipient MAY interpret that as meaning it was
+received on the default port, if any, for the received-protocol.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A sender MAY generate comments to identify the software of each
+recipient, analogous to the User-Agent and Server header fields.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+However, comments in Via are optional, and a recipient MAY remove
+them prior to forwarding the message.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An intermediary used as a portal through a network firewall SHOULD
+NOT forward the names and ports of hosts within the firewall region
+unless it is explicitly enabled to do so.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If not enabled, such an
+intermediary SHOULD replace each received-by host of any host behind
+the firewall by an appropriate pseudonym for that host.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An intermediary MAY combine an ordered subsequence of Via header
+field list members into a single member if the entries have identical
+received-protocol values.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A sender SHOULD NOT combine multiple list members unless they are all
+under the same organizational control and the hosts have already been
+replaced by pseudonyms.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST NOT combine members that have
+different received-protocol values.
+'''
+

@@ -1,0 +1,18 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.12"
+
+# 411 Length Required
+#
+#    The 411 (Length Required) status code indicates that the server
+#    refuses to accept the request without a defined Content-Length
+#    (Section 8.6).  The client MAY repeat the request if it adds a valid
+#    Content-Length header field containing the length of the request
+#    content.
+
+[[spec]]
+level = "MAY"
+quote = '''
+The client MAY repeat the request if it adds a valid
+Content-Length header field containing the length of the request
+content.
+'''
+

@@ -1,0 +1,26 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-8.3.3"
+
+# Multipart Types
+#
+#    MIME provides for a number of "multipart" types -- encapsulations of
+#    one or more representations within a single message body.  All
+#    multipart types share a common syntax, as defined in Section 5.1.1 of
+#    [RFC2046], and include a boundary parameter as part of the media type
+#    value.  The message body is itself a protocol element; a sender MUST
+#    generate only CRLF to represent line breaks between body parts.
+# 
+#    HTTP message framing does not use the multipart boundary as an
+#    indicator of message body length, though it might be used by
+#    implementations that generate or process the content.  For example,
+#    the "multipart/form-data" type is often used for carrying form data
+#    in a request, as described in [RFC7578], and the "multipart/
+#    byteranges" type is defined by this specification for use in some 206
+#    (Partial Content) responses (see Section 15.3.7).
+
+[[spec]]
+level = "MUST"
+quote = '''
+The message body is itself a protocol element; a sender MUST
+generate only CRLF to represent line breaks between body parts.
+'''
+

@@ -1,0 +1,43 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-8.3.1"
+
+# Media Type
+#
+#    HTTP uses media types [RFC2046] in the Content-Type (Section 8.3) and
+#    Accept (Section 12.5.1) header fields in order to provide open and
+#    extensible data typing and type negotiation.  Media types define both
+#    a data format and various processing models: how to process that data
+#    in accordance with the message context.
+# 
+#      media-type = type "/" subtype parameters
+#      type       = token
+#      subtype    = token
+# 
+#    The type and subtype tokens are case-insensitive.
+# 
+#    The type/subtype MAY be followed by semicolon-delimited parameters
+#    (Section 5.6.6) in the form of name/value pairs.  The presence or
+#    absence of a parameter might be significant to the processing of a
+#    media type, depending on its definition within the media type
+#    registry.  Parameter values might or might not be case-sensitive,
+#    depending on the semantics of the parameter name.
+# 
+#    For example, the following media types are equivalent in describing
+#    HTML text data encoded in the UTF-8 character encoding scheme, but
+#    the first is preferred for consistency (the "charset" parameter value
+#    is defined as being case-insensitive in [RFC2046], Section 4.1.2):
+# 
+#      text/html;charset=utf-8
+#      Text/HTML;Charset="utf-8"
+#      text/html; charset="utf-8"
+#      text/html;charset=UTF-8
+# 
+#    Media types ought to be registered with IANA according to the
+#    procedures defined in [BCP13].
+
+[[spec]]
+level = "MAY"
+quote = '''
+The type/subtype MAY be followed by semicolon-delimited parameters
+(Section 5.6.6) in the form of name/value pairs.
+'''
+

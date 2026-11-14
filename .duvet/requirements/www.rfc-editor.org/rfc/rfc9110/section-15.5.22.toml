@@ -1,0 +1,27 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.22"
+
+# 426 Upgrade Required
+#
+#    The 426 (Upgrade Required) status code indicates that the server
+#    refuses to perform the request using the current protocol but might
+#    be willing to do so after the client upgrades to a different
+#    protocol.  The server MUST send an Upgrade header field in a 426
+#    response to indicate the required protocol(s) (Section 7.8).
+# 
+#    Example:
+# 
+#    HTTP/1.1 426 Upgrade Required
+#    Upgrade: HTTP/3.0
+#    Connection: Upgrade
+#    Content-Length: 53
+#    Content-Type: text/plain
+# 
+#    This service requires use of the HTTP/3.0 protocol.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The server MUST send an Upgrade header field in a 426
+response to indicate the required protocol(s) (Section 7.8).
+'''
+

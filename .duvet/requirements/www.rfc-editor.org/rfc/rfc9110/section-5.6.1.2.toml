@@ -1,0 +1,54 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-5.6.1.2"
+
+# Recipient Requirements
+#
+#    Empty elements do not contribute to the count of elements present.  A
+#    recipient MUST parse and ignore a reasonable number of empty list
+#    elements: enough to handle common mistakes by senders that merge
+#    values, but not so much that they could be used as a denial-of-
+#    service mechanism.  In other words, a recipient MUST accept lists
+#    that satisfy the following syntax:
+# 
+#      #element => [ element ] *( OWS "," OWS [ element ] )
+# 
+#    Note that because of the potential presence of empty list elements,
+#    the RFC 5234 ABNF cannot enforce the cardinality of list elements,
+#    and consequently all cases are mapped as if there was no cardinality
+#    specified.
+# 
+#    For example, given these ABNF productions:
+# 
+#      example-list      = 1#example-list-elmt
+#      example-list-elmt = token ; see Section 5.6.2
+# 
+#    Then the following are valid values for example-list (not including
+#    the double quotes, which are present for delimitation only):
+# 
+#      "foo,bar"
+#      "foo ,bar,"
+#      "foo , ,bar,charlie"
+# 
+#    In contrast, the following values would be invalid, since at least
+#    one non-empty element is required by the example-list production:
+# 
+#      ""
+#      ","
+#      ",   ,"
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+recipient MUST parse and ignore a reasonable number of empty list
+elements: enough to handle common mistakes by senders that merge
+values, but not so much that they could be used as a denial-of-
+service mechanism.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+In other words, a recipient MUST accept lists
+that satisfy the following syntax:
+'''
+

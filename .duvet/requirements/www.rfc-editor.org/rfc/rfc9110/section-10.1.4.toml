@@ -1,0 +1,39 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-10.1.4"
+
+# TE
+#
+#    The "TE" header field describes capabilities of the client with
+#    regard to transfer codings and trailer sections.
+# 
+#    As described in Section 6.5, a TE field with a "trailers" member sent
+#    in a request indicates that the client will not discard trailer
+#    fields.
+# 
+#    TE is also used within HTTP/1.1 to advise servers about which
+#    transfer codings the client is able to accept in a response.  As of
+#    publication, only HTTP/1.1 uses transfer codings (see Section 7 of
+#    [HTTP/1.1]).
+# 
+#    The TE field value is a list of members, with each member (aside from
+#    "trailers") consisting of a transfer coding name token with an
+#    optional weight indicating the client's relative preference for that
+#    transfer coding (Section 12.4.2) and optional parameters for that
+#    transfer coding.
+# 
+#      TE                 = #t-codings
+#      t-codings          = "trailers" / ( transfer-coding [ weight ] )
+#      transfer-coding    = token *( OWS ";" OWS transfer-parameter )
+#      transfer-parameter = token BWS "=" BWS ( token / quoted-string )
+# 
+#    A sender of TE MUST also send a "TE" connection option within the
+#    Connection header field (Section 7.6.1) to inform intermediaries not
+#    to forward this field.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender of TE MUST also send a "TE" connection option within the
+Connection header field (Section 7.6.1) to inform intermediaries not
+to forward this field.
+'''
+

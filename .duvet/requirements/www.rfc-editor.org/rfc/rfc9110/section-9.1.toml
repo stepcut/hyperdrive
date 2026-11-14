@@ -1,0 +1,114 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-9.1"
+
+# Overview
+#
+#    The request method token is the primary source of request semantics;
+#    it indicates the purpose for which the client has made this request
+#    and what is expected by the client as a successful result.
+# 
+#    The request method's semantics might be further specialized by the
+#    semantics of some header fields when present in a request if those
+#    additional semantics do not conflict with the method.  For example, a
+#    client can send conditional request header fields (Section 13.1) to
+#    make the requested action conditional on the current state of the
+#    target resource.
+# 
+#    HTTP is designed to be usable as an interface to distributed object
+#    systems.  The request method invokes an action to be applied to a
+#    target resource in much the same way that a remote method invocation
+#    can be sent to an identified object.
+# 
+#      method = token
+# 
+#    The method token is case-sensitive because it might be used as a
+#    gateway to object-based systems with case-sensitive method names.  By
+#    convention, standardized methods are defined in all-uppercase US-
+#    ASCII letters.
+# 
+#    Unlike distributed objects, the standardized request methods in HTTP
+#    are not resource-specific, since uniform interfaces provide for
+#    better visibility and reuse in network-based systems [REST].  Once
+#    defined, a standardized method ought to have the same semantics when
+#    applied to any resource, though each resource determines for itself
+#    whether those semantics are implemented or allowed.
+# 
+#    This specification defines a number of standardized methods that are
+#    commonly used in HTTP, as outlined by the following table.
+# 
+#    +=========+============================================+=========+
+#    | Method  | Description                                | Section |
+#    | Name    |                                            |         |
+#    +=========+============================================+=========+
+#    | GET     | Transfer a current representation of the   | 9.3.1   |
+#    |         | target resource.                           |         |
+#    +---------+--------------------------------------------+---------+
+#    | HEAD    | Same as GET, but do not transfer the       | 9.3.2   |
+#    |         | response content.                          |         |
+#    +---------+--------------------------------------------+---------+
+#    | POST    | Perform resource-specific processing on    | 9.3.3   |
+#    |         | the request content.                       |         |
+#    +---------+--------------------------------------------+---------+
+#    | PUT     | Replace all current representations of the | 9.3.4   |
+#    |         | target resource with the request content.  |         |
+#    +---------+--------------------------------------------+---------+
+#    | DELETE  | Remove all current representations of the  | 9.3.5   |
+#    |         | target resource.                           |         |
+#    +---------+--------------------------------------------+---------+
+#    | CONNECT | Establish a tunnel to the server           | 9.3.6   |
+#    |         | identified by the target resource.         |         |
+#    +---------+--------------------------------------------+---------+
+#    | OPTIONS | Describe the communication options for the | 9.3.7   |
+#    |         | target resource.                           |         |
+#    +---------+--------------------------------------------+---------+
+#    | TRACE   | Perform a message loop-back test along the | 9.3.8   |
+#    |         | path to the target resource.               |         |
+#    +---------+--------------------------------------------+---------+
+# 
+#                                 Table 4
+# 
+#    All general-purpose servers MUST support the methods GET and HEAD.
+#    All other methods are OPTIONAL.
+# 
+#    The set of methods allowed by a target resource can be listed in an
+#    Allow header field (Section 10.2.1).  However, the set of allowed
+#    methods can change dynamically.  An origin server that receives a
+#    request method that is unrecognized or not implemented SHOULD respond
+#    with the 501 (Not Implemented) status code.  An origin server that
+#    receives a request method that is recognized and implemented, but not
+#    allowed for the target resource, SHOULD respond with the 405 (Method
+#    Not Allowed) status code.
+# 
+#    Additional methods, outside the scope of this specification, have
+#    been specified for use in HTTP.  All such methods ought to be
+#    registered within the "Hypertext Transfer Protocol (HTTP) Method
+#    Registry", as described in Section 16.1.
+
+[[spec]]
+level = "MUST"
+quote = '''
+All general-purpose servers MUST support the methods GET and HEAD.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+All other methods are OPTIONAL.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An origin server that receives a
+request method that is unrecognized or not implemented SHOULD respond
+with the 501 (Not Implemented) status code.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An origin server that
+receives a request method that is recognized and implemented, but not
+allowed for the target resource, SHOULD respond with the 405 (Method
+Not Allowed) status code.
+'''
+

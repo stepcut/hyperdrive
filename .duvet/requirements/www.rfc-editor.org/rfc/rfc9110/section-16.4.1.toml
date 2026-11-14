@@ -1,0 +1,26 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-16.4.1"
+
+# Authentication Scheme Registry
+#
+#    The "Hypertext Transfer Protocol (HTTP) Authentication Scheme
+#    Registry" defines the namespace for the authentication schemes in
+#    challenges and credentials.  It is maintained at
+#    <https://www.iana.org/assignments/http-authschemes>.
+# 
+#    Registrations MUST include the following fields:
+# 
+#    *  Authentication Scheme Name
+# 
+#    *  Pointer to specification text
+# 
+#    *  Notes (optional)
+# 
+#    Values to be added to this namespace require IETF Review (see
+#    [RFC8126], Section 4.8).
+
+[[spec]]
+level = "MUST"
+quote = '''
+Registrations MUST include the following fields:
+'''
+

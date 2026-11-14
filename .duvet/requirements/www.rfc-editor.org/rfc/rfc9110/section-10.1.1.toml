@@ -1,0 +1,234 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-10.1.1"
+
+# Expect
+#
+#    The "Expect" header field in a request indicates a certain set of
+#    behaviors (expectations) that need to be supported by the server in
+#    order to properly handle this request.
+# 
+#      Expect =      #expectation
+#      expectation = token [ "=" ( token / quoted-string ) parameters ]
+# 
+#    The Expect field value is case-insensitive.
+# 
+#    The only expectation defined by this specification is "100-continue"
+#    (with no defined parameters).
+# 
+#    A server that receives an Expect field value containing a member
+#    other than 100-continue MAY respond with a 417 (Expectation Failed)
+#    status code to indicate that the unexpected expectation cannot be
+#    met.
+# 
+#    A "100-continue" expectation informs recipients that the client is
+#    about to send (presumably large) content in this request and wishes
+#    to receive a 100 (Continue) interim response if the method, target
+#    URI, and header fields are not sufficient to cause an immediate
+#    success, redirect, or error response.  This allows the client to wait
+#    for an indication that it is worthwhile to send the content before
+#    actually doing so, which can improve efficiency when the data is huge
+#    or when the client anticipates that an error is likely (e.g., when
+#    sending a state-changing method, for the first time, without
+#    previously verified authentication credentials).
+# 
+#    For example, a request that begins with
+# 
+#    PUT /somewhere/fun HTTP/1.1
+#    Host: origin.example.com
+#    Content-Type: video/h264
+#    Content-Length: 1234567890987
+#    Expect: 100-continue
+# 
+#    allows the origin server to immediately respond with an error
+#    message, such as 401 (Unauthorized) or 405 (Method Not Allowed),
+#    before the client starts filling the pipes with an unnecessary data
+#    transfer.
+# 
+#    Requirements for clients:
+# 
+#    *  A client MUST NOT generate a 100-continue expectation in a request
+#       that does not include content.
+# 
+#    *  A client that will wait for a 100 (Continue) response before
+#       sending the request content MUST send an Expect header field
+#       containing a 100-continue expectation.
+# 
+#    *  A client that sends a 100-continue expectation is not required to
+#       wait for any specific length of time; such a client MAY proceed to
+#       send the content even if it has not yet received a response.
+#       Furthermore, since 100 (Continue) responses cannot be sent through
+#       an HTTP/1.0 intermediary, such a client SHOULD NOT wait for an
+#       indefinite period before sending the content.
+# 
+#    *  A client that receives a 417 (Expectation Failed) status code in
+#       response to a request containing a 100-continue expectation SHOULD
+#       repeat that request without a 100-continue expectation, since the
+#       417 response merely indicates that the response chain does not
+#       support expectations (e.g., it passes through an HTTP/1.0 server).
+# 
+#    Requirements for servers:
+# 
+#    *  A server that receives a 100-continue expectation in an HTTP/1.0
+#       request MUST ignore that expectation.
+# 
+#    *  A server MAY omit sending a 100 (Continue) response if it has
+#       already received some or all of the content for the corresponding
+#       request, or if the framing indicates that there is no content.
+# 
+#    *  A server that sends a 100 (Continue) response MUST ultimately send
+#       a final status code, once it receives and processes the request
+#       content, unless the connection is closed prematurely.
+# 
+#    *  A server that responds with a final status code before reading the
+#       entire request content SHOULD indicate whether it intends to close
+#       the connection (e.g., see Section 9.6 of [HTTP/1.1]) or continue
+#       reading the request content.
+# 
+#    Upon receiving an HTTP/1.1 (or later) request that has a method,
+#    target URI, and complete header section that contains a 100-continue
+#    expectation and an indication that request content will follow, an
+#    origin server MUST send either:
+# 
+#    *  an immediate response with a final status code, if that status can
+#       be determined by examining just the method, target URI, and header
+#       fields, or
+# 
+#    *  an immediate 100 (Continue) response to encourage the client to
+#       send the request content.
+# 
+#    The origin server MUST NOT wait for the content before sending the
+#    100 (Continue) response.
+# 
+#    Upon receiving an HTTP/1.1 (or later) request that has a method,
+#    target URI, and complete header section that contains a 100-continue
+#    expectation and indicates a request content will follow, a proxy MUST
+#    either:
+# 
+#    *  send an immediate response with a final status code, if that
+#       status can be determined by examining just the method, target URI,
+#       and header fields, or
+# 
+#    *  forward the request toward the origin server by sending a
+#       corresponding request-line and header section to the next inbound
+#       server.
+# 
+#    If the proxy believes (from configuration or past interaction) that
+#    the next inbound server only supports HTTP/1.0, the proxy MAY
+#    generate an immediate 100 (Continue) response to encourage the client
+#    to begin sending the content.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server that receives an Expect field value containing a member
+other than 100-continue MAY respond with a 417 (Expectation Failed)
+status code to indicate that the unexpected expectation cannot be
+met.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  A client MUST NOT generate a 100-continue expectation in a request
+that does not include content.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  A client that will wait for a 100 (Continue) response before
+sending the request content MUST send an Expect header field
+containing a 100-continue expectation.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+*  A client that sends a 100-continue expectation is not required to
+wait for any specific length of time; such a client MAY proceed to
+send the content even if it has not yet received a response.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Furthermore, since 100 (Continue) responses cannot be sent through
+an HTTP/1.0 intermediary, such a client SHOULD NOT wait for an
+indefinite period before sending the content.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+*  A client that receives a 417 (Expectation Failed) status code in
+response to a request containing a 100-continue expectation SHOULD
+repeat that request without a 100-continue expectation, since the
+417 response merely indicates that the response chain does not
+support expectations (e.g., it passes through an HTTP/1.0 server).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  A server that receives a 100-continue expectation in an HTTP/1.0
+request MUST ignore that expectation.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+*  A server MAY omit sending a 100 (Continue) response if it has
+already received some or all of the content for the corresponding
+request, or if the framing indicates that there is no content.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  A server that sends a 100 (Continue) response MUST ultimately send
+a final status code, once it receives and processes the request
+content, unless the connection is closed prematurely.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+*  A server that responds with a final status code before reading the
+entire request content SHOULD indicate whether it intends to close
+the connection (e.g., see Section 9.6 of [HTTP/1.1]) or continue
+reading the request content.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Upon receiving an HTTP/1.1 (or later) request that has a method,
+target URI, and complete header section that contains a 100-continue
+expectation and an indication that request content will follow, an
+origin server MUST send either:
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The origin server MUST NOT wait for the content before sending the
+100 (Continue) response.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Upon receiving an HTTP/1.1 (or later) request that has a method,
+target URI, and complete header section that contains a 100-continue
+expectation and indicates a request content will follow, a proxy MUST
+either:
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If the proxy believes (from configuration or past interaction) that
+the next inbound server only supports HTTP/1.0, the proxy MAY
+generate an immediate 100 (Continue) response to encourage the client
+to begin sending the content.
+'''
+

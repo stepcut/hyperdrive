@@ -1,0 +1,93 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-9.3.1"
+
+# GET
+#
+#    The GET method requests transfer of a current selected representation
+#    for the target resource.  A successful response reflects the quality
+#    of "sameness" identified by the target URI (Section 1.2.2 of [URI]).
+#    Hence, retrieving identifiable information via HTTP is usually
+#    performed by making a GET request on an identifier associated with
+#    the potential for providing that information in a 200 (OK) response.
+# 
+#    GET is the primary mechanism of information retrieval and the focus
+#    of almost all performance optimizations.  Applications that produce a
+#    URI for each important resource can benefit from those optimizations
+#    while enabling their reuse by other applications, creating a network
+#    effect that promotes further expansion of the Web.
+# 
+#    It is tempting to think of resource identifiers as remote file system
+#    pathnames and of representations as being a copy of the contents of
+#    such files.  In fact, that is how many resources are implemented (see
+#    Section 17.3 for related security considerations).  However, there
+#    are no such limitations in practice.
+# 
+#    The HTTP interface for a resource is just as likely to be implemented
+#    as a tree of content objects, a programmatic view on various database
+#    records, or a gateway to other information systems.  Even when the
+#    URI mapping mechanism is tied to a file system, an origin server
+#    might be configured to execute the files with the request as input
+#    and send the output as the representation rather than transfer the
+#    files directly.  Regardless, only the origin server needs to know how
+#    each resource identifier corresponds to an implementation and how
+#    that implementation manages to select and send a current
+#    representation of the target resource.
+# 
+#    A client can alter the semantics of GET to be a "range request",
+#    requesting transfer of only some part(s) of the selected
+#    representation, by sending a Range header field in the request
+#    (Section 14.2).
+# 
+#    Although request message framing is independent of the method used,
+#    content received in a GET request has no generally defined semantics,
+#    cannot alter the meaning or target of the request, and might lead
+#    some implementations to reject the request and close the connection
+#    because of its potential as a request smuggling attack (Section 11.2
+#    of [HTTP/1.1]).  A client SHOULD NOT generate content in a GET
+#    request unless it is made directly to an origin server that has
+#    previously indicated, in or out of band, that such a request has a
+#    purpose and will be adequately supported.  An origin server SHOULD
+#    NOT rely on private agreements to receive content, since participants
+#    in HTTP communication are often unaware of intermediaries along the
+#    request chain.
+# 
+#    The response to a GET request is cacheable; a cache MAY use it to
+#    satisfy subsequent GET and HEAD requests unless otherwise indicated
+#    by the Cache-Control header field (Section 5.2 of [CACHING]).
+# 
+#    When information retrieval is performed with a mechanism that
+#    constructs a target URI from user-provided information, such as the
+#    query fields of a form using GET, potentially sensitive data might be
+#    provided that would not be appropriate for disclosure within a URI
+#    (see Section 17.9).  In some cases, the data can be filtered or
+#    transformed such that it would not reveal such information.  In
+#    others, particularly when there is no benefit from caching a
+#    response, using the POST method (Section 9.3.3) instead of GET can
+#    transmit such information in the request content rather than within
+#    the target URI.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A client SHOULD NOT generate content in a GET
+request unless it is made directly to an origin server that has
+previously indicated, in or out of band, that such a request has a
+purpose and will be adequately supported.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An origin server SHOULD
+NOT rely on private agreements to receive content, since participants
+in HTTP communication are often unaware of intermediaries along the
+request chain.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+The response to a GET request is cacheable; a cache MAY use it to
+satisfy subsequent GET and HEAD requests unless otherwise indicated
+by the Cache-Control header field (Section 5.2 of [CACHING]).
+'''
+

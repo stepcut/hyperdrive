@@ -1,0 +1,37 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3.1"
+
+# Generation
+#
+#    The principle behind entity tags is that only the service author
+#    knows the implementation of a resource well enough to select the most
+#    accurate and efficient validation mechanism for that resource, and
+#    that any such mechanism can be mapped to a simple sequence of octets
+#    for easy comparison.  Since the value is opaque, there is no need for
+#    the client to be aware of how each entity tag is constructed.
+# 
+#    For example, a resource that has implementation-specific versioning
+#    applied to all changes might use an internal revision number, perhaps
+#    combined with a variance identifier for content negotiation, to
+#    accurately differentiate between representations.  Other
+#    implementations might use a collision-resistant hash of
+#    representation content, a combination of various file attributes, or
+#    a modification timestamp that has sub-second resolution.
+# 
+#    An origin server SHOULD send an ETag for any selected representation
+#    for which detection of changes can be reasonably and consistently
+#    determined, since the entity tag's use in conditional requests and
+#    evaluating cache freshness ([CACHING]) can substantially reduce
+#    unnecessary transfers and significantly improve service availability,
+#    scalability, and reliability.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An origin server SHOULD send an ETag for any selected representation
+for which detection of changes can be reasonably and consistently
+determined, since the entity tag's use in conditional requests and
+evaluating cache freshness ([CACHING]) can substantially reduce
+unnecessary transfers and significantly improve service availability,
+scalability, and reliability.
+'''
+

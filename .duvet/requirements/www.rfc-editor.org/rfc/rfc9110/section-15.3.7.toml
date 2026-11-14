@@ -1,0 +1,79 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.3.7"
+
+# 206 Partial Content
+#
+#    The 206 (Partial Content) status code indicates that the server is
+#    successfully fulfilling a range request for the target resource by
+#    transferring one or more parts of the selected representation.
+# 
+#    A server that supports range requests (Section 14) will usually
+#    attempt to satisfy all of the requested ranges, since sending less
+#    data will likely result in another client request for the remainder.
+#    However, a server might want to send only a subset of the data
+#    requested for reasons of its own, such as temporary unavailability,
+#    cache efficiency, load balancing, etc.  Since a 206 response is self-
+#    descriptive, the client can still understand a response that only
+#    partially satisfies its range request.
+# 
+#    A client MUST inspect a 206 response's Content-Type and Content-Range
+#    field(s) to determine what parts are enclosed and whether additional
+#    requests are needed.
+# 
+#    A server that generates a 206 response MUST generate the following
+#    header fields, in addition to those required in the subsections
+#    below, if the field would have been sent in a 200 (OK) response to
+#    the same request: Date, Cache-Control, ETag, Expires,
+#    Content-Location, and Vary.
+# 
+#    A Content-Length header field present in a 206 response indicates the
+#    number of octets in the content of this message, which is usually not
+#    the complete length of the selected representation.  Each
+#    Content-Range header field includes information about the selected
+#    representation's complete length.
+# 
+#    A sender that generates a 206 response to a request with an If-Range
+#    header field SHOULD NOT generate other representation header fields
+#    beyond those required because the client already has a prior response
+#    containing those header fields.  Otherwise, a sender MUST generate
+#    all of the representation header fields that would have been sent in
+#    a 200 (OK) response to the same request.
+# 
+#    A 206 response is heuristically cacheable; i.e., unless otherwise
+#    indicated by explicit cache controls (see Section 4.2.2 of
+#    [CACHING]).
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST inspect a 206 response's Content-Type and Content-Range
+field(s) to determine what parts are enclosed and whether additional
+requests are needed.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server that generates a 206 response MUST generate the following
+header fields, in addition to those required in the subsections
+below, if the field would have been sent in a 200 (OK) response to
+the same request: Date, Cache-Control, ETag, Expires,
+Content-Location, and Vary.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A sender that generates a 206 response to a request with an If-Range
+header field SHOULD NOT generate other representation header fields
+beyond those required because the client already has a prior response
+containing those header fields.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Otherwise, a sender MUST generate
+all of the representation header fields that would have been sent in
+a 200 (OK) response to the same request.
+'''
+

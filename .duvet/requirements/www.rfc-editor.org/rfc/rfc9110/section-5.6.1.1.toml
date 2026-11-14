@@ -1,0 +1,28 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-5.6.1.1"
+
+# Sender Requirements
+#
+#    In any production that uses the list construct, a sender MUST NOT
+#    generate empty list elements.  In other words, a sender has to
+#    generate lists that satisfy the following syntax:
+# 
+#      1#element => element *( OWS "," OWS element )
+# 
+#    and:
+# 
+#      #element => [ 1#element ]
+# 
+#    and for n >= 1 and m > 1:
+# 
+#      <n>#<m>element => element <n-1>*<m-1>( OWS "," OWS element )
+# 
+#    Appendix A shows the collected ABNF for senders after the list
+#    constructs have been expanded.
+
+[[spec]]
+level = "MUST"
+quote = '''
+In any production that uses the list construct, a sender MUST NOT
+generate empty list elements.
+'''
+

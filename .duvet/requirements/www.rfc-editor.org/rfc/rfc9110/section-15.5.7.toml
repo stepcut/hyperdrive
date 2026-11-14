@@ -1,0 +1,34 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.7"
+
+# 406 Not Acceptable
+#
+#    The 406 (Not Acceptable) status code indicates that the target
+#    resource does not have a current representation that would be
+#    acceptable to the user agent, according to the proactive negotiation
+#    header fields received in the request (Section 12.1), and the server
+#    is unwilling to supply a default representation.
+# 
+#    The server SHOULD generate content containing a list of available
+#    representation characteristics and corresponding resource identifiers
+#    from which the user or user agent can choose the one most
+#    appropriate.  A user agent MAY automatically select the most
+#    appropriate choice from that list.  However, this specification does
+#    not define any standard for such automatic selection, as described in
+#    Section 15.4.1.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The server SHOULD generate content containing a list of available
+representation characteristics and corresponding resource identifiers
+from which the user or user agent can choose the one most
+appropriate.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A user agent MAY automatically select the most
+appropriate choice from that list.
+'''
+

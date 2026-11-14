@@ -1,0 +1,84 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-5.6.3"
+
+# Whitespace
+#
+#    This specification uses three rules to denote the use of linear
+#    whitespace: OWS (optional whitespace), RWS (required whitespace), and
+#    BWS ("bad" whitespace).
+# 
+#    The OWS rule is used where zero or more linear whitespace octets
+#    might appear.  For protocol elements where optional whitespace is
+#    preferred to improve readability, a sender SHOULD generate the
+#    optional whitespace as a single SP; otherwise, a sender SHOULD NOT
+#    generate optional whitespace except as needed to overwrite invalid or
+#    unwanted protocol elements during in-place message filtering.
+# 
+#    The RWS rule is used when at least one linear whitespace octet is
+#    required to separate field tokens.  A sender SHOULD generate RWS as a
+#    single SP.
+# 
+#    OWS and RWS have the same semantics as a single SP.  Any content
+#    known to be defined as OWS or RWS MAY be replaced with a single SP
+#    before interpreting it or forwarding the message downstream.
+# 
+#    The BWS rule is used where the grammar allows optional whitespace
+#    only for historical reasons.  A sender MUST NOT generate BWS in
+#    messages.  A recipient MUST parse for such bad whitespace and remove
+#    it before interpreting the protocol element.
+# 
+#    BWS has no semantics.  Any content known to be defined as BWS MAY be
+#    removed before interpreting it or forwarding the message downstream.
+# 
+#      OWS            = *( SP / HTAB )
+#                     ; optional whitespace
+#      RWS            = 1*( SP / HTAB )
+#                     ; required whitespace
+#      BWS            = OWS
+#                     ; "bad" whitespace
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+For protocol elements where optional whitespace is
+preferred to improve readability, a sender SHOULD generate the
+optional whitespace as a single SP; otherwise, a sender SHOULD NOT
+generate optional whitespace except as needed to overwrite invalid or
+unwanted protocol elements during in-place message filtering.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A sender SHOULD generate RWS as a
+single SP.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Any content
+known to be defined as OWS or RWS MAY be replaced with a single SP
+before interpreting it or forwarding the message downstream.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST NOT generate BWS in
+messages.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient MUST parse for such bad whitespace and remove
+it before interpreting the protocol element.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Any content known to be defined as BWS MAY be
+removed before interpreting it or forwarding the message downstream.
+'''
+

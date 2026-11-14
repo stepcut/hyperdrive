@@ -1,0 +1,51 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-7.1"
+
+# Determining the Target Resource
+#
+#    Although HTTP is used in a wide variety of applications, most clients
+#    rely on the same resource identification mechanism and configuration
+#    techniques as general-purpose Web browsers.  Even when communication
+#    options are hard-coded in a client's configuration, we can think of
+#    their combined effect as a URI reference (Section 4.1).
+# 
+#    A URI reference is resolved to its absolute form in order to obtain
+#    the "target URI".  The target URI excludes the reference's fragment
+#    component, if any, since fragment identifiers are reserved for
+#    client-side processing ([URI], Section 3.5).
+# 
+#    To perform an action on a "target resource", the client sends a
+#    request message containing enough components of its parsed target URI
+#    to enable recipients to identify that same resource.  For historical
+#    reasons, the parsed target URI components, collectively referred to
+#    as the "request target", are sent within the message control data and
+#    the Host header field (Section 7.2).
+# 
+#    There are two unusual cases for which the request target components
+#    are in a method-specific form:
+# 
+#    *  For CONNECT (Section 9.3.6), the request target is the host name
+#       and port number of the tunnel destination, separated by a colon.
+# 
+#    *  For OPTIONS (Section 9.3.7), the request target can be a single
+#       asterisk ("*").
+# 
+#    See the respective method definitions for details.  These forms MUST
+#    NOT be used with other methods.
+# 
+#    Upon receipt of a client's request, a server reconstructs the target
+#    URI from the received components in accordance with their local
+#    configuration and incoming connection context.  This reconstruction
+#    is specific to each major protocol version.  For example, Section 3.3
+#    of [HTTP/1.1] defines how a server determines the target URI of an
+#    HTTP/1.1 request.
+# 
+#       |  *Note:* Previous specifications defined the recomposed target
+#       |  URI as a distinct concept, the "effective request URI".
+
+[[spec]]
+level = "MUST"
+quote = '''
+These forms MUST
+NOT be used with other methods.
+'''
+

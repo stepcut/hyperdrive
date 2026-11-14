@@ -1,0 +1,208 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-7.8"
+
+# Upgrade
+#
+#    The "Upgrade" header field is intended to provide a simple mechanism
+#    for transitioning from HTTP/1.1 to some other protocol on the same
+#    connection.
+# 
+#    A client MAY send a list of protocol names in the Upgrade header
+#    field of a request to invite the server to switch to one or more of
+#    the named protocols, in order of descending preference, before
+#    sending the final response.  A server MAY ignore a received Upgrade
+#    header field if it wishes to continue using the current protocol on
+#    that connection.  Upgrade cannot be used to insist on a protocol
+#    change.
+# 
+#      Upgrade          = #protocol
+# 
+#      protocol         = protocol-name ["/" protocol-version]
+#      protocol-name    = token
+#      protocol-version = token
+# 
+#    Although protocol names are registered with a preferred case,
+#    recipients SHOULD use case-insensitive comparison when matching each
+#    protocol-name to supported protocols.
+# 
+#    A server that sends a 101 (Switching Protocols) response MUST send an
+#    Upgrade header field to indicate the new protocol(s) to which the
+#    connection is being switched; if multiple protocol layers are being
+#    switched, the sender MUST list the protocols in layer-ascending
+#    order.  A server MUST NOT switch to a protocol that was not indicated
+#    by the client in the corresponding request's Upgrade header field.  A
+#    server MAY choose to ignore the order of preference indicated by the
+#    client and select the new protocol(s) based on other factors, such as
+#    the nature of the request or the current load on the server.
+# 
+#    A server that sends a 426 (Upgrade Required) response MUST send an
+#    Upgrade header field to indicate the acceptable protocols, in order
+#    of descending preference.
+# 
+#    A server MAY send an Upgrade header field in any other response to
+#    advertise that it implements support for upgrading to the listed
+#    protocols, in order of descending preference, when appropriate for a
+#    future request.
+# 
+#    The following is a hypothetical example sent by a client:
+# 
+#    GET /hello HTTP/1.1
+#    Host: www.example.com
+#    Connection: upgrade
+#    Upgrade: websocket, IRC/6.9, RTA/x11
+# 
+#    The capabilities and nature of the application-level communication
+#    after the protocol change is entirely dependent upon the new
+#    protocol(s) chosen.  However, immediately after sending the 101
+#    (Switching Protocols) response, the server is expected to continue
+#    responding to the original request as if it had received its
+#    equivalent within the new protocol (i.e., the server still has an
+#    outstanding request to satisfy after the protocol has been changed,
+#    and is expected to do so without requiring the request to be
+#    repeated).
+# 
+#    For example, if the Upgrade header field is received in a GET request
+#    and the server decides to switch protocols, it first responds with a
+#    101 (Switching Protocols) message in HTTP/1.1 and then immediately
+#    follows that with the new protocol's equivalent of a response to a
+#    GET on the target resource.  This allows a connection to be upgraded
+#    to protocols with the same semantics as HTTP without the latency cost
+#    of an additional round trip.  A server MUST NOT switch protocols
+#    unless the received message semantics can be honored by the new
+#    protocol; an OPTIONS request can be honored by any protocol.
+# 
+#    The following is an example response to the above hypothetical
+#    request:
+# 
+#    HTTP/1.1 101 Switching Protocols
+#    Connection: upgrade
+#    Upgrade: websocket
+# 
+#    [... data stream switches to websocket with an appropriate response
+#    (as defined by new protocol) to the "GET /hello" request ...]
+# 
+#    A sender of Upgrade MUST also send an "Upgrade" connection option in
+#    the Connection header field (Section 7.6.1) to inform intermediaries
+#    not to forward this field.  A server that receives an Upgrade header
+#    field in an HTTP/1.0 request MUST ignore that Upgrade field.
+# 
+#    A client cannot begin using an upgraded protocol on the connection
+#    until it has completely sent the request message (i.e., the client
+#    can't change the protocol it is sending in the middle of a message).
+#    If a server receives both an Upgrade and an Expect header field with
+#    the "100-continue" expectation (Section 10.1.1), the server MUST send
+#    a 100 (Continue) response before sending a 101 (Switching Protocols)
+#    response.
+# 
+#    The Upgrade header field only applies to switching protocols on top
+#    of the existing connection; it cannot be used to switch the
+#    underlying connection (transport) protocol, nor to switch the
+#    existing communication to a different connection.  For those
+#    purposes, it is more appropriate to use a 3xx (Redirection) response
+#    (Section 15.4).
+# 
+#    This specification only defines the protocol name "HTTP" for use by
+#    the family of Hypertext Transfer Protocols, as defined by the HTTP
+#    version rules of Section 2.5 and future updates to this
+#    specification.  Additional protocol names ought to be registered
+#    using the registration procedure defined in Section 16.7.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client MAY send a list of protocol names in the Upgrade header
+field of a request to invite the server to switch to one or more of
+the named protocols, in order of descending preference, before
+sending the final response.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY ignore a received Upgrade
+header field if it wishes to continue using the current protocol on
+that connection.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Although protocol names are registered with a preferred case,
+recipients SHOULD use case-insensitive comparison when matching each
+protocol-name to supported protocols.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server that sends a 101 (Switching Protocols) response MUST send an
+Upgrade header field to indicate the new protocol(s) to which the
+connection is being switched; if multiple protocol layers are being
+switched, the sender MUST list the protocols in layer-ascending
+order.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT switch to a protocol that was not indicated
+by the client in the corresponding request's Upgrade header field.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A
+server MAY choose to ignore the order of preference indicated by the
+client and select the new protocol(s) based on other factors, such as
+the nature of the request or the current load on the server.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server that sends a 426 (Upgrade Required) response MUST send an
+Upgrade header field to indicate the acceptable protocols, in order
+of descending preference.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY send an Upgrade header field in any other response to
+advertise that it implements support for upgrading to the listed
+protocols, in order of descending preference, when appropriate for a
+future request.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT switch protocols
+unless the received message semantics can be honored by the new
+protocol; an OPTIONS request can be honored by any protocol.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender of Upgrade MUST also send an "Upgrade" connection option in
+the Connection header field (Section 7.6.1) to inform intermediaries
+not to forward this field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server that receives an Upgrade header
+field in an HTTP/1.0 request MUST ignore that Upgrade field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a server receives both an Upgrade and an Expect header field with
+the "100-continue" expectation (Section 10.1.1), the server MUST send
+a 100 (Continue) response before sending a 101 (Switching Protocols)
+response.
+'''
+

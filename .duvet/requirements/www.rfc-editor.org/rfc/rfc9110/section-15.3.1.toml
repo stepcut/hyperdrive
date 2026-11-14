@@ -1,0 +1,64 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.3.1"
+
+# 200 OK
+#
+#    The 200 (OK) status code indicates that the request has succeeded.
+#    The content sent in a 200 response depends on the request method.
+#    For the methods defined by this specification, the intended meaning
+#    of the content can be summarized as:
+# 
+#    +================+============================================+
+#    | Request Method | Response content is a representation of:   |
+#    +================+============================================+
+#    | GET            | the target resource                        |
+#    +----------------+--------------------------------------------+
+#    | HEAD           | the target resource, like GET, but without |
+#    |                | transferring the representation data       |
+#    +----------------+--------------------------------------------+
+#    | POST           | the status of, or results obtained from,   |
+#    |                | the action                                 |
+#    +----------------+--------------------------------------------+
+#    | PUT, DELETE    | the status of the action                   |
+#    +----------------+--------------------------------------------+
+#    | OPTIONS        | communication options for the target       |
+#    |                | resource                                   |
+#    +----------------+--------------------------------------------+
+#    | TRACE          | the request message as received by the     |
+#    |                | server returning the trace                 |
+#    +----------------+--------------------------------------------+
+# 
+#                                Table 6
+# 
+#    Aside from responses to CONNECT, a 200 response is expected to
+#    contain message content unless the message framing explicitly
+#    indicates that the content has zero length.  If some aspect of the
+#    request indicates a preference for no content upon success, the
+#    origin server ought to send a 204 (No Content) response instead.  For
+#    CONNECT, there is no content because the successful result is a
+#    tunnel, which begins immediately after the 200 response header
+#    section.
+# 
+#    A 200 response is heuristically cacheable; i.e., unless otherwise
+#    indicated by the method definition or explicit cache controls (see
+#    Section 4.2.2 of [CACHING]).
+# 
+#    In 200 responses to GET or HEAD, an origin server SHOULD send any
+#    available validator fields (Section 8.8) for the selected
+#    representation, with both a strong entity tag and a Last-Modified
+#    date being preferred.
+# 
+#    In 200 responses to state-changing methods, any validator fields
+#    (Section 8.8) sent in the response convey the current validators for
+#    the new representation formed as a result of successfully applying
+#    the request semantics.  Note that the PUT method (Section 9.3.4) has
+#    additional requirements that might preclude sending such validators.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+In 200 responses to GET or HEAD, an origin server SHOULD send any
+available validator fields (Section 8.8) for the selected
+representation, with both a strong entity tag and a Last-Modified
+date being preferred.
+'''
+

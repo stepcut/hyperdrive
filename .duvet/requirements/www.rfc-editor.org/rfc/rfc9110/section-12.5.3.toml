@@ -1,0 +1,119 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-12.5.3"
+
+# Accept-Encoding
+#
+#    The "Accept-Encoding" header field can be used to indicate
+#    preferences regarding the use of content codings (Section 8.4.1).
+# 
+#    When sent by a user agent in a request, Accept-Encoding indicates the
+#    content codings acceptable in a response.
+# 
+#    When sent by a server in a response, Accept-Encoding provides
+#    information about which content codings are preferred in the content
+#    of a subsequent request to the same resource.
+# 
+#    An "identity" token is used as a synonym for "no encoding" in order
+#    to communicate when no encoding is preferred.
+# 
+#      Accept-Encoding  = #( codings [ weight ] )
+#      codings          = content-coding / "identity" / "*"
+# 
+#    Each codings value MAY be given an associated quality value (weight)
+#    representing the preference for that encoding, as defined in
+#    Section 12.4.2.  The asterisk "*" symbol in an Accept-Encoding field
+#    matches any available content coding not explicitly listed in the
+#    field.
+# 
+#    Examples:
+# 
+#    Accept-Encoding: compress, gzip
+#    Accept-Encoding:
+#    Accept-Encoding: *
+#    Accept-Encoding: compress;q=0.5, gzip;q=1.0
+#    Accept-Encoding: gzip;q=1.0, identity; q=0.5, *;q=0
+# 
+#    A server tests whether a content coding for a given representation is
+#    acceptable using these rules:
+# 
+#    1.  If no Accept-Encoding header field is in the request, any content
+#        coding is considered acceptable by the user agent.
+# 
+#    2.  If the representation has no content coding, then it is
+#        acceptable by default unless specifically excluded by the Accept-
+#        Encoding header field stating either "identity;q=0" or "*;q=0"
+#        without a more specific entry for "identity".
+# 
+#    3.  If the representation's content coding is one of the content
+#        codings listed in the Accept-Encoding field value, then it is
+#        acceptable unless it is accompanied by a qvalue of 0.  (As
+#        defined in Section 12.4.2, a qvalue of 0 means "not acceptable".)
+# 
+#    A representation could be encoded with multiple content codings.
+#    However, most content codings are alternative ways to accomplish the
+#    same purpose (e.g., data compression).  When selecting between
+#    multiple content codings that have the same purpose, the acceptable
+#    content coding with the highest non-zero qvalue is preferred.
+# 
+#    An Accept-Encoding header field with a field value that is empty
+#    implies that the user agent does not want any content coding in
+#    response.  If a non-empty Accept-Encoding header field is present in
+#    a request and none of the available representations for the response
+#    have a content coding that is listed as acceptable, the origin server
+#    SHOULD send a response without any content coding unless the identity
+#    coding is indicated as unacceptable.
+# 
+#    When the Accept-Encoding header field is present in a response, it
+#    indicates what content codings the resource was willing to accept in
+#    the associated request.  The field value is evaluated the same way as
+#    in a request.
+# 
+#    Note that this information is specific to the associated request; the
+#    set of supported encodings might be different for other resources on
+#    the same server and could change over time or depend on other aspects
+#    of the request (such as the request method).
+# 
+#    Servers that fail a request due to an unsupported content coding
+#    ought to respond with a 415 (Unsupported Media Type) status and
+#    include an Accept-Encoding header field in that response, allowing
+#    clients to distinguish between issues related to content codings and
+#    media types.  In order to avoid confusion with issues related to
+#    media types, servers that fail a request with a 415 status for
+#    reasons unrelated to content codings MUST NOT include the Accept-
+#    Encoding header field.
+# 
+#    The most common use of Accept-Encoding is in responses with a 415
+#    (Unsupported Media Type) status code, in response to optimistic use
+#    of a content coding by clients.  However, the header field can also
+#    be used to indicate to clients that content codings are supported in
+#    order to optimize future interactions.  For example, a resource might
+#    include it in a 2xx (Successful) response when the request content
+#    was big enough to justify use of a compression coding but the client
+#    failed do so.
+
+[[spec]]
+level = "MAY"
+quote = '''
+Each codings value MAY be given an associated quality value (weight)
+representing the preference for that encoding, as defined in
+Section 12.4.2.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If a non-empty Accept-Encoding header field is present in
+a request and none of the available representations for the response
+have a content coding that is listed as acceptable, the origin server
+SHOULD send a response without any content coding unless the identity
+coding is indicated as unacceptable.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+In order to avoid confusion with issues related to
+media types, servers that fail a request with a 415 status for
+reasons unrelated to content codings MUST NOT include the Accept-
+Encoding header field.
+'''
+

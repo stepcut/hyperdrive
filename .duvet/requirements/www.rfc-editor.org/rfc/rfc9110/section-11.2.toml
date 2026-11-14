@@ -1,0 +1,42 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-11.2"
+
+# Authentication Parameters
+#
+#    The authentication scheme is followed by additional information
+#    necessary for achieving authentication via that scheme as either a
+#    comma-separated list of parameters or a single sequence of characters
+#    capable of holding base64-encoded information.
+# 
+#      token68        = 1*( ALPHA / DIGIT /
+#                           "-" / "." / "_" / "~" / "+" / "/" ) *"="
+# 
+#    The token68 syntax allows the 66 unreserved URI characters ([URI]),
+#    plus a few others, so that it can hold a base64, base64url (URL and
+#    filename safe alphabet), base32, or base16 (hex) encoding, with or
+#    without padding, but excluding whitespace ([RFC4648]).
+# 
+#    Authentication parameters are name/value pairs, where the name token
+#    is matched case-insensitively and each parameter name MUST only occur
+#    once per challenge.
+# 
+#      auth-param     = token BWS "=" BWS ( token / quoted-string )
+# 
+#    Parameter values can be expressed either as "token" or as "quoted-
+#    string" (Section 5.6).  Authentication scheme definitions need to
+#    accept both notations, both for senders and recipients, to allow
+#    recipients to use generic parsing components regardless of the
+#    authentication scheme.
+# 
+#    For backwards compatibility, authentication scheme definitions can
+#    restrict the format for senders to one of the two variants.  This can
+#    be important when it is known that deployed implementations will fail
+#    when encountering one of the two formats.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Authentication parameters are name/value pairs, where the name token
+is matched case-insensitively and each parameter name MUST only occur
+once per challenge.
+'''
+

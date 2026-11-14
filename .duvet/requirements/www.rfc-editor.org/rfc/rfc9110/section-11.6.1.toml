@@ -1,0 +1,69 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-11.6.1"
+
+# WWW-Authenticate
+#
+#    The "WWW-Authenticate" response header field indicates the
+#    authentication scheme(s) and parameters applicable to the target
+#    resource.
+# 
+#      WWW-Authenticate = #challenge
+# 
+#    A server generating a 401 (Unauthorized) response MUST send a WWW-
+#    Authenticate header field containing at least one challenge.  A
+#    server MAY generate a WWW-Authenticate header field in other response
+#    messages to indicate that supplying credentials (or different
+#    credentials) might affect the response.
+# 
+#    A proxy forwarding a response MUST NOT modify any WWW-Authenticate
+#    header fields in that response.
+# 
+#    User agents are advised to take special care in parsing the field
+#    value, as it might contain more than one challenge, and each
+#    challenge can contain a comma-separated list of authentication
+#    parameters.  Furthermore, the header field itself can occur multiple
+#    times.
+# 
+#    For instance:
+# 
+#    WWW-Authenticate: Basic realm="simple", Newauth realm="apps",
+#                     type=1, title="Login to \"apps\""
+# 
+#    This header field contains two challenges, one for the "Basic" scheme
+#    with a realm value of "simple" and another for the "Newauth" scheme
+#    with a realm value of "apps".  It also contains two additional
+#    parameters, "type" and "title".
+# 
+#    Some user agents do not recognize this form, however.  As a result,
+#    sending a WWW-Authenticate field value with more than one member on
+#    the same field line might not be interoperable.
+# 
+#       |  *Note:* The challenge grammar production uses the list syntax
+#       |  as well.  Therefore, a sequence of comma, whitespace, and comma
+#       |  can be considered either as applying to the preceding
+#       |  challenge, or to be an empty entry in the list of challenges.
+#       |  In practice, this ambiguity does not affect the semantics of
+#       |  the header field value and thus is harmless.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server generating a 401 (Unauthorized) response MUST send a WWW-
+Authenticate header field containing at least one challenge.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A
+server MAY generate a WWW-Authenticate header field in other response
+messages to indicate that supplying credentials (or different
+credentials) might affect the response.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy forwarding a response MUST NOT modify any WWW-Authenticate
+header fields in that response.
+'''
+

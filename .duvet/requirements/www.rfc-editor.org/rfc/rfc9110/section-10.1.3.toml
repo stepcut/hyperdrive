@@ -1,0 +1,117 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-10.1.3"
+
+# Referer
+#
+#    The "Referer" [sic] header field allows the user agent to specify a
+#    URI reference for the resource from which the target URI was obtained
+#    (i.e., the "referrer", though the field name is misspelled).  A user
+#    agent MUST NOT include the fragment and userinfo components of the
+#    URI reference [URI], if any, when generating the Referer field value.
+# 
+#      Referer = absolute-URI / partial-URI
+# 
+#    The field value is either an absolute-URI or a partial-URI.  In the
+#    latter case (Section 4), the referenced URI is relative to the target
+#    URI ([URI], Section 5).
+# 
+#    The Referer header field allows servers to generate back-links to
+#    other resources for simple analytics, logging, optimized caching,
+#    etc.  It also allows obsolete or mistyped links to be found for
+#    maintenance.  Some servers use the Referer header field as a means of
+#    denying links from other sites (so-called "deep linking") or
+#    restricting cross-site request forgery (CSRF), but not all requests
+#    contain it.
+# 
+#    Example:
+# 
+#    Referer: http://www.example.org/hypertext/Overview.html
+# 
+#    If the target URI was obtained from a source that does not have its
+#    own URI (e.g., input from the user keyboard, or an entry within the
+#    user's bookmarks/favorites), the user agent MUST either exclude the
+#    Referer header field or send it with a value of "about:blank".
+# 
+#    The Referer header field value need not convey the full URI of the
+#    referring resource; a user agent MAY truncate parts other than the
+#    referring origin.
+# 
+#    The Referer header field has the potential to reveal information
+#    about the request context or browsing history of the user, which is a
+#    privacy concern if the referring resource's identifier reveals
+#    personal information (such as an account name) or a resource that is
+#    supposed to be confidential (such as behind a firewall or internal to
+#    a secured service).  Most general-purpose user agents do not send the
+#    Referer header field when the referring resource is a local "file" or
+#    "data" URI.  A user agent SHOULD NOT send a Referer header field if
+#    the referring resource was accessed with a secure protocol and the
+#    request target has an origin differing from that of the referring
+#    resource, unless the referring resource explicitly allows Referer to
+#    be sent.  A user agent MUST NOT send a Referer header field in an
+#    unsecured HTTP request if the referring resource was accessed with a
+#    secure protocol.  See Section 17.9 for additional security
+#    considerations.
+# 
+#    Some intermediaries have been known to indiscriminately remove
+#    Referer header fields from outgoing requests.  This has the
+#    unfortunate side effect of interfering with protection against CSRF
+#    attacks, which can be far more harmful to their users.
+#    Intermediaries and user agent extensions that wish to limit
+#    information disclosure in Referer ought to restrict their changes to
+#    specific edits, such as replacing internal domain names with
+#    pseudonyms or truncating the query and/or path components.  An
+#    intermediary SHOULD NOT modify or delete the Referer header field
+#    when the field value shares the same scheme and host as the target
+#    URI.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A user
+agent MUST NOT include the fragment and userinfo components of the
+URI reference [URI], if any, when generating the Referer field value.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the target URI was obtained from a source that does not have its
+own URI (e.g., input from the user keyboard, or an entry within the
+user's bookmarks/favorites), the user agent MUST either exclude the
+Referer header field or send it with a value of "about:blank".
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+The Referer header field value need not convey the full URI of the
+referring resource; a user agent MAY truncate parts other than the
+referring origin.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A user agent SHOULD NOT send a Referer header field if
+the referring resource was accessed with a secure protocol and the
+request target has an origin differing from that of the referring
+resource, unless the referring resource explicitly allows Referer to
+be sent.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A user agent MUST NOT send a Referer header field in an
+unsecured HTTP request if the referring resource was accessed with a
+secure protocol.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An
+intermediary SHOULD NOT modify or delete the Referer header field
+when the field value shares the same scheme and host as the target
+URI.
+'''
+

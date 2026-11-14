@@ -1,0 +1,148 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-13.1.1"
+
+# If-Match
+#
+#    The "If-Match" header field makes the request method conditional on
+#    the recipient origin server either having at least one current
+#    representation of the target resource, when the field value is "*",
+#    or having a current representation of the target resource that has an
+#    entity tag matching a member of the list of entity tags provided in
+#    the field value.
+# 
+#    An origin server MUST use the strong comparison function when
+#    comparing entity tags for If-Match (Section 8.8.3.2), since the
+#    client intends this precondition to prevent the method from being
+#    applied if there have been any changes to the representation data.
+# 
+#      If-Match = "*" / #entity-tag
+# 
+#    Examples:
+# 
+#    If-Match: "xyzzy"
+#    If-Match: "xyzzy", "r2d2xxxx", "c3piozzzz"
+#    If-Match: *
+# 
+#    If-Match is most often used with state-changing methods (e.g., POST,
+#    PUT, DELETE) to prevent accidental overwrites when multiple user
+#    agents might be acting in parallel on the same resource (i.e., to
+#    prevent the "lost update" problem).  In general, it can be used with
+#    any method that involves the selection or modification of a
+#    representation to abort the request if the selected representation's
+#    current entity tag is not a member within the If-Match field value.
+# 
+#    When an origin server receives a request that selects a
+#    representation and that request includes an If-Match header field,
+#    the origin server MUST evaluate the If-Match condition per
+#    Section 13.2 prior to performing the method.
+# 
+#    To evaluate a received If-Match header field:
+# 
+#    1.  If the field value is "*", the condition is true if the origin
+#        server has a current representation for the target resource.
+# 
+#    2.  If the field value is a list of entity tags, the condition is
+#        true if any of the listed tags match the entity tag of the
+#        selected representation.
+# 
+#    3.  Otherwise, the condition is false.
+# 
+#    An origin server that evaluates an If-Match condition MUST NOT
+#    perform the requested method if the condition evaluates to false.
+#    Instead, the origin server MAY indicate that the conditional request
+#    failed by responding with a 412 (Precondition Failed) status code.
+#    Alternatively, if the request is a state-changing operation that
+#    appears to have already been applied to the selected representation,
+#    the origin server MAY respond with a 2xx (Successful) status code
+#    (i.e., the change requested by the user agent has already succeeded,
+#    but the user agent might not be aware of it, perhaps because the
+#    prior response was lost or an equivalent change was made by some
+#    other user agent).
+# 
+#    Allowing an origin server to send a success response when a change
+#    request appears to have already been applied is more efficient for
+#    many authoring use cases, but comes with some risk if multiple user
+#    agents are making change requests that are very similar but not
+#    cooperative.  For example, multiple user agents writing to a common
+#    resource as a semaphore (e.g., a nonatomic increment) are likely to
+#    collide and potentially lose important state transitions.  For those
+#    kinds of resources, an origin server is better off being stringent in
+#    sending 412 for every failed precondition on an unsafe method.  In
+#    other cases, excluding the ETag field from a success response might
+#    encourage the user agent to perform a GET as its next request to
+#    eliminate confusion about the resource's current state.
+# 
+#    A client MAY send an If-Match header field in a GET request to
+#    indicate that it would prefer a 412 (Precondition Failed) response if
+#    the selected representation does not match.  However, this is only
+#    useful in range requests (Section 14) for completing a previously
+#    received partial representation when there is no desire for a new
+#    representation.  If-Range (Section 13.1.5) is better suited for range
+#    requests when the client prefers to receive a new representation.
+# 
+#    A cache or intermediary MAY ignore If-Match because its
+#    interoperability features are only necessary for an origin server.
+# 
+#    Note that an If-Match header field with a list value containing "*"
+#    and other values (including other instances of "*") is syntactically
+#    invalid (therefore not allowed to be generated) and furthermore is
+#    unlikely to be interoperable.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server MUST use the strong comparison function when
+comparing entity tags for If-Match (Section 8.8.3.2), since the
+client intends this precondition to prevent the method from being
+applied if there have been any changes to the representation data.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+When an origin server receives a request that selects a
+representation and that request includes an If-Match header field,
+the origin server MUST evaluate the If-Match condition per
+Section 13.2 prior to performing the method.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server that evaluates an If-Match condition MUST NOT
+perform the requested method if the condition evaluates to false.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Instead, the origin server MAY indicate that the conditional request
+failed by responding with a 412 (Precondition Failed) status code.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Alternatively, if the request is a state-changing operation that
+appears to have already been applied to the selected representation,
+the origin server MAY respond with a 2xx (Successful) status code
+(i.e., the change requested by the user agent has already succeeded,
+but the user agent might not be aware of it, perhaps because the
+prior response was lost or an equivalent change was made by some
+other user agent).
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client MAY send an If-Match header field in a GET request to
+indicate that it would prefer a 412 (Precondition Failed) response if
+the selected representation does not match.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A cache or intermediary MAY ignore If-Match because its
+interoperability features are only necessary for an origin server.
+'''
+

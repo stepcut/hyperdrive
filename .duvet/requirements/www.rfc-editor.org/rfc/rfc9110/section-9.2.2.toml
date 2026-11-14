@@ -1,0 +1,69 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-9.2.2"
+
+# Idempotent Methods
+#
+#    A request method is considered "idempotent" if the intended effect on
+#    the server of multiple identical requests with that method is the
+#    same as the effect for a single such request.  Of the request methods
+#    defined by this specification, PUT, DELETE, and safe request methods
+#    are idempotent.
+# 
+#    Like the definition of safe, the idempotent property only applies to
+#    what has been requested by the user; a server is free to log each
+#    request separately, retain a revision control history, or implement
+#    other non-idempotent side effects for each idempotent request.
+# 
+#    Idempotent methods are distinguished because the request can be
+#    repeated automatically if a communication failure occurs before the
+#    client is able to read the server's response.  For example, if a
+#    client sends a PUT request and the underlying connection is closed
+#    before any response is received, then the client can establish a new
+#    connection and retry the idempotent request.  It knows that repeating
+#    the request will have the same intended effect, even if the original
+#    request succeeded, though the response might differ.
+# 
+#    A client SHOULD NOT automatically retry a request with a non-
+#    idempotent method unless it has some means to know that the request
+#    semantics are actually idempotent, regardless of the method, or some
+#    means to detect that the original request was never applied.
+# 
+#    For example, a user agent can repeat a POST request automatically if
+#    it knows (through design or configuration) that the request is safe
+#    for that resource.  Likewise, a user agent designed specifically to
+#    operate on a version control repository might be able to recover from
+#    partial failure conditions by checking the target resource
+#    revision(s) after a failed connection, reverting or fixing any
+#    changes that were partially applied, and then automatically retrying
+#    the requests that failed.
+# 
+#    Some clients take a riskier approach and attempt to guess when an
+#    automatic retry is possible.  For example, a client might
+#    automatically retry a POST request if the underlying transport
+#    connection closed before any part of a response is received,
+#    particularly if an idle persistent connection was used.
+# 
+#    A proxy MUST NOT automatically retry non-idempotent requests.  A
+#    client SHOULD NOT automatically retry a failed automatic retry.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A client SHOULD NOT automatically retry a request with a non-
+idempotent method unless it has some means to know that the request
+semantics are actually idempotent, regardless of the method, or some
+means to detect that the original request was never applied.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy MUST NOT automatically retry non-idempotent requests.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A
+client SHOULD NOT automatically retry a failed automatic retry.
+'''
+

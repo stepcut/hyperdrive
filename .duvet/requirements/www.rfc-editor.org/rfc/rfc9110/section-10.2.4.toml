@@ -1,0 +1,48 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-10.2.4"
+
+# Server
+#
+#    The "Server" header field contains information about the software
+#    used by the origin server to handle the request, which is often used
+#    by clients to help identify the scope of reported interoperability
+#    problems, to work around or tailor requests to avoid particular
+#    server limitations, and for analytics regarding server or operating
+#    system use.  An origin server MAY generate a Server header field in
+#    its responses.
+# 
+#      Server = product *( RWS ( product / comment ) )
+# 
+#    The Server header field value consists of one or more product
+#    identifiers, each followed by zero or more comments (Section 5.6.5),
+#    which together identify the origin server software and its
+#    significant subproducts.  By convention, the product identifiers are
+#    listed in decreasing order of their significance for identifying the
+#    origin server software.  Each product identifier consists of a name
+#    and optional version, as defined in Section 10.1.5.
+# 
+#    Example:
+# 
+#    Server: CERN/3.0 libwww/2.17
+# 
+#    An origin server SHOULD NOT generate a Server header field containing
+#    needlessly fine-grained detail and SHOULD limit the addition of
+#    subproducts by third parties.  Overly long and detailed Server field
+#    values increase response latency and potentially reveal internal
+#    implementation details that might make it (slightly) easier for
+#    attackers to find and exploit known security holes.
+
+[[spec]]
+level = "MAY"
+quote = '''
+An origin server MAY generate a Server header field in
+its responses.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An origin server SHOULD NOT generate a Server header field containing
+needlessly fine-grained detail and SHOULD limit the addition of
+subproducts by third parties.
+'''
+

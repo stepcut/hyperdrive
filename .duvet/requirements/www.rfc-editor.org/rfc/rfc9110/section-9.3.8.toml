@@ -1,0 +1,63 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-9.3.8"
+
+# TRACE
+#
+#    The TRACE method requests a remote, application-level loop-back of
+#    the request message.  The final recipient of the request SHOULD
+#    reflect the message received, excluding some fields described below,
+#    back to the client as the content of a 200 (OK) response.  The
+#    "message/http" format (Section 10.1 of [HTTP/1.1]) is one way to do
+#    so.  The final recipient is either the origin server or the first
+#    server to receive a Max-Forwards value of zero (0) in the request
+#    (Section 7.6.2).
+# 
+#    A client MUST NOT generate fields in a TRACE request containing
+#    sensitive data that might be disclosed by the response.  For example,
+#    it would be foolish for a user agent to send stored user credentials
+#    (Section 11) or cookies [COOKIE] in a TRACE request.  The final
+#    recipient of the request SHOULD exclude any request fields that are
+#    likely to contain sensitive data when that recipient generates the
+#    response content.
+# 
+#    TRACE allows the client to see what is being received at the other
+#    end of the request chain and use that data for testing or diagnostic
+#    information.  The value of the Via header field (Section 7.6.3) is of
+#    particular interest, since it acts as a trace of the request chain.
+#    Use of the Max-Forwards header field allows the client to limit the
+#    length of the request chain, which is useful for testing a chain of
+#    proxies forwarding messages in an infinite loop.
+# 
+#    A client MUST NOT send content in a TRACE request.
+# 
+#    Responses to the TRACE method are not cacheable.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The final recipient of the request SHOULD
+reflect the message received, excluding some fields described below,
+back to the client as the content of a 200 (OK) response.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT generate fields in a TRACE request containing
+sensitive data that might be disclosed by the response.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The final
+recipient of the request SHOULD exclude any request fields that are
+likely to contain sensitive data when that recipient generates the
+response content.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT send content in a TRACE request.
+'''
+

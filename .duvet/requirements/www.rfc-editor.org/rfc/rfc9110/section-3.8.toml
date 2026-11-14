@@ -1,0 +1,46 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-3.8"
+
+# Caches
+#
+#    A "cache" is a local store of previous response messages and the
+#    subsystem that controls its message storage, retrieval, and deletion.
+#    A cache stores cacheable responses in order to reduce the response
+#    time and network bandwidth consumption on future, equivalent
+#    requests.  Any client or server MAY employ a cache, though a cache
+#    cannot be used while acting as a tunnel.
+# 
+#    The effect of a cache is that the request/response chain is shortened
+#    if one of the participants along the chain has a cached response
+#    applicable to that request.  The following illustrates the resulting
+#    chain if B has a cached copy of an earlier response from O (via C)
+#    for a request that has not been cached by UA or A.
+# 
+#                >             >
+#           UA =========== A =========== B - - - - - - C - - - - - - O
+#                      <             <
+# 
+#                                   Figure 3
+# 
+#    A response is "cacheable" if a cache is allowed to store a copy of
+#    the response message for use in answering subsequent requests.  Even
+#    when a response is cacheable, there might be additional constraints
+#    placed by the client or by the origin server on when that cached
+#    response can be used for a particular request.  HTTP requirements for
+#    cache behavior and cacheable responses are defined in [CACHING].
+# 
+#    There is a wide variety of architectures and configurations of caches
+#    deployed across the World Wide Web and inside large organizations.
+#    These include national hierarchies of proxy caches to save bandwidth
+#    and reduce latency, content delivery networks that use gateway
+#    caching to optimize regional and global distribution of popular
+#    sites, collaborative systems that broadcast or multicast cache
+#    entries, archives of pre-fetched cache entries for use in off-line or
+#    high-latency environments, and so on.
+
+[[spec]]
+level = "MAY"
+quote = '''
+Any client or server MAY employ a cache, though a cache
+cannot be used while acting as a tunnel.
+'''
+

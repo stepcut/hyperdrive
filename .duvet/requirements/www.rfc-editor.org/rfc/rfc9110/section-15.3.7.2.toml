@@ -1,0 +1,158 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.3.7.2"
+
+# Multiple Parts
+#
+#    If multiple parts are being transferred, the server generating the
+#    206 response MUST generate "multipart/byteranges" content, as defined
+#    in Section 14.6, and a Content-Type header field containing the
+#    "multipart/byteranges" media type and its required boundary
+#    parameter.  To avoid confusion with single-part responses, a server
+#    MUST NOT generate a Content-Range header field in the HTTP header
+#    section of a multiple part response (this field will be sent in each
+#    part instead).
+# 
+#    Within the header area of each body part in the multipart content,
+#    the server MUST generate a Content-Range header field corresponding
+#    to the range being enclosed in that body part.  If the selected
+#    representation would have had a Content-Type header field in a 200
+#    (OK) response, the server SHOULD generate that same Content-Type
+#    header field in the header area of each body part.  For example:
+# 
+#    HTTP/1.1 206 Partial Content
+#    Date: Wed, 15 Nov 1995 06:25:24 GMT
+#    Last-Modified: Wed, 15 Nov 1995 04:58:08 GMT
+#    Content-Length: 1741
+#    Content-Type: multipart/byteranges; boundary=THIS_STRING_SEPARATES
+# 
+#    --THIS_STRING_SEPARATES
+#    Content-Type: application/pdf
+#    Content-Range: bytes 500-999/8000
+# 
+#    ...the first range...
+#    --THIS_STRING_SEPARATES
+#    Content-Type: application/pdf
+#    Content-Range: bytes 7000-7999/8000
+# 
+#    ...the second range
+#    --THIS_STRING_SEPARATES--
+# 
+#    When multiple ranges are requested, a server MAY coalesce any of the
+#    ranges that overlap, or that are separated by a gap that is smaller
+#    than the overhead of sending multiple parts, regardless of the order
+#    in which the corresponding range-spec appeared in the received Range
+#    header field.  Since the typical overhead between each part of a
+#    "multipart/byteranges" is around 80 bytes, depending on the selected
+#    representation's media type and the chosen boundary parameter length,
+#    it can be less efficient to transfer many small disjoint parts than
+#    it is to transfer the entire selected representation.
+# 
+#    A server MUST NOT generate a multipart response to a request for a
+#    single range, since a client that does not request multiple parts
+#    might not support multipart responses.  However, a server MAY
+#    generate a "multipart/byteranges" response with only a single body
+#    part if multiple ranges were requested and only one range was found
+#    to be satisfiable or only one range remained after coalescing.  A
+#    client that cannot process a "multipart/byteranges" response MUST NOT
+#    generate a request that asks for multiple ranges.
+# 
+#    A server that generates a multipart response SHOULD send the parts in
+#    the same order that the corresponding range-spec appeared in the
+#    received Range header field, excluding those ranges that were deemed
+#    unsatisfiable or that were coalesced into other ranges.  A client
+#    that receives a multipart response MUST inspect the Content-Range
+#    header field present in each body part in order to determine which
+#    range is contained in that body part; a client cannot rely on
+#    receiving the same ranges that it requested, nor the same order that
+#    it requested.
+
+[[spec]]
+level = "MUST"
+quote = '''
+If multiple parts are being transferred, the server generating the
+206 response MUST generate "multipart/byteranges" content, as defined
+in Section 14.6, and a Content-Type header field containing the
+"multipart/byteranges" media type and its required boundary
+parameter.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+To avoid confusion with single-part responses, a server
+MUST NOT generate a Content-Range header field in the HTTP header
+section of a multiple part response (this field will be sent in each
+part instead).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Within the header area of each body part in the multipart content,
+the server MUST generate a Content-Range header field corresponding
+to the range being enclosed in that body part.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If the selected
+representation would have had a Content-Type header field in a 200
+(OK) response, the server SHOULD generate that same Content-Type
+header field in the header area of each body part.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+When multiple ranges are requested, a server MAY coalesce any of the
+ranges that overlap, or that are separated by a gap that is smaller
+than the overhead of sending multiple parts, regardless of the order
+in which the corresponding range-spec appeared in the received Range
+header field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT generate a multipart response to a request for a
+single range, since a client that does not request multiple parts
+might not support multipart responses.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+However, a server MAY
+generate a "multipart/byteranges" response with only a single body
+part if multiple ranges were requested and only one range was found
+to be satisfiable or only one range remained after coalescing.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+client that cannot process a "multipart/byteranges" response MUST NOT
+generate a request that asks for multiple ranges.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A server that generates a multipart response SHOULD send the parts in
+the same order that the corresponding range-spec appeared in the
+received Range header field, excluding those ranges that were deemed
+unsatisfiable or that were coalesced into other ranges.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client
+that receives a multipart response MUST inspect the Content-Range
+header field present in each body part in order to determine which
+range is contained in that body part; a client cannot rely on
+receiving the same ranges that it requested, nor the same order that
+it requested.
+'''
+

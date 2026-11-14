@@ -1,0 +1,104 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-7.7"
+
+# Message Transformations
+#
+#    Some intermediaries include features for transforming messages and
+#    their content.  A proxy might, for example, convert between image
+#    formats in order to save cache space or to reduce the amount of
+#    traffic on a slow link.  However, operational problems might occur
+#    when these transformations are applied to content intended for
+#    critical applications, such as medical imaging or scientific data
+#    analysis, particularly when integrity checks or digital signatures
+#    are used to ensure that the content received is identical to the
+#    original.
+# 
+#    An HTTP-to-HTTP proxy is called a "transforming proxy" if it is
+#    designed or configured to modify messages in a semantically
+#    meaningful way (i.e., modifications, beyond those required by normal
+#    HTTP processing, that change the message in a way that would be
+#    significant to the original sender or potentially significant to
+#    downstream recipients).  For example, a transforming proxy might be
+#    acting as a shared annotation server (modifying responses to include
+#    references to a local annotation database), a malware filter, a
+#    format transcoder, or a privacy filter.  Such transformations are
+#    presumed to be desired by whichever client (or client organization)
+#    chose the proxy.
+# 
+#    If a proxy receives a target URI with a host name that is not a fully
+#    qualified domain name, it MAY add its own domain to the host name it
+#    received when forwarding the request.  A proxy MUST NOT change the
+#    host name if the target URI contains a fully qualified domain name.
+# 
+#    A proxy MUST NOT modify the "absolute-path" and "query" parts of the
+#    received target URI when forwarding it to the next inbound server
+#    except as required by that forwarding protocol.  For example, a proxy
+#    forwarding a request to an origin server via HTTP/1.1 will replace an
+#    empty path with "/" (Section 3.2.1 of [HTTP/1.1]) or "*"
+#    (Section 3.2.4 of [HTTP/1.1]), depending on the request method.
+# 
+#    A proxy MUST NOT transform the content (Section 6.4) of a response
+#    message that contains a no-transform cache directive (Section 5.2.2.6
+#    of [CACHING]).  Note that this does not apply to message
+#    transformations that do not change the content, such as the addition
+#    or removal of transfer codings (Section 7 of [HTTP/1.1]).
+# 
+#    A proxy MAY transform the content of a message that does not contain
+#    a no-transform cache directive.  A proxy that transforms the content
+#    of a 200 (OK) response can inform downstream recipients that a
+#    transformation has been applied by changing the response status code
+#    to 203 (Non-Authoritative Information) (Section 15.3.4).
+# 
+#    A proxy SHOULD NOT modify header fields that provide information
+#    about the endpoints of the communication chain, the resource state,
+#    or the selected representation (other than the content) unless the
+#    field's definition specifically allows such modification or the
+#    modification is deemed necessary for privacy or security.
+
+[[spec]]
+level = "MAY"
+quote = '''
+If a proxy receives a target URI with a host name that is not a fully
+qualified domain name, it MAY add its own domain to the host name it
+received when forwarding the request.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy MUST NOT change the
+host name if the target URI contains a fully qualified domain name.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy MUST NOT modify the "absolute-path" and "query" parts of the
+received target URI when forwarding it to the next inbound server
+except as required by that forwarding protocol.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy MUST NOT transform the content (Section 6.4) of a response
+message that contains a no-transform cache directive (Section 5.2.2.6
+of [CACHING]).
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A proxy MAY transform the content of a message that does not contain
+a no-transform cache directive.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A proxy SHOULD NOT modify header fields that provide information
+about the endpoints of the communication chain, the resource state,
+or the selected representation (other than the content) unless the
+field's definition specifically allows such modification or the
+modification is deemed necessary for privacy or security.
+'''
+

@@ -1,0 +1,25 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-16.2.1"
+
+# Status Code Registry
+#
+#    The "Hypertext Transfer Protocol (HTTP) Status Code Registry",
+#    maintained by IANA at <https://www.iana.org/assignments/http-status-
+#    codes>, registers status code numbers.
+# 
+#    A registration MUST include the following fields:
+# 
+#    *  Status Code (3 digits)
+# 
+#    *  Short Description
+# 
+#    *  Pointer to specification text
+# 
+#    Values to be added to the HTTP status code namespace require IETF
+#    Review (see [RFC8126], Section 4.8).
+
+[[spec]]
+level = "MUST"
+quote = '''
+A registration MUST include the following fields:
+'''
+

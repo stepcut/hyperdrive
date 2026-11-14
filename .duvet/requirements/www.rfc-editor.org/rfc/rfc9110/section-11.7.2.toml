@@ -1,0 +1,30 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-11.7.2"
+
+# Proxy-Authorization
+#
+#    The "Proxy-Authorization" header field allows the client to identify
+#    itself (or its user) to a proxy that requires authentication.  Its
+#    value consists of credentials containing the authentication
+#    information of the client for the proxy and/or realm of the resource
+#    being requested.
+# 
+#      Proxy-Authorization = credentials
+# 
+#    Unlike Authorization, the Proxy-Authorization header field applies
+#    only to the next inbound proxy that demanded authentication using the
+#    Proxy-Authenticate header field.  When multiple proxies are used in a
+#    chain, the Proxy-Authorization header field is consumed by the first
+#    inbound proxy that was expecting to receive credentials.  A proxy MAY
+#    relay the credentials from the client request to the next proxy if
+#    that is the mechanism by which the proxies cooperatively authenticate
+#    a given request.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A proxy MAY
+relay the credentials from the client request to the next proxy if
+that is the mechanism by which the proxies cooperatively authenticate
+a given request.
+'''
+

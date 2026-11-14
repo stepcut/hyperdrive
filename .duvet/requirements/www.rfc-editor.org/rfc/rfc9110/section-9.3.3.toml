@@ -1,0 +1,71 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-9.3.3"
+
+# POST
+#
+#    The POST method requests that the target resource process the
+#    representation enclosed in the request according to the resource's
+#    own specific semantics.  For example, POST is used for the following
+#    functions (among others):
+# 
+#    *  Providing a block of data, such as the fields entered into an HTML
+#       form, to a data-handling process;
+# 
+#    *  Posting a message to a bulletin board, newsgroup, mailing list,
+#       blog, or similar group of articles;
+# 
+#    *  Creating a new resource that has yet to be identified by the
+#       origin server; and
+# 
+#    *  Appending data to a resource's existing representation(s).
+# 
+#    An origin server indicates response semantics by choosing an
+#    appropriate status code depending on the result of processing the
+#    POST request; almost all of the status codes defined by this
+#    specification could be received in a response to POST (the exceptions
+#    being 206 (Partial Content), 304 (Not Modified), and 416 (Range Not
+#    Satisfiable)).
+# 
+#    If one or more resources has been created on the origin server as a
+#    result of successfully processing a POST request, the origin server
+#    SHOULD send a 201 (Created) response containing a Location header
+#    field that provides an identifier for the primary resource created
+#    (Section 10.2.2) and a representation that describes the status of
+#    the request while referring to the new resource(s).
+# 
+#    Responses to POST requests are only cacheable when they include
+#    explicit freshness information (see Section 4.2.1 of [CACHING]) and a
+#    Content-Location header field that has the same value as the POST's
+#    target URI (Section 8.7).  A cached POST response can be reused to
+#    satisfy a later GET or HEAD request.  In contrast, a POST request
+#    cannot be satisfied by a cached POST response because POST is
+#    potentially unsafe; see Section 4 of [CACHING].
+# 
+#    If the result of processing a POST would be equivalent to a
+#    representation of an existing resource, an origin server MAY redirect
+#    the user agent to that resource by sending a 303 (See Other) response
+#    with the existing resource's identifier in the Location field.  This
+#    has the benefits of providing the user agent a resource identifier
+#    and transferring the representation via a method more amenable to
+#    shared caching, though at the cost of an extra request if the user
+#    agent does not already have the representation cached.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If one or more resources has been created on the origin server as a
+result of successfully processing a POST request, the origin server
+SHOULD send a 201 (Created) response containing a Location header
+field that provides an identifier for the primary resource created
+(Section 10.2.2) and a representation that describes the status of
+the request while referring to the new resource(s).
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If the result of processing a POST would be equivalent to a
+representation of an existing resource, an origin server MAY redirect
+the user agent to that resource by sending a 303 (See Other) response
+with the existing resource's identifier in the Location field.
+'''
+

@@ -1,0 +1,67 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-6.5.1"
+
+# Limitations on Use of Trailers
+#
+#    A trailer section is only possible when supported by the version of
+#    HTTP in use and enabled by an explicit framing mechanism.  For
+#    example, the chunked transfer coding in HTTP/1.1 allows a trailer
+#    section to be sent after the content (Section 7.1.2 of [HTTP/1.1]).
+# 
+#    Many fields cannot be processed outside the header section because
+#    their evaluation is necessary prior to receiving the content, such as
+#    those that describe message framing, routing, authentication, request
+#    modifiers, response controls, or content format.  A sender MUST NOT
+#    generate a trailer field unless the sender knows the corresponding
+#    header field name's definition permits the field to be sent in
+#    trailers.
+# 
+#    Trailer fields can be difficult to process by intermediaries that
+#    forward messages from one protocol version to another.  If the entire
+#    message can be buffered in transit, some intermediaries could merge
+#    trailer fields into the header section (as appropriate) before it is
+#    forwarded.  However, in most cases, the trailers are simply
+#    discarded.  A recipient MUST NOT merge a trailer field into a header
+#    section unless the recipient understands the corresponding header
+#    field definition and that definition explicitly permits and defines
+#    how trailer field values can be safely merged.
+# 
+#    The presence of the keyword "trailers" in the TE header field
+#    (Section 10.1.4) of a request indicates that the client is willing to
+#    accept trailer fields, on behalf of itself and any downstream
+#    clients.  For requests from an intermediary, this implies that all
+#    downstream clients are willing to accept trailer fields in the
+#    forwarded response.  Note that the presence of "trailers" does not
+#    mean that the client(s) will process any particular trailer field in
+#    the response; only that the trailer section(s) will not be dropped by
+#    any of the clients.
+# 
+#    Because of the potential for trailer fields to be discarded in
+#    transit, a server SHOULD NOT generate trailer fields that it believes
+#    are necessary for the user agent to receive.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST NOT
+generate a trailer field unless the sender knows the corresponding
+header field name's definition permits the field to be sent in
+trailers.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient MUST NOT merge a trailer field into a header
+section unless the recipient understands the corresponding header
+field definition and that definition explicitly permits and defines
+how trailer field values can be safely merged.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Because of the potential for trailer fields to be discarded in
+transit, a server SHOULD NOT generate trailer fields that it believes
+are necessary for the user agent to receive.
+'''
+

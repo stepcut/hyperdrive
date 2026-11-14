@@ -1,0 +1,122 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-8.7"
+
+# Content-Location
+#
+#    The "Content-Location" header field references a URI that can be used
+#    as an identifier for a specific resource corresponding to the
+#    representation in this message's content.  In other words, if one
+#    were to perform a GET request on this URI at the time of this
+#    message's generation, then a 200 (OK) response would contain the same
+#    representation that is enclosed as content in this message.
+# 
+#      Content-Location = absolute-URI / partial-URI
+# 
+#    The field value is either an absolute-URI or a partial-URI.  In the
+#    latter case (Section 4), the referenced URI is relative to the target
+#    URI ([URI], Section 5).
+# 
+#    The Content-Location value is not a replacement for the target URI
+#    (Section 7.1).  It is representation metadata.  It has the same
+#    syntax and semantics as the header field of the same name defined for
+#    MIME body parts in Section 4 of [RFC2557].  However, its appearance
+#    in an HTTP message has some special implications for HTTP recipients.
+# 
+#    If Content-Location is included in a 2xx (Successful) response
+#    message and its value refers (after conversion to absolute form) to a
+#    URI that is the same as the target URI, then the recipient MAY
+#    consider the content to be a current representation of that resource
+#    at the time indicated by the message origination date.  For a GET
+#    (Section 9.3.1) or HEAD (Section 9.3.2) request, this is the same as
+#    the default semantics when no Content-Location is provided by the
+#    server.  For a state-changing request like PUT (Section 9.3.4) or
+#    POST (Section 9.3.3), it implies that the server's response contains
+#    the new representation of that resource, thereby distinguishing it
+#    from representations that might only report about the action (e.g.,
+#    "It worked!").  This allows authoring applications to update their
+#    local copies without the need for a subsequent GET request.
+# 
+#    If Content-Location is included in a 2xx (Successful) response
+#    message and its field value refers to a URI that differs from the
+#    target URI, then the origin server claims that the URI is an
+#    identifier for a different resource corresponding to the enclosed
+#    representation.  Such a claim can only be trusted if both identifiers
+#    share the same resource owner, which cannot be programmatically
+#    determined via HTTP.
+# 
+#    *  For a response to a GET or HEAD request, this is an indication
+#       that the target URI refers to a resource that is subject to
+#       content negotiation and the Content-Location field value is a more
+#       specific identifier for the selected representation.
+# 
+#    *  For a 201 (Created) response to a state-changing method, a
+#       Content-Location field value that is identical to the Location
+#       field value indicates that this content is a current
+#       representation of the newly created resource.
+# 
+#    *  Otherwise, such a Content-Location indicates that this content is
+#       a representation reporting on the requested action's status and
+#       that the same report is available (for future access with GET) at
+#       the given URI.  For example, a purchase transaction made via a
+#       POST request might include a receipt document as the content of
+#       the 200 (OK) response; the Content-Location field value provides
+#       an identifier for retrieving a copy of that same receipt in the
+#       future.
+# 
+#    A user agent that sends Content-Location in a request message is
+#    stating that its value refers to where the user agent originally
+#    obtained the content of the enclosed representation (prior to any
+#    modifications made by that user agent).  In other words, the user
+#    agent is providing a back link to the source of the original
+#    representation.
+# 
+#    An origin server that receives a Content-Location field in a request
+#    message MUST treat the information as transitory request context
+#    rather than as metadata to be saved verbatim as part of the
+#    representation.  An origin server MAY use that context to guide in
+#    processing the request or to save it for other uses, such as within
+#    source links or versioning metadata.  However, an origin server MUST
+#    NOT use such context information to alter the request semantics.
+# 
+#    For example, if a client makes a PUT request on a negotiated resource
+#    and the origin server accepts that PUT (without redirection), then
+#    the new state of that resource is expected to be consistent with the
+#    one representation supplied in that PUT; the Content-Location cannot
+#    be used as a form of reverse content selection identifier to update
+#    only one of the negotiated representations.  If the user agent had
+#    wanted the latter semantics, it would have applied the PUT directly
+#    to the Content-Location URI.
+
+[[spec]]
+level = "MAY"
+quote = '''
+If Content-Location is included in a 2xx (Successful) response
+message and its value refers (after conversion to absolute form) to a
+URI that is the same as the target URI, then the recipient MAY
+consider the content to be a current representation of that resource
+at the time indicated by the message origination date.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server that receives a Content-Location field in a request
+message MUST treat the information as transitory request context
+rather than as metadata to be saved verbatim as part of the
+representation.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An origin server MAY use that context to guide in
+processing the request or to save it for other uses, such as within
+source links or versioning metadata.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+However, an origin server MUST
+NOT use such context information to alter the request semantics.
+'''
+

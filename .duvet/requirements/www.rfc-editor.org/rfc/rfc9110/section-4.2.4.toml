@@ -1,0 +1,40 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-4.2.4"
+
+# Deprecation of userinfo in http(s) URIs
+#
+#    The URI generic syntax for authority also includes a userinfo
+#    subcomponent ([URI], Section 3.2.1) for including user authentication
+#    information in the URI.  In that subcomponent, the use of the format
+#    "user:password" is deprecated.
+# 
+#    Some implementations make use of the userinfo component for internal
+#    configuration of authentication information, such as within command
+#    invocation options, configuration files, or bookmark lists, even
+#    though such usage might expose a user identifier or password.
+# 
+#    A sender MUST NOT generate the userinfo subcomponent (and its "@"
+#    delimiter) when an "http" or "https" URI reference is generated
+#    within a message as a target URI or field value.
+# 
+#    Before making use of an "http" or "https" URI reference received from
+#    an untrusted source, a recipient SHOULD parse for userinfo and treat
+#    its presence as an error; it is likely being used to obscure the
+#    authority for the sake of phishing attacks.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST NOT generate the userinfo subcomponent (and its "@"
+delimiter) when an "http" or "https" URI reference is generated
+within a message as a target URI or field value.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Before making use of an "http" or "https" URI reference received from
+an untrusted source, a recipient SHOULD parse for userinfo and treat
+its presence as an error; it is likely being used to obscure the
+authority for the sake of phishing attacks.
+'''
+

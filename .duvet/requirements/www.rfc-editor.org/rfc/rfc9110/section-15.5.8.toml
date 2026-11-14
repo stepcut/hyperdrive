@@ -1,0 +1,28 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.8"
+
+# 407 Proxy Authentication Required
+#
+#    The 407 (Proxy Authentication Required) status code is similar to 401
+#    (Unauthorized), but it indicates that the client needs to
+#    authenticate itself in order to use a proxy for this request.  The
+#    proxy MUST send a Proxy-Authenticate header field (Section 11.7.1)
+#    containing a challenge applicable to that proxy for the request.  The
+#    client MAY repeat the request with a new or replaced
+#    Proxy-Authorization header field (Section 11.7.2).
+
+[[spec]]
+level = "MUST"
+quote = '''
+The
+proxy MUST send a Proxy-Authenticate header field (Section 11.7.1)
+containing a challenge applicable to that proxy for the request.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+The
+client MAY repeat the request with a new or replaced
+Proxy-Authorization header field (Section 11.7.2).
+'''
+

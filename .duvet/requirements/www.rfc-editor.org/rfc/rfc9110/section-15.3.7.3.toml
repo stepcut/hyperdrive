@@ -1,0 +1,84 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.3.7.3"
+
+# Combining Parts
+#
+#    A response might transfer only a subrange of a representation if the
+#    connection closed prematurely or if the request used one or more
+#    Range specifications.  After several such transfers, a client might
+#    have received several ranges of the same representation.  These
+#    ranges can only be safely combined if they all have in common the
+#    same strong validator (Section 8.8.1).
+# 
+#    A client that has received multiple partial responses to GET requests
+#    on a target resource MAY combine those responses into a larger
+#    continuous range if they share the same strong validator.
+# 
+#    If the most recent response is an incomplete 200 (OK) response, then
+#    the header fields of that response are used for any combined response
+#    and replace those of the matching stored responses.
+# 
+#    If the most recent response is a 206 (Partial Content) response and
+#    at least one of the matching stored responses is a 200 (OK), then the
+#    combined response header fields consist of the most recent 200
+#    response's header fields.  If all of the matching stored responses
+#    are 206 responses, then the stored response with the most recent
+#    header fields is used as the source of header fields for the combined
+#    response, except that the client MUST use other header fields
+#    provided in the new response, aside from Content-Range, to replace
+#    all instances of the corresponding header fields in the stored
+#    response.
+# 
+#    The combined response content consists of the union of partial
+#    content ranges within the new response and all of the matching stored
+#    responses.  If the union consists of the entire range of the
+#    representation, then the client MUST process the combined response as
+#    if it were a complete 200 (OK) response, including a Content-Length
+#    header field that reflects the complete length.  Otherwise, the
+#    client MUST process the set of continuous ranges as one of the
+#    following: an incomplete 200 (OK) response if the combined response
+#    is a prefix of the representation, a single 206 (Partial Content)
+#    response containing "multipart/byteranges" content, or multiple 206
+#    (Partial Content) responses, each with one continuous range that is
+#    indicated by a Content-Range header field.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client that has received multiple partial responses to GET requests
+on a target resource MAY combine those responses into a larger
+continuous range if they share the same strong validator.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If all of the matching stored responses
+are 206 responses, then the stored response with the most recent
+header fields is used as the source of header fields for the combined
+response, except that the client MUST use other header fields
+provided in the new response, aside from Content-Range, to replace
+all instances of the corresponding header fields in the stored
+response.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the union consists of the entire range of the
+representation, then the client MUST process the combined response as
+if it were a complete 200 (OK) response, including a Content-Length
+header field that reflects the complete length.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Otherwise, the
+client MUST process the set of continuous ranges as one of the
+following: an incomplete 200 (OK) response if the combined response
+is a prefix of the representation, a single 206 (Partial Content)
+response containing "multipart/byteranges" content, or multiple 206
+(Partial Content) responses, each with one continuous range that is
+indicated by a Content-Range header field.
+'''
+

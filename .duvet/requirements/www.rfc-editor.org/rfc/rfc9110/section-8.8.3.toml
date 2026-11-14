@@ -1,0 +1,68 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3"
+
+# ETag
+#
+#    The "ETag" field in a response provides the current entity tag for
+#    the selected representation, as determined at the conclusion of
+#    handling the request.  An entity tag is an opaque validator for
+#    differentiating between multiple representations of the same
+#    resource, regardless of whether those multiple representations are
+#    due to resource state changes over time, content negotiation
+#    resulting in multiple representations being valid at the same time,
+#    or both.  An entity tag consists of an opaque quoted string, possibly
+#    prefixed by a weakness indicator.
+# 
+#      ETag       = entity-tag
+# 
+#      entity-tag = [ weak ] opaque-tag
+#      weak       = %s"W/"
+#      opaque-tag = DQUOTE *etagc DQUOTE
+#      etagc      = %x21 / %x23-7E / obs-text
+#                 ; VCHAR except double quotes, plus obs-text
+# 
+#       |  *Note:* Previously, opaque-tag was defined to be a quoted-
+#       |  string ([RFC2616], Section 3.11); thus, some recipients might
+#       |  perform backslash unescaping.  Servers therefore ought to avoid
+#       |  backslash characters in entity tags.
+# 
+#    An entity tag can be more reliable for validation than a modification
+#    date in situations where it is inconvenient to store modification
+#    dates, where the one-second resolution of HTTP-date values is not
+#    sufficient, or where modification dates are not consistently
+#    maintained.
+# 
+#    Examples:
+# 
+#    ETag: "xyzzy"
+#    ETag: W/"xyzzy"
+#    ETag: ""
+# 
+#    An entity tag can be either a weak or strong validator, with strong
+#    being the default.  If an origin server provides an entity tag for a
+#    representation and the generation of that entity tag does not satisfy
+#    all of the characteristics of a strong validator (Section 8.8.1),
+#    then the origin server MUST mark the entity tag as weak by prefixing
+#    its opaque value with "W/" (case-sensitive).
+# 
+#    A sender MAY send the ETag field in a trailer section (see
+#    Section 6.5).  However, since trailers are often ignored, it is
+#    preferable to send ETag as a header field unless the entity tag is
+#    generated while sending the content.
+
+[[spec]]
+level = "MUST"
+quote = '''
+If an origin server provides an entity tag for a
+representation and the generation of that entity tag does not satisfy
+all of the characteristics of a strong validator (Section 8.8.1),
+then the origin server MUST mark the entity tag as weak by prefixing
+its opaque value with "W/" (case-sensitive).
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A sender MAY send the ETag field in a trailer section (see
+Section 6.5).
+'''
+

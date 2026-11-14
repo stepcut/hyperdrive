@@ -1,0 +1,89 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-9.3.5"
+
+# DELETE
+#
+#    The DELETE method requests that the origin server remove the
+#    association between the target resource and its current
+#    functionality.  In effect, this method is similar to the "rm" command
+#    in UNIX: it expresses a deletion operation on the URI mapping of the
+#    origin server rather than an expectation that the previously
+#    associated information be deleted.
+# 
+#    If the target resource has one or more current representations, they
+#    might or might not be destroyed by the origin server, and the
+#    associated storage might or might not be reclaimed, depending
+#    entirely on the nature of the resource and its implementation by the
+#    origin server (which are beyond the scope of this specification).
+#    Likewise, other implementation aspects of a resource might need to be
+#    deactivated or archived as a result of a DELETE, such as database or
+#    gateway connections.  In general, it is assumed that the origin
+#    server will only allow DELETE on resources for which it has a
+#    prescribed mechanism for accomplishing the deletion.
+# 
+#    Relatively few resources allow the DELETE method -- its primary use
+#    is for remote authoring environments, where the user has some
+#    direction regarding its effect.  For example, a resource that was
+#    previously created using a PUT request, or identified via the
+#    Location header field after a 201 (Created) response to a POST
+#    request, might allow a corresponding DELETE request to undo those
+#    actions.  Similarly, custom user agent implementations that implement
+#    an authoring function, such as revision control clients using HTTP
+#    for remote operations, might use DELETE based on an assumption that
+#    the server's URI space has been crafted to correspond to a version
+#    repository.
+# 
+#    If a DELETE method is successfully applied, the origin server SHOULD
+#    send
+# 
+#    *  a 202 (Accepted) status code if the action will likely succeed but
+#       has not yet been enacted,
+# 
+#    *  a 204 (No Content) status code if the action has been enacted and
+#       no further information is to be supplied, or
+# 
+#    *  a 200 (OK) status code if the action has been enacted and the
+#       response message includes a representation describing the status.
+# 
+#    Although request message framing is independent of the method used,
+#    content received in a DELETE request has no generally defined
+#    semantics, cannot alter the meaning or target of the request, and
+#    might lead some implementations to reject the request and close the
+#    connection because of its potential as a request smuggling attack
+#    (Section 11.2 of [HTTP/1.1]).  A client SHOULD NOT generate content
+#    in a DELETE request unless it is made directly to an origin server
+#    that has previously indicated, in or out of band, that such a request
+#    has a purpose and will be adequately supported.  An origin server
+#    SHOULD NOT rely on private agreements to receive content, since
+#    participants in HTTP communication are often unaware of
+#    intermediaries along the request chain.
+# 
+#    Responses to the DELETE method are not cacheable.  If a successful
+#    DELETE request passes through a cache that has one or more stored
+#    responses for the target URI, those stored responses will be
+#    invalidated (see Section 4.4 of [CACHING]).
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If a DELETE method is successfully applied, the origin server SHOULD
+send
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A client SHOULD NOT generate content
+in a DELETE request unless it is made directly to an origin server
+that has previously indicated, in or out of band, that such a request
+has a purpose and will be adequately supported.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An origin server
+SHOULD NOT rely on private agreements to receive content, since
+participants in HTTP communication are often unaware of
+intermediaries along the request chain.
+'''
+

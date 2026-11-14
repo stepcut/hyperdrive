@@ -1,0 +1,42 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.17"
+
+# 416 Range Not Satisfiable
+#
+#    The 416 (Range Not Satisfiable) status code indicates that the set of
+#    ranges in the request's Range header field (Section 14.2) has been
+#    rejected either because none of the requested ranges are satisfiable
+#    or because the client has requested an excessive number of small or
+#    overlapping ranges (a potential denial of service attack).
+# 
+#    Each range unit defines what is required for its own range sets to be
+#    satisfiable.  For example, Section 14.1.2 defines what makes a bytes
+#    range set satisfiable.
+# 
+#    A server that generates a 416 response to a byte-range request SHOULD
+#    generate a Content-Range header field specifying the current length
+#    of the selected representation (Section 14.4).
+# 
+#    For example:
+# 
+#    HTTP/1.1 416 Range Not Satisfiable
+#    Date: Fri, 20 Jan 2012 15:41:54 GMT
+#    Content-Range: bytes */47022
+# 
+#       |  *Note:* Because servers are free to ignore Range, many
+#       |  implementations will respond with the entire selected
+#       |  representation in a 200 (OK) response.  That is partly because
+#       |  most clients are prepared to receive a 200 (OK) to complete the
+#       |  task (albeit less efficiently) and partly because clients might
+#       |  not stop making an invalid range request until they have
+#       |  received a complete representation.  Thus, clients cannot
+#       |  depend on receiving a 416 (Range Not Satisfiable) response even
+#       |  when it is most appropriate.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A server that generates a 416 response to a byte-range request SHOULD
+generate a Content-Range header field specifying the current length
+of the selected representation (Section 14.4).
+'''
+

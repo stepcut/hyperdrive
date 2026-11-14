@@ -1,0 +1,30 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-11.6.2"
+
+# Authorization
+#
+#    The "Authorization" header field allows a user agent to authenticate
+#    itself with an origin server -- usually, but not necessarily, after
+#    receiving a 401 (Unauthorized) response.  Its value consists of
+#    credentials containing the authentication information of the user
+#    agent for the realm of the resource being requested.
+# 
+#      Authorization = credentials
+# 
+#    If a request is authenticated and a realm specified, the same
+#    credentials are presumed to be valid for all other requests within
+#    this realm (assuming that the authentication scheme itself does not
+#    require otherwise, such as credentials that vary according to a
+#    challenge value or using synchronized clocks).
+# 
+#    A proxy forwarding a request MUST NOT modify any Authorization header
+#    fields in that request.  See Section 3.5 of [CACHING] for details of
+#    and requirements pertaining to handling of the Authorization header
+#    field by HTTP caches.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy forwarding a request MUST NOT modify any Authorization header
+fields in that request.
+'''
+

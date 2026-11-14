@@ -1,0 +1,61 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-7.6.2"
+
+# Max-Forwards
+#
+#    The "Max-Forwards" header field provides a mechanism with the TRACE
+#    (Section 9.3.8) and OPTIONS (Section 9.3.7) request methods to limit
+#    the number of times that the request is forwarded by proxies.  This
+#    can be useful when the client is attempting to trace a request that
+#    appears to be failing or looping mid-chain.
+# 
+#      Max-Forwards = 1*DIGIT
+# 
+#    The Max-Forwards value is a decimal integer indicating the remaining
+#    number of times this request message can be forwarded.
+# 
+#    Each intermediary that receives a TRACE or OPTIONS request containing
+#    a Max-Forwards header field MUST check and update its value prior to
+#    forwarding the request.  If the received value is zero (0), the
+#    intermediary MUST NOT forward the request; instead, the intermediary
+#    MUST respond as the final recipient.  If the received Max-Forwards
+#    value is greater than zero, the intermediary MUST generate an updated
+#    Max-Forwards field in the forwarded message with a field value that
+#    is the lesser of a) the received value decremented by one (1) or b)
+#    the recipient's maximum supported value for Max-Forwards.
+# 
+#    A recipient MAY ignore a Max-Forwards header field received with any
+#    other request methods.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Each intermediary that receives a TRACE or OPTIONS request containing
+a Max-Forwards header field MUST check and update its value prior to
+forwarding the request.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the received value is zero (0), the
+intermediary MUST NOT forward the request; instead, the intermediary
+MUST respond as the final recipient.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the received Max-Forwards
+value is greater than zero, the intermediary MUST generate an updated
+Max-Forwards field in the forwarded message with a field value that
+is the lesser of a) the received value decremented by one (1) or b)
+the recipient's maximum supported value for Max-Forwards.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A recipient MAY ignore a Max-Forwards header field received with any
+other request methods.
+'''
+

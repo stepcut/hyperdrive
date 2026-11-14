@@ -1,0 +1,97 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-6.6.1"
+
+# Date
+#
+#    The "Date" header field represents the date and time at which the
+#    message was originated, having the same semantics as the Origination
+#    Date Field (orig-date) defined in Section 3.6.1 of [RFC5322].  The
+#    field value is an HTTP-date, as defined in Section 5.6.7.
+# 
+#      Date = HTTP-date
+# 
+#    An example is
+# 
+#    Date: Tue, 15 Nov 1994 08:12:31 GMT
+# 
+#    A sender that generates a Date header field SHOULD generate its field
+#    value as the best available approximation of the date and time of
+#    message generation.  In theory, the date ought to represent the
+#    moment just before generating the message content.  In practice, a
+#    sender can generate the date value at any time during message
+#    origination.
+# 
+#    An origin server with a clock (as defined in Section 5.6.7) MUST
+#    generate a Date header field in all 2xx (Successful), 3xx
+#    (Redirection), and 4xx (Client Error) responses, and MAY generate a
+#    Date header field in 1xx (Informational) and 5xx (Server Error)
+#    responses.
+# 
+#    An origin server without a clock MUST NOT generate a Date header
+#    field.
+# 
+#    A recipient with a clock that receives a response message without a
+#    Date header field MUST record the time it was received and append a
+#    corresponding Date header field to the message's header section if it
+#    is cached or forwarded downstream.
+# 
+#    A recipient with a clock that receives a response with an invalid
+#    Date header field value MAY replace that value with the time that
+#    response was received.
+# 
+#    A user agent MAY send a Date header field in a request, though
+#    generally will not do so unless it is believed to convey useful
+#    information to the server.  For example, custom applications of HTTP
+#    might convey a Date if the server is expected to adjust its
+#    interpretation of the user's request based on differences between the
+#    user agent and server clocks.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A sender that generates a Date header field SHOULD generate its field
+value as the best available approximation of the date and time of
+message generation.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server with a clock (as defined in Section 5.6.7) MUST
+generate a Date header field in all 2xx (Successful), 3xx
+(Redirection), and 4xx (Client Error) responses, and MAY generate a
+Date header field in 1xx (Informational) and 5xx (Server Error)
+responses.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server without a clock MUST NOT generate a Date header
+field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient with a clock that receives a response message without a
+Date header field MUST record the time it was received and append a
+corresponding Date header field to the message's header section if it
+is cached or forwarded downstream.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A recipient with a clock that receives a response with an invalid
+Date header field value MAY replace that value with the time that
+response was received.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A user agent MAY send a Date header field in a request, though
+generally will not do so unless it is believed to convey useful
+information to the server.
+'''
+

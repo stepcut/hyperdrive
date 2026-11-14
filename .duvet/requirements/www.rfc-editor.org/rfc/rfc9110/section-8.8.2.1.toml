@@ -1,0 +1,82 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-8.8.2.1"
+
+# Generation
+#
+#    An origin server SHOULD send Last-Modified for any selected
+#    representation for which a last modification date can be reasonably
+#    and consistently determined, since its use in conditional requests
+#    and evaluating cache freshness ([CACHING]) can substantially reduce
+#    unnecessary transfers and significantly improve service availability
+#    and scalability.
+# 
+#    A representation is typically the sum of many parts behind the
+#    resource interface.  The last-modified time would usually be the most
+#    recent time that any of those parts were changed.  How that value is
+#    determined for any given resource is an implementation detail beyond
+#    the scope of this specification.
+# 
+#    An origin server SHOULD obtain the Last-Modified value of the
+#    representation as close as possible to the time that it generates the
+#    Date field value for its response.  This allows a recipient to make
+#    an accurate assessment of the representation's modification time,
+#    especially if the representation changes near the time that the
+#    response is generated.
+# 
+#    An origin server with a clock (as defined in Section 5.6.7) MUST NOT
+#    generate a Last-Modified date that is later than the server's time of
+#    message origination (Date, Section 6.6.1).  If the last modification
+#    time is derived from implementation-specific metadata that evaluates
+#    to some time in the future, according to the origin server's clock,
+#    then the origin server MUST replace that value with the message
+#    origination date.  This prevents a future modification date from
+#    having an adverse impact on cache validation.
+# 
+#    An origin server without a clock MUST NOT generate a Last-Modified
+#    date for a response unless that date value was assigned to the
+#    resource by some other system (presumably one with a clock).
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An origin server SHOULD send Last-Modified for any selected
+representation for which a last modification date can be reasonably
+and consistently determined, since its use in conditional requests
+and evaluating cache freshness ([CACHING]) can substantially reduce
+unnecessary transfers and significantly improve service availability
+and scalability.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An origin server SHOULD obtain the Last-Modified value of the
+representation as close as possible to the time that it generates the
+Date field value for its response.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server with a clock (as defined in Section 5.6.7) MUST NOT
+generate a Last-Modified date that is later than the server's time of
+message origination (Date, Section 6.6.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the last modification
+time is derived from implementation-specific metadata that evaluates
+to some time in the future, according to the origin server's clock,
+then the origin server MUST replace that value with the message
+origination date.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server without a clock MUST NOT generate a Last-Modified
+date for a response unless that date value was assigned to the
+resource by some other system (presumably one with a clock).
+'''
+

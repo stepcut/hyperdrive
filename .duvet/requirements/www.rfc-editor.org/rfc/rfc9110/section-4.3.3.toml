@@ -1,0 +1,84 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-4.3.3"
+
+# https Origins
+#
+#    The "https" scheme (Section 4.2.2) associates authority based on the
+#    ability of a server to use the private key corresponding to a
+#    certificate that the client considers to be trustworthy for the
+#    identified origin server.  The client usually relies upon a chain of
+#    trust, conveyed from some prearranged or configured trust anchor, to
+#    deem a certificate trustworthy (Section 4.3.4).
+# 
+#    In HTTP/1.1 and earlier, a client will only attribute authority to a
+#    server when they are communicating over a successfully established
+#    and secured connection specifically to that URI origin's host.  The
+#    connection establishment and certificate verification are used as
+#    proof of authority.
+# 
+#    In HTTP/2 and HTTP/3, a client will attribute authority to a server
+#    when they are communicating over a successfully established and
+#    secured connection if the URI origin's host matches any of the hosts
+#    present in the server's certificate and the client believes that it
+#    could open a connection to that host for that URI.  In practice, a
+#    client will make a DNS query to check that the origin's host contains
+#    the same server IP address as the established connection.  This
+#    restriction can be removed by the origin server sending an equivalent
+#    ORIGIN frame [RFC8336].
+# 
+#    The request target's host and port value are passed within each HTTP
+#    request, identifying the origin and distinguishing it from other
+#    namespaces that might be controlled by the same server (Section 7.2).
+#    It is the origin's responsibility to ensure that any services
+#    provided with control over its certificate's private key are equally
+#    responsible for managing the corresponding "https" namespaces or at
+#    least prepared to reject requests that appear to have been
+#    misdirected (Section 7.4).
+# 
+#    An origin server might be unwilling to process requests for certain
+#    target URIs even when they have the authority to do so.  For example,
+#    when a host operates distinct services on different ports (e.g., 443
+#    and 8000), checking the target URI at the origin server is necessary
+#    (even after the connection has been secured) because a network
+#    attacker might cause connections for one port to be received at some
+#    other port.  Failing to check the target URI might allow such an
+#    attacker to replace a response to one target URI (e.g.,
+#    "https://example.com/foo") with a seemingly authoritative response
+#    from the other port (e.g., "https://example.com:8000/foo").
+# 
+#    Note that the "https" scheme does not rely on TCP and the connected
+#    port number for associating authority, since both are outside the
+#    secured communication and thus cannot be trusted as definitive.
+#    Hence, the HTTP communication might take place over any channel that
+#    has been secured, as defined in Section 4.2.2, including protocols
+#    that don't use TCP.
+# 
+#    When an "https" URI is used within a context that calls for access to
+#    the indicated resource, a client MAY attempt access by resolving the
+#    host identifier to an IP address, establishing a TCP connection to
+#    that address on the indicated port, securing the connection end-to-
+#    end by successfully initiating TLS over TCP with confidentiality and
+#    integrity protection, and sending over that connection an HTTP
+#    request message containing a request target that matches the client's
+#    target URI (Section 7.1).
+# 
+#    If the server responds to such a request with a non-interim HTTP
+#    response message, as described in Section 15, then that response is
+#    considered an authoritative answer to the client's request.
+# 
+#    Note, however, that the above is not the only means for obtaining an
+#    authoritative response, nor does it imply that an authoritative
+#    response is always necessary (see [CACHING]).
+
+[[spec]]
+level = "MAY"
+quote = '''
+When an "https" URI is used within a context that calls for access to
+the indicated resource, a client MAY attempt access by resolving the
+host identifier to an IP address, establishing a TCP connection to
+that address on the indicated port, securing the connection end-to-
+end by successfully initiating TLS over TCP with confidentiality and
+integrity protection, and sending over that connection an HTTP
+request message containing a request target that matches the client's
+target URI (Section 7.1).
+'''
+

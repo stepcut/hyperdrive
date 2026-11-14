@@ -1,0 +1,34 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.20"
+
+# 421 Misdirected Request
+#
+#    The 421 (Misdirected Request) status code indicates that the request
+#    was directed at a server that is unable or unwilling to produce an
+#    authoritative response for the target URI.  An origin server (or
+#    gateway acting on behalf of the origin server) sends 421 to reject a
+#    target URI that does not match an origin for which the server has
+#    been configured (Section 4.3.1) or does not match the connection
+#    context over which the request was received (Section 7.4).
+# 
+#    A client that receives a 421 (Misdirected Request) response MAY retry
+#    the request, whether or not the request method is idempotent, over a
+#    different connection, such as a fresh connection specific to the
+#    target resource's origin, or via an alternative service [ALTSVC].
+# 
+#    A proxy MUST NOT generate a 421 response.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client that receives a 421 (Misdirected Request) response MAY retry
+the request, whether or not the request method is idempotent, over a
+different connection, such as a fresh connection specific to the
+target resource's origin, or via an alternative service [ALTSVC].
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy MUST NOT generate a 421 response.
+'''
+

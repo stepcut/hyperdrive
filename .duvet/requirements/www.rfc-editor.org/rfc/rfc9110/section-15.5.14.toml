@@ -1,0 +1,30 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.14"
+
+# 413 Content Too Large
+#
+#    The 413 (Content Too Large) status code indicates that the server is
+#    refusing to process a request because the request content is larger
+#    than the server is willing or able to process.  The server MAY
+#    terminate the request, if the protocol version in use allows it;
+#    otherwise, the server MAY close the connection.
+# 
+#    If the condition is temporary, the server SHOULD generate a
+#    Retry-After header field to indicate that it is temporary and after
+#    what time the client MAY try again.
+
+[[spec]]
+level = "MAY"
+quote = '''
+The server MAY
+terminate the request, if the protocol version in use allows it;
+otherwise, the server MAY close the connection.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If the condition is temporary, the server SHOULD generate a
+Retry-After header field to indicate that it is temporary and after
+what time the client MAY try again.
+'''
+

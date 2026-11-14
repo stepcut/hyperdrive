@@ -1,0 +1,102 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-7.6.1"
+
+# Connection
+#
+#    The "Connection" header field allows the sender to list desired
+#    control options for the current connection.
+# 
+#      Connection        = #connection-option
+#      connection-option = token
+# 
+#    Connection options are case-insensitive.
+# 
+#    When a field aside from Connection is used to supply control
+#    information for or about the current connection, the sender MUST list
+#    the corresponding field name within the Connection header field.
+#    Note that some versions of HTTP prohibit the use of fields for such
+#    information, and therefore do not allow the Connection field.
+# 
+#    Intermediaries MUST parse a received Connection header field before a
+#    message is forwarded and, for each connection-option in this field,
+#    remove any header or trailer field(s) from the message with the same
+#    name as the connection-option, and then remove the Connection header
+#    field itself (or replace it with the intermediary's own control
+#    options for the forwarded message).
+# 
+#    Hence, the Connection header field provides a declarative way of
+#    distinguishing fields that are only intended for the immediate
+#    recipient ("hop-by-hop") from those fields that are intended for all
+#    recipients on the chain ("end-to-end"), enabling the message to be
+#    self-descriptive and allowing future connection-specific extensions
+#    to be deployed without fear that they will be blindly forwarded by
+#    older intermediaries.
+# 
+#    Furthermore, intermediaries SHOULD remove or replace fields that are
+#    known to require removal before forwarding, whether or not they
+#    appear as a connection-option, after applying those fields'
+#    semantics.  This includes but is not limited to:
+# 
+#    *  Proxy-Connection (Appendix C.2.2 of [HTTP/1.1])
+# 
+#    *  Keep-Alive (Section 19.7.1 of [RFC2068])
+# 
+#    *  TE (Section 10.1.4)
+# 
+#    *  Transfer-Encoding (Section 6.1 of [HTTP/1.1])
+# 
+#    *  Upgrade (Section 7.8)
+# 
+#    A sender MUST NOT send a connection option corresponding to a field
+#    that is intended for all recipients of the content.  For example,
+#    Cache-Control is never appropriate as a connection option
+#    (Section 5.2 of [CACHING]).
+# 
+#    Connection options do not always correspond to a field present in the
+#    message, since a connection-specific field might not be needed if
+#    there are no parameters associated with a connection option.  In
+#    contrast, a connection-specific field received without a
+#    corresponding connection option usually indicates that the field has
+#    been improperly forwarded by an intermediary and ought to be ignored
+#    by the recipient.
+# 
+#    When defining a new connection option that does not correspond to a
+#    field, specification authors ought to reserve the corresponding field
+#    name anyway in order to avoid later collisions.  Such reserved field
+#    names are registered in the "Hypertext Transfer Protocol (HTTP) Field
+#    Name Registry" (Section 16.3.1).
+
+[[spec]]
+level = "MUST"
+quote = '''
+When a field aside from Connection is used to supply control
+information for or about the current connection, the sender MUST list
+the corresponding field name within the Connection header field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Intermediaries MUST parse a received Connection header field before a
+message is forwarded and, for each connection-option in this field,
+remove any header or trailer field(s) from the message with the same
+name as the connection-option, and then remove the Connection header
+field itself (or replace it with the intermediary's own control
+options for the forwarded message).
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Furthermore, intermediaries SHOULD remove or replace fields that are
+known to require removal before forwarding, whether or not they
+appear as a connection-option, after applying those fields'
+semantics.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST NOT send a connection option corresponding to a field
+that is intended for all recipients of the content.
+'''
+

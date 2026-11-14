@@ -1,0 +1,77 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-10.2.2"
+
+# Location
+#
+#    The "Location" header field is used in some responses to refer to a
+#    specific resource in relation to the response.  The type of
+#    relationship is defined by the combination of request method and
+#    status code semantics.
+# 
+#      Location = URI-reference
+# 
+#    The field value consists of a single URI-reference.  When it has the
+#    form of a relative reference ([URI], Section 4.2), the final value is
+#    computed by resolving it against the target URI ([URI], Section 5).
+# 
+#    For 201 (Created) responses, the Location value refers to the primary
+#    resource created by the request.  For 3xx (Redirection) responses,
+#    the Location value refers to the preferred target resource for
+#    automatically redirecting the request.
+# 
+#    If the Location value provided in a 3xx (Redirection) response does
+#    not have a fragment component, a user agent MUST process the
+#    redirection as if the value inherits the fragment component of the
+#    URI reference used to generate the target URI (i.e., the redirection
+#    inherits the original reference's fragment, if any).
+# 
+#    For example, a GET request generated for the URI reference
+#    "http://www.example.org/~tim" might result in a 303 (See Other)
+#    response containing the header field:
+# 
+#    Location: /People.html#tim
+# 
+#    which suggests that the user agent redirect to
+#    "http://www.example.org/People.html#tim"
+# 
+#    Likewise, a GET request generated for the URI reference
+#    "http://www.example.org/index.html#larry" might result in a 301
+#    (Moved Permanently) response containing the header field:
+# 
+#    Location: http://www.example.net/index.html
+# 
+#    which suggests that the user agent redirect to
+#    "http://www.example.net/index.html#larry", preserving the original
+#    fragment identifier.
+# 
+#    There are circumstances in which a fragment identifier in a Location
+#    value would not be appropriate.  For example, the Location header
+#    field in a 201 (Created) response is supposed to provide a URI that
+#    is specific to the created resource.
+# 
+#       |  *Note:* Some recipients attempt to recover from Location header
+#       |  fields that are not valid URI references.  This specification
+#       |  does not mandate or define such processing, but does allow it
+#       |  for the sake of robustness.  A Location field value cannot
+#       |  allow a list of members because the comma list separator is a
+#       |  valid data character within a URI-reference.  If an invalid
+#       |  message is sent with multiple Location field lines, a recipient
+#       |  along the path might combine those field lines into one value.
+#       |  Recovery of a valid Location field value from that situation is
+#       |  difficult and not interoperable across implementations.
+# 
+#       |  *Note:* The Content-Location header field (Section 8.7) differs
+#       |  from Location in that the Content-Location refers to the most
+#       |  specific resource corresponding to the enclosed representation.
+#       |  It is therefore possible for a response to contain both the
+#       |  Location and Content-Location header fields.
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the Location value provided in a 3xx (Redirection) response does
+not have a fragment component, a user agent MUST process the
+redirection as if the value inherits the fragment component of the
+URI reference used to generate the target URI (i.e., the redirection
+inherits the original reference's fragment, if any).
+'''
+

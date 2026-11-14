@@ -1,0 +1,27 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-16.1.1"
+
+# Method Registry
+#
+#    The "Hypertext Transfer Protocol (HTTP) Method Registry", maintained
+#    by IANA at <https://www.iana.org/assignments/http-methods>, registers
+#    method names.
+# 
+#    HTTP method registrations MUST include the following fields:
+# 
+#    *  Method Name (see Section 9)
+# 
+#    *  Safe ("yes" or "no", see Section 9.2.1)
+# 
+#    *  Idempotent ("yes" or "no", see Section 9.2.2)
+# 
+#    *  Pointer to specification text
+# 
+#    Values to be added to this namespace require IETF Review (see
+#    [RFC8126], Section 4.8).
+
+[[spec]]
+level = "MUST"
+quote = '''
+HTTP method registrations MUST include the following fields:
+'''
+

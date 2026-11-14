@@ -1,0 +1,125 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-12.5.1"
+
+# Accept
+#
+#    The "Accept" header field can be used by user agents to specify their
+#    preferences regarding response media types.  For example, Accept
+#    header fields can be used to indicate that the request is
+#    specifically limited to a small set of desired types, as in the case
+#    of a request for an in-line image.
+# 
+#    When sent by a server in a response, Accept provides information
+#    about which content types are preferred in the content of a
+#    subsequent request to the same resource.
+# 
+#      Accept = #( media-range [ weight ] )
+# 
+#      media-range    = ( "*/*"
+#                         / ( type "/" "*" )
+#                         / ( type "/" subtype )
+#                       ) parameters
+# 
+#    The asterisk "*" character is used to group media types into ranges,
+#    with "*/*" indicating all media types and "type/*" indicating all
+#    subtypes of that type.  The media-range can include media type
+#    parameters that are applicable to that range.
+# 
+#    Each media-range might be followed by optional applicable media type
+#    parameters (e.g., charset), followed by an optional "q" parameter for
+#    indicating a relative weight (Section 12.4.2).
+# 
+#    Previous specifications allowed additional extension parameters to
+#    appear after the weight parameter.  The accept extension grammar
+#    (accept-params, accept-ext) has been removed because it had a
+#    complicated definition, was not being used in practice, and is more
+#    easily deployed through new header fields.  Senders using weights
+#    SHOULD send "q" last (after all media-range parameters).  Recipients
+#    SHOULD process any parameter named "q" as weight, regardless of
+#    parameter ordering.
+# 
+#       |  *Note:* Use of the "q" parameter name to control content
+#       |  negotiation would interfere with any media type parameter
+#       |  having the same name.  Hence, the media type registry disallows
+#       |  parameters named "q".
+# 
+#    The example
+# 
+#    Accept: audio/*; q=0.2, audio/basic
+# 
+#    is interpreted as "I prefer audio/basic, but send me any audio type
+#    if it is the best available after an 80% markdown in quality".
+# 
+#    A more elaborate example is
+# 
+#    Accept: text/plain; q=0.5, text/html,
+#           text/x-dvi; q=0.8, text/x-c
+# 
+#    Verbally, this would be interpreted as "text/html and text/x-c are
+#    the equally preferred media types, but if they do not exist, then
+#    send the text/x-dvi representation, and if that does not exist, send
+#    the text/plain representation".
+# 
+#    Media ranges can be overridden by more specific media ranges or
+#    specific media types.  If more than one media range applies to a
+#    given type, the most specific reference has precedence.  For example,
+# 
+#    Accept: text/*, text/plain, text/plain;format=flowed, */*
+# 
+#    have the following precedence:
+# 
+#    1.  text/plain;format=flowed
+# 
+#    2.  text/plain
+# 
+#    3.  text/*
+# 
+#    4.  */*
+# 
+#    The media type quality factor associated with a given type is
+#    determined by finding the media range with the highest precedence
+#    that matches the type.  For example,
+# 
+#    Accept: text/*;q=0.3, text/plain;q=0.7, text/plain;format=flowed,
+#           text/plain;format=fixed;q=0.4, */*;q=0.5
+# 
+#    would cause the following values to be associated:
+# 
+#    +==========================+===============+
+#    | Media Type               | Quality Value |
+#    +==========================+===============+
+#    | text/plain;format=flowed | 1             |
+#    +--------------------------+---------------+
+#    | text/plain               | 0.7           |
+#    +--------------------------+---------------+
+#    | text/html                | 0.3           |
+#    +--------------------------+---------------+
+#    | image/jpeg               | 0.5           |
+#    +--------------------------+---------------+
+#    | text/plain;format=fixed  | 0.4           |
+#    +--------------------------+---------------+
+#    | text/html;level=3        | 0.7           |
+#    +--------------------------+---------------+
+# 
+#                      Table 5
+# 
+#       |  *Note:* A user agent might be provided with a default set of
+#       |  quality values for certain media ranges.  However, unless the
+#       |  user agent is a closed system that cannot interact with other
+#       |  rendering agents, this default set ought to be configurable by
+#       |  the user.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Senders using weights
+SHOULD send "q" last (after all media-range parameters).
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Recipients
+SHOULD process any parameter named "q" as weight, regardless of
+parameter ordering.
+'''
+

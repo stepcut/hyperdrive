@@ -1,0 +1,20 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.9"
+
+# 408 Request Timeout
+#
+#    The 408 (Request Timeout) status code indicates that the server did
+#    not receive a complete request message within the time that it was
+#    prepared to wait.
+# 
+#    If the client has an outstanding request in transit, it MAY repeat
+#    that request.  If the current connection is not usable (e.g., as it
+#    would be in HTTP/1.1 because request delimitation is lost), a new
+#    connection will be used.
+
+[[spec]]
+level = "MAY"
+quote = '''
+If the client has an outstanding request in transit, it MAY repeat
+that request.
+'''
+

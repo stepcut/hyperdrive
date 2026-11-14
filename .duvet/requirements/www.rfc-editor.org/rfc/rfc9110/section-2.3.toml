@@ -1,0 +1,47 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-2.3"
+
+# Length Requirements
+#
+#    A recipient SHOULD parse a received protocol element defensively,
+#    with only marginal expectations that the element will conform to its
+#    ABNF grammar and fit within a reasonable buffer size.
+# 
+#    HTTP does not have specific length limitations for many of its
+#    protocol elements because the lengths that might be appropriate will
+#    vary widely, depending on the deployment context and purpose of the
+#    implementation.  Hence, interoperability between senders and
+#    recipients depends on shared expectations regarding what is a
+#    reasonable length for each protocol element.  Furthermore, what is
+#    commonly understood to be a reasonable length for some protocol
+#    elements has changed over the course of the past three decades of
+#    HTTP use and is expected to continue changing in the future.
+# 
+#    At a minimum, a recipient MUST be able to parse and process protocol
+#    element lengths that are at least as long as the values that it
+#    generates for those same protocol elements in other messages.  For
+#    example, an origin server that publishes very long URI references to
+#    its own resources needs to be able to parse and process those same
+#    references when received as a target URI.
+# 
+#    Many received protocol elements are only parsed to the extent
+#    necessary to identify and forward that element downstream.  For
+#    example, an intermediary might parse a received field into its field
+#    name and field value components, but then forward the field without
+#    further parsing inside the field value.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A recipient SHOULD parse a received protocol element defensively,
+with only marginal expectations that the element will conform to its
+ABNF grammar and fit within a reasonable buffer size.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+At a minimum, a recipient MUST be able to parse and process protocol
+element lengths that are at least as long as the values that it
+generates for those same protocol elements in other messages.
+'''
+

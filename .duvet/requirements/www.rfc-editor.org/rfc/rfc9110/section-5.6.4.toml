@@ -1,0 +1,47 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4"
+
+# Quoted Strings
+#
+#    A string of text is parsed as a single value if it is quoted using
+#    double-quote marks.
+# 
+#      quoted-string  = DQUOTE *( qdtext / quoted-pair ) DQUOTE
+#      qdtext         = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+# 
+#    The backslash octet ("\") can be used as a single-octet quoting
+#    mechanism within quoted-string and comment constructs.  Recipients
+#    that process the value of a quoted-string MUST handle a quoted-pair
+#    as if it were replaced by the octet following the backslash.
+# 
+#      quoted-pair    = "\" ( HTAB / SP / VCHAR / obs-text )
+# 
+#    A sender SHOULD NOT generate a quoted-pair in a quoted-string except
+#    where necessary to quote DQUOTE and backslash octets occurring within
+#    that string.  A sender SHOULD NOT generate a quoted-pair in a comment
+#    except where necessary to quote parentheses ["(" and ")"] and
+#    backslash octets occurring within that comment.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Recipients
+that process the value of a quoted-string MUST handle a quoted-pair
+as if it were replaced by the octet following the backslash.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A sender SHOULD NOT generate a quoted-pair in a quoted-string except
+where necessary to quote DQUOTE and backslash octets occurring within
+that string.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A sender SHOULD NOT generate a quoted-pair in a comment
+except where necessary to quote parentheses ["(" and ")"] and
+backslash octets occurring within that comment.
+'''
+

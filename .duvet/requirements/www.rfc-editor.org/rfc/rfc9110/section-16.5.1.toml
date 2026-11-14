@@ -1,0 +1,25 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-16.5.1"
+
+# Range Unit Registry
+#
+#    The "HTTP Range Unit Registry" defines the namespace for the range
+#    unit names and refers to their corresponding specifications.  It is
+#    maintained at <https://www.iana.org/assignments/http-parameters>.
+# 
+#    Registration of an HTTP Range Unit MUST include the following fields:
+# 
+#    *  Name
+# 
+#    *  Description
+# 
+#    *  Pointer to specification text
+# 
+#    Values to be added to this namespace require IETF Review (see
+#    [RFC8126], Section 4.8).
+
+[[spec]]
+level = "MUST"
+quote = '''
+Registration of an HTTP Range Unit MUST include the following fields:
+'''
+

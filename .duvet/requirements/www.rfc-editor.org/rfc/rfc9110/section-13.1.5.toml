@@ -1,0 +1,136 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-13.1.5"
+
+# If-Range
+#
+#    The "If-Range" header field provides a special conditional request
+#    mechanism that is similar to the If-Match and If-Unmodified-Since
+#    header fields but that instructs the recipient to ignore the Range
+#    header field if the validator doesn't match, resulting in transfer of
+#    the new selected representation instead of a 412 (Precondition
+#    Failed) response.
+# 
+#    If a client has a partial copy of a representation and wishes to have
+#    an up-to-date copy of the entire representation, it could use the
+#    Range header field with a conditional GET (using either or both of
+#    If-Unmodified-Since and If-Match.)  However, if the precondition
+#    fails because the representation has been modified, the client would
+#    then have to make a second request to obtain the entire current
+#    representation.
+# 
+#    The "If-Range" header field allows a client to "short-circuit" the
+#    second request.  Informally, its meaning is as follows: if the
+#    representation is unchanged, send me the part(s) that I am requesting
+#    in Range; otherwise, send me the entire representation.
+# 
+#      If-Range = entity-tag / HTTP-date
+# 
+#    A valid entity-tag can be distinguished from a valid HTTP-date by
+#    examining the first three characters for a DQUOTE.
+# 
+#    A client MUST NOT generate an If-Range header field in a request that
+#    does not contain a Range header field.  A server MUST ignore an If-
+#    Range header field received in a request that does not contain a
+#    Range header field.  An origin server MUST ignore an If-Range header
+#    field received in a request for a target resource that does not
+#    support Range requests.
+# 
+#    A client MUST NOT generate an If-Range header field containing an
+#    entity tag that is marked as weak.  A client MUST NOT generate an If-
+#    Range header field containing an HTTP-date unless the client has no
+#    entity tag for the corresponding representation and the date is a
+#    strong validator in the sense defined by Section 8.8.2.2.
+# 
+#    A server that receives an If-Range header field on a Range request
+#    MUST evaluate the condition per Section 13.2 prior to performing the
+#    method.
+# 
+#    To evaluate a received If-Range header field containing an HTTP-date:
+# 
+#    1.  If the HTTP-date validator provided is not a strong validator in
+#        the sense defined by Section 8.8.2.2, the condition is false.
+# 
+#    2.  If the HTTP-date validator provided exactly matches the
+#        Last-Modified field value for the selected representation, the
+#        condition is true.
+# 
+#    3.  Otherwise, the condition is false.
+# 
+#    To evaluate a received If-Range header field containing an
+#    entity-tag:
+# 
+#    1.  If the entity-tag validator provided exactly matches the ETag
+#        field value for the selected representation using the strong
+#        comparison function (Section 8.8.3.2), the condition is true.
+# 
+#    2.  Otherwise, the condition is false.
+# 
+#    A recipient of an If-Range header field MUST ignore the Range header
+#    field if the If-Range condition evaluates to false.  Otherwise, the
+#    recipient SHOULD process the Range header field as requested.
+# 
+#    Note that the If-Range comparison is by exact match, including when
+#    the validator is an HTTP-date, and so it differs from the "earlier
+#    than or equal to" comparison used when evaluating an
+#    If-Unmodified-Since conditional.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT generate an If-Range header field in a request that
+does not contain a Range header field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST ignore an If-
+Range header field received in a request that does not contain a
+Range header field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server MUST ignore an If-Range header
+field received in a request for a target resource that does not
+support Range requests.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT generate an If-Range header field containing an
+entity tag that is marked as weak.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT generate an If-
+Range header field containing an HTTP-date unless the client has no
+entity tag for the corresponding representation and the date is a
+strong validator in the sense defined by Section 8.8.2.2.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server that receives an If-Range header field on a Range request
+MUST evaluate the condition per Section 13.2 prior to performing the
+method.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient of an If-Range header field MUST ignore the Range header
+field if the If-Range condition evaluates to false.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Otherwise, the
+recipient SHOULD process the Range header field as requested.
+'''
+

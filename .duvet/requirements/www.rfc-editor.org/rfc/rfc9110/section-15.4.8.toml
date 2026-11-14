@@ -1,0 +1,40 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.4.8"
+
+# 307 Temporary Redirect
+#
+#    The 307 (Temporary Redirect) status code indicates that the target
+#    resource resides temporarily under a different URI and the user agent
+#    MUST NOT change the request method if it performs an automatic
+#    redirection to that URI.  Since the redirection can change over time,
+#    the client ought to continue using the original target URI for future
+#    requests.
+# 
+#    The server SHOULD generate a Location header field in the response
+#    containing a URI reference for the different URI.  The user agent MAY
+#    use the Location field value for automatic redirection.  The server's
+#    response content usually contains a short hypertext note with a
+#    hyperlink to the different URI(s).
+
+[[spec]]
+level = "MUST"
+quote = '''
+The 307 (Temporary Redirect) status code indicates that the target
+resource resides temporarily under a different URI and the user agent
+MUST NOT change the request method if it performs an automatic
+redirection to that URI.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The server SHOULD generate a Location header field in the response
+containing a URI reference for the different URI.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+The user agent MAY
+use the Location field value for automatic redirection.
+'''
+

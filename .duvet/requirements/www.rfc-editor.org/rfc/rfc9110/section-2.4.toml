@@ -1,0 +1,44 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-2.4"
+
+# Error Handling
+#
+#    A recipient MUST interpret a received protocol element according to
+#    the semantics defined for it by this specification, including
+#    extensions to this specification, unless the recipient has determined
+#    (through experience or configuration) that the sender incorrectly
+#    implements what is implied by those semantics.  For example, an
+#    origin server might disregard the contents of a received
+#    Accept-Encoding header field if inspection of the User-Agent header
+#    field indicates a specific implementation version that is known to
+#    fail on receipt of certain content codings.
+# 
+#    Unless noted otherwise, a recipient MAY attempt to recover a usable
+#    protocol element from an invalid construct.  HTTP does not define
+#    specific error handling mechanisms except when they have a direct
+#    impact on security, since different applications of the protocol
+#    require different error handling strategies.  For example, a Web
+#    browser might wish to transparently recover from a response where the
+#    Location header field doesn't parse according to the ABNF, whereas a
+#    systems control client might consider any form of error recovery to
+#    be dangerous.
+# 
+#    Some requests can be automatically retried by a client in the event
+#    of an underlying connection failure, as described in Section 9.2.2.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient MUST interpret a received protocol element according to
+the semantics defined for it by this specification, including
+extensions to this specification, unless the recipient has determined
+(through experience or configuration) that the sender incorrectly
+implements what is implied by those semantics.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Unless noted otherwise, a recipient MAY attempt to recover a usable
+protocol element from an invalid construct.
+'''
+

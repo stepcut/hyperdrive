@@ -1,0 +1,134 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-9.3.6"
+
+# CONNECT
+#
+#    The CONNECT method requests that the recipient establish a tunnel to
+#    the destination origin server identified by the request target and,
+#    if successful, thereafter restrict its behavior to blind forwarding
+#    of data, in both directions, until the tunnel is closed.  Tunnels are
+#    commonly used to create an end-to-end virtual connection, through one
+#    or more proxies, which can then be secured using TLS (Transport Layer
+#    Security, [TLS13]).
+# 
+#    CONNECT uses a special form of request target, unique to this method,
+#    consisting of only the host and port number of the tunnel
+#    destination, separated by a colon.  There is no default port; a
+#    client MUST send the port number even if the CONNECT request is based
+#    on a URI reference that contains an authority component with an
+#    elided port (Section 4.1).  For example,
+# 
+#    CONNECT server.example.com:80 HTTP/1.1
+#    Host: server.example.com
+# 
+#    A server MUST reject a CONNECT request that targets an empty or
+#    invalid port number, typically by responding with a 400 (Bad Request)
+#    status code.
+# 
+#    Because CONNECT changes the request/response nature of an HTTP
+#    connection, specific HTTP versions might have different ways of
+#    mapping its semantics into the protocol's wire format.
+# 
+#    CONNECT is intended for use in requests to a proxy.  The recipient
+#    can establish a tunnel either by directly connecting to the server
+#    identified by the request target or, if configured to use another
+#    proxy, by forwarding the CONNECT request to the next inbound proxy.
+#    An origin server MAY accept a CONNECT request, but most origin
+#    servers do not implement CONNECT.
+# 
+#    Any 2xx (Successful) response indicates that the sender (and all
+#    inbound proxies) will switch to tunnel mode immediately after the
+#    response header section; data received after that header section is
+#    from the server identified by the request target.  Any response other
+#    than a successful response indicates that the tunnel has not yet been
+#    formed.
+# 
+#    A tunnel is closed when a tunnel intermediary detects that either
+#    side has closed its connection: the intermediary MUST attempt to send
+#    any outstanding data that came from the closed side to the other
+#    side, close both connections, and then discard any remaining data
+#    left undelivered.
+# 
+#    Proxy authentication might be used to establish the authority to
+#    create a tunnel.  For example,
+# 
+#    CONNECT server.example.com:443 HTTP/1.1
+#    Host: server.example.com:443
+#    Proxy-Authorization: basic aGVsbG86d29ybGQ=
+# 
+#    There are significant risks in establishing a tunnel to arbitrary
+#    servers, particularly when the destination is a well-known or
+#    reserved TCP port that is not intended for Web traffic.  For example,
+#    a CONNECT to "example.com:25" would suggest that the proxy connect to
+#    the reserved port for SMTP traffic; if allowed, that could trick the
+#    proxy into relaying spam email.  Proxies that support CONNECT SHOULD
+#    restrict its use to a limited set of known ports or a configurable
+#    list of safe request targets.
+# 
+#    A server MUST NOT send any Transfer-Encoding or Content-Length header
+#    fields in a 2xx (Successful) response to CONNECT.  A client MUST
+#    ignore any Content-Length or Transfer-Encoding header fields received
+#    in a successful response to CONNECT.
+# 
+#    A CONNECT request message does not have content.  The interpretation
+#    of data sent after the header section of the CONNECT request message
+#    is specific to the version of HTTP in use.
+# 
+#    Responses to the CONNECT method are not cacheable.
+
+[[spec]]
+level = "MUST"
+quote = '''
+There is no default port; a
+client MUST send the port number even if the CONNECT request is based
+on a URI reference that contains an authority component with an
+elided port (Section 4.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST reject a CONNECT request that targets an empty or
+invalid port number, typically by responding with a 400 (Bad Request)
+status code.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An origin server MAY accept a CONNECT request, but most origin
+servers do not implement CONNECT.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A tunnel is closed when a tunnel intermediary detects that either
+side has closed its connection: the intermediary MUST attempt to send
+any outstanding data that came from the closed side to the other
+side, close both connections, and then discard any remaining data
+left undelivered.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Proxies that support CONNECT SHOULD
+restrict its use to a limited set of known ports or a configurable
+list of safe request targets.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT send any Transfer-Encoding or Content-Length header
+fields in a 2xx (Successful) response to CONNECT.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST
+ignore any Content-Length or Transfer-Encoding header fields received
+in a successful response to CONNECT.
+'''
+

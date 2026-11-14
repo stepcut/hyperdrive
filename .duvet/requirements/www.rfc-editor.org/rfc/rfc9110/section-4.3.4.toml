@@ -1,0 +1,98 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-4.3.4"
+
+# https Certificate Verification
+#
+#    To establish a secured connection to dereference a URI, a client MUST
+#    verify that the service's identity is an acceptable match for the
+#    URI's origin server.  Certificate verification is used to prevent
+#    server impersonation by an on-path attacker or by an attacker that
+#    controls name resolution.  This process requires that a client be
+#    configured with a set of trust anchors.
+# 
+#    In general, a client MUST verify the service identity using the
+#    verification process defined in Section 6 of [RFC6125].  The client
+#    MUST construct a reference identity from the service's host: if the
+#    host is a literal IP address (Section 4.3.5), the reference identity
+#    is an IP-ID, otherwise the host is a name and the reference identity
+#    is a DNS-ID.
+# 
+#    A reference identity of type CN-ID MUST NOT be used by clients.  As
+#    noted in Section 6.2.1 of [RFC6125], a reference identity of type CN-
+#    ID might be used by older clients.
+# 
+#    A client might be specially configured to accept an alternative form
+#    of server identity verification.  For example, a client might be
+#    connecting to a server whose address and hostname are dynamic, with
+#    an expectation that the service will present a specific certificate
+#    (or a certificate matching some externally defined reference
+#    identity) rather than one matching the target URI's origin.
+# 
+#    In special cases, it might be appropriate for a client to simply
+#    ignore the server's identity, but it must be understood that this
+#    leaves a connection open to active attack.
+# 
+#    If the certificate is not valid for the target URI's origin, a user
+#    agent MUST either obtain confirmation from the user before proceeding
+#    (see Section 3.5) or terminate the connection with a bad certificate
+#    error.  Automated clients MUST log the error to an appropriate audit
+#    log (if available) and SHOULD terminate the connection (with a bad
+#    certificate error).  Automated clients MAY provide a configuration
+#    setting that disables this check, but MUST provide a setting which
+#    enables it.
+
+[[spec]]
+level = "MUST"
+quote = '''
+To establish a secured connection to dereference a URI, a client MUST
+verify that the service's identity is an acceptable match for the
+URI's origin server.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+In general, a client MUST verify the service identity using the
+verification process defined in Section 6 of [RFC6125].
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The client
+MUST construct a reference identity from the service's host: if the
+host is a literal IP address (Section 4.3.5), the reference identity
+is an IP-ID, otherwise the host is a name and the reference identity
+is a DNS-ID.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A reference identity of type CN-ID MUST NOT be used by clients.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the certificate is not valid for the target URI's origin, a user
+agent MUST either obtain confirmation from the user before proceeding
+(see Section 3.5) or terminate the connection with a bad certificate
+error.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Automated clients MUST log the error to an appropriate audit
+log (if available) and SHOULD terminate the connection (with a bad
+certificate error).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Automated clients MAY provide a configuration
+setting that disables this check, but MUST provide a setting which
+enables it.
+'''
+

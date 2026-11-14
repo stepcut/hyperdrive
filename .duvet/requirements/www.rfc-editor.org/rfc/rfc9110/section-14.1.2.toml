@@ -1,0 +1,94 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-14.1.2"
+
+# Byte Ranges
+#
+#    The "bytes" range unit is used to express subranges of a
+#    representation data's octet sequence.  Each byte range is expressed
+#    as an integer range at some offset, relative to either the beginning
+#    (int-range) or end (suffix-range) of the representation data.  Byte
+#    ranges do not use the other-range specifier.
+# 
+#    The first-pos value in a bytes int-range gives the offset of the
+#    first byte in a range.  The last-pos value gives the offset of the
+#    last byte in the range; that is, the byte positions specified are
+#    inclusive.  Byte offsets start at zero.
+# 
+#    If the representation data has a content coding applied, each byte
+#    range is calculated with respect to the encoded sequence of bytes,
+#    not the sequence of underlying bytes that would be obtained after
+#    decoding.
+# 
+#    Examples of bytes range specifiers:
+# 
+#    *  The first 500 bytes (byte offsets 0-499, inclusive):
+# 
+#            bytes=0-499
+# 
+#    *  The second 500 bytes (byte offsets 500-999, inclusive):
+# 
+#            bytes=500-999
+# 
+#    A client can limit the number of bytes requested without knowing the
+#    size of the selected representation.  If the last-pos value is
+#    absent, or if the value is greater than or equal to the current
+#    length of the representation data, the byte range is interpreted as
+#    the remainder of the representation (i.e., the server replaces the
+#    value of last-pos with a value that is one less than the current
+#    length of the selected representation).
+# 
+#    A client can refer to the last N bytes (N > 0) of the selected
+#    representation using a suffix-range.  If the selected representation
+#    is shorter than the specified suffix-length, the entire
+#    representation is used.
+# 
+#    Additional examples, assuming a representation of length 10000:
+# 
+#    *  The final 500 bytes (byte offsets 9500-9999, inclusive):
+# 
+#            bytes=-500
+# 
+#       Or:
+# 
+#            bytes=9500-
+# 
+#    *  The first and last bytes only (bytes 0 and 9999):
+# 
+#            bytes=0-0,-1
+# 
+#    *  The first, middle, and last 1000 bytes:
+# 
+#            bytes= 0-999, 4500-5499, -1000
+# 
+#    *  Other valid (but not canonical) specifications of the second 500
+#       bytes (byte offsets 500-999, inclusive):
+# 
+#            bytes=500-600,601-999
+#            bytes=500-700,601-999
+# 
+#    For a GET request, a valid bytes range-spec is satisfiable if it is
+#    either:
+# 
+#    *  an int-range with a first-pos that is less than the current length
+#       of the selected representation or
+# 
+#    *  a suffix-range with a non-zero suffix-length.
+# 
+#    When a selected representation has zero length, the only satisfiable
+#    form of range-spec in a GET request is a suffix-range with a non-zero
+#    suffix-length.
+# 
+#    In the byte-range syntax, first-pos, last-pos, and suffix-length are
+#    expressed as decimal number of octets.  Since there is no predefined
+#    limit to the length of content, recipients MUST anticipate
+#    potentially large decimal numerals and prevent parsing errors due to
+#    integer conversion overflows.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Since there is no predefined
+limit to the length of content, recipients MUST anticipate
+potentially large decimal numerals and prevent parsing errors due to
+integer conversion overflows.
+'''
+

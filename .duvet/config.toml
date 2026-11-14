@@ -1,0 +1,25 @@
+'$schema' = "https://awslabs.github.io/duvet/config/v0.4.0.json"
+
+# Haskell comment style: `--=` and `--#` would lex as operators, so the
+# prefixes need a space after the dashes.
+[[source]]
+pattern = "hyperdrive*/**/*.hs"
+comment-style = { meta = "-- =", content = "-- #" }
+
+[[source]]
+pattern = "test/**/*.hs"
+type = "test"
+comment-style = { meta = "-- =", content = "-- #" }
+
+[[specification]]
+source = "https://www.rfc-editor.org/rfc/rfc9110"
+
+[report.html]
+enabled = true
+
+[report.json]
+enabled = true
+
+# Enable snapshots to prevent requirement coverage regressions
+[report.snapshot]
+enabled = true

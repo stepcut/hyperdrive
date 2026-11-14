@@ -1,0 +1,51 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-4.3.2"
+
+# http Origins
+#
+#    Although HTTP is independent of the transport protocol, the "http"
+#    scheme (Section 4.2.1) is specific to associating authority with
+#    whomever controls the origin server listening for TCP connections on
+#    the indicated port of whatever host is identified within the
+#    authority component.  This is a very weak sense of authority because
+#    it depends on both client-specific name resolution mechanisms and
+#    communication that might not be secured from an on-path attacker.
+#    Nevertheless, it is a sufficient minimum for binding "http"
+#    identifiers to an origin server for consistent resolution within a
+#    trusted environment.
+# 
+#    If the host identifier is provided as an IP address, the origin
+#    server is the listener (if any) on the indicated TCP port at that IP
+#    address.  If host is a registered name, the registered name is an
+#    indirect identifier for use with a name resolution service, such as
+#    DNS, to find an address for an appropriate origin server.
+# 
+#    When an "http" URI is used within a context that calls for access to
+#    the indicated resource, a client MAY attempt access by resolving the
+#    host identifier to an IP address, establishing a TCP connection to
+#    that address on the indicated port, and sending over that connection
+#    an HTTP request message containing a request target that matches the
+#    client's target URI (Section 7.1).
+# 
+#    If the server responds to such a request with a non-interim HTTP
+#    response message, as described in Section 15, then that response is
+#    considered an authoritative answer to the client's request.
+# 
+#    Note, however, that the above is not the only means for obtaining an
+#    authoritative response, nor does it imply that an authoritative
+#    response is always necessary (see [CACHING]).  For example, the Alt-
+#    Svc header field [ALTSVC] allows an origin server to identify other
+#    services that are also authoritative for that origin.  Access to
+#    "http" identified resources might also be provided by protocols
+#    outside the scope of this document.
+
+[[spec]]
+level = "MAY"
+quote = '''
+When an "http" URI is used within a context that calls for access to
+the indicated resource, a client MAY attempt access by resolving the
+host identifier to an IP address, establishing a TCP connection to
+that address on the indicated port, and sending over that connection
+an HTTP request message containing a request target that matches the
+client's target URI (Section 7.1).
+'''
+

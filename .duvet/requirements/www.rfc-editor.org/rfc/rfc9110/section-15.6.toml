@@ -1,0 +1,29 @@
+target = "https://www.rfc-editor.org/rfc/rfc9110#section-15.6"
+
+# Server Error 5xx
+#
+#    The 5xx (Server Error) class of status code indicates that the server
+#    is aware that it has erred or is incapable of performing the
+#    requested method.  Except when responding to a HEAD request, the
+#    server SHOULD send a representation containing an explanation of the
+#    error situation, and whether it is a temporary or permanent
+#    condition.  A user agent SHOULD display any included representation
+#    to the user.  These status codes are applicable to any request
+#    method.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Except when responding to a HEAD request, the
+server SHOULD send a representation containing an explanation of the
+error situation, and whether it is a temporary or permanent
+condition.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A user agent SHOULD display any included representation
+to the user.
+'''
+
