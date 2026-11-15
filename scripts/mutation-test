@@ -19,7 +19,10 @@ Usage (from the repository root, inside `nix develop`):
 
   scripts/mutation-test [PACKAGE-DIR ...]
 
-PACKAGE-DIR defaults to every directory with a `mutants` file.
+PACKAGE-DIR defaults to every directory with a `mutants` file. To see
+how strong one part of the test suite is on its own, pass options to
+the test runner through MUTATION_TEST_OPTIONS, for example
+MUTATION_TEST_OPTIONS='-p Exhaustive'.
 
 Format of the `mutants` file:
 
@@ -34,6 +37,7 @@ printed when a mutant survives. Each `-` line is the original code and
 must be followed by a `+` line with its replacement.
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -42,6 +46,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CABAL = ["cabal", "--offline"]
+TEST_OPTIONS = os.environ.get("MUTATION_TEST_OPTIONS")
+
+
+def test_command():
+    cmd = CABAL + ["test", "all"]
+    if TEST_OPTIONS:
+        cmd.append("--test-options=" + TEST_OPTIONS)
+    return cmd
 
 
 @dataclass
@@ -93,7 +105,7 @@ def main():
         shutil.copytree(root, work, ignore=shutil.ignore_patterns("dist-newstyle", ".git", ".duvet"))
 
         print("building and testing the unmodified project ...", flush=True)
-        baseline = run(CABAL + ["test", "all"], work)
+        baseline = run(test_command(), work)
         if baseline.returncode != 0:
             print(baseline.stdout[-3000:], baseline.stderr[-3000:])
             sys.exit("the unmodified project does not pass its tests; fix that first")
@@ -115,7 +127,7 @@ def main():
                     if build.returncode != 0:
                         status = "INVALID"
                     else:
-                        test = run(CABAL + ["test", "all"], work)
+                        test = run(test_command(), work)
                         status = "CAUGHT" if test.returncode != 0 else "SURVIVED"
                 finally:
                     target.write_text(original)

@@ -16,6 +16,7 @@ import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
 import ComplexityTests (complexityTests)
 import ExhaustiveTests (exhaustiveTests)
+import IndependentTests (independentTests)
 import SafePathTests (safePathTests)
 import URITests (uriTests)
 
@@ -48,6 +49,8 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
   , complexityTests
   , exhaustiveTests
   , safePathTests
+  , testGroup "Independent re-derivation"
+      [ testProperty d (once b) | (d, b) <- independentTests ]
   ]
 
 ------------------------------------------------------------------------------

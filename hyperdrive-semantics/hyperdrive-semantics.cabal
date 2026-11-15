@@ -39,6 +39,7 @@ test-suite hyperdrive-semantics-tests
   main-is:          Main.hs
   other-modules:    ComplexityTests
                     ExhaustiveTests
+                    IndependentTests
                     SafePathTests
                     URIOracle
                     URITests
