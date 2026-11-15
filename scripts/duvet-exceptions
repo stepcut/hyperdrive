@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Mark RFC requirements that do not apply to hyperdrive as duvet exceptions.
+
+Most requirements in an HTTP RFC apply to clients, proxies, caches or
+to IANA registrations, not to an origin server. Marking those as
+exceptions, with a reason, leaves duvet's report listing only the
+requirements hyperdrive actually owes.
+
+Each requirement is classified by the subject of the sentence that
+contains its keyword ("A proxy MUST ...", "A client SHOULD ..."). A
+requirement is only excluded when its subject is unambiguously one of
+the out-of-scope roles; anything that also mentions a server, sender,
+recipient or implementation stays in scope. Requirements the heuristic
+gets wrong are listed in OVERRIDES, which records decisions made by
+reading the text.
+
+Usage (from the repository root):
+
+  scripts/duvet-exceptions .duvet/requirements/www.rfc-editor.org/rfc/rfc9110
+
+This rewrites the matching directory under .duvet/exceptions/. Review
+the diff, then run `duvet report` to update the snapshot.
+"""
+
+import re
+import sys
+import tomllib
+from pathlib import Path
+
+REASONS = {
+    "client":       "Applies to clients and user agents; hyperdrive is a server.",
+    "intermediary": "Applies to proxies, gateways and tunnels; hyperdrive is an origin server.",
+    "cache":        "Applies to caches; hyperdrive does not cache responses.",
+    "registration": "Applies to IANA registrations or to the authors of new specifications, not to implementations.",
+}
+
+# subject patterns, in priority order
+ROLES = [
+    ("client",       r"\b(user agents?|clients?|browsers?)\b"),
+    ("intermediary", r"\b(prox(y|ies)|intermediar(y|ies)|gateways?|tunnels?)\b"),
+    ("cache",        r"\b(caches?|caching)\b"),
+    ("server",       r"\b(origin servers?|servers?)\b"),
+    ("generic",      r"\b(senders?|recipients?|implementations?|parsers?)\b"),
+]
+
+# (section, start of the requirement text) -> role, or None to keep it
+# in scope. Decided by reading each requirement.
+OVERRIDES = {
+    "rfc9110": {
+        # advice to whoever designs the resource, not a client requirement
+        ("9.3.4",  "A service that selects a proper URI"): None,
+        ("10.1.1", "If the proxy believes"): "intermediary",
+        ("12.1",   "In order to improve the server's guess"): "client",
+        ("12.5.5", "To inform cache recipients"): "cache",
+        ("13.2.1", "A server that is not the origin server"): "intermediary",
+        ("3.8",    "Any client or server MAY employ a cache"): "cache",
+        ("4.3.4",  "A reference identity of type CN-ID"): "client",
+        ("5.5",    "Specifications for newly defined fields"): "registration",
+        ("6.5.2",  "Trailer fields that might be generated more than once"): "registration",
+        ("16.4.2", "* HTTP authentication is presumed to be stateless"): "registration",
+        ("16.4.2", "New schemes MUST NOT use it"): "registration",
+        ("16.6.1", "Names of content codings MUST NOT overlap"): "registration",
+        ("16.6.1", "Values to be added to this namespace"): "registration",
+        # Section 16 is IANA registrations
+        **{(s, ""): "registration" for s in ["16.1.1", "16.2.1", "16.3.1", "16.3.2.1",
+                                              "16.4.1", "16.5.1", "16.6.1", "16.7"]},
+    },
+}
+
+KEYWORD = r"\b(MUST NOT|MUST|SHALL NOT|SHALL|SHOULD NOT|SHOULD|MAY|REQUIRED|RECOMMENDED|OPTIONAL)\b"
+
+
+def subject(text):
+    """the clause immediately before the first keyword"""
+    m = re.search(KEYWORD, text)
+    before = text[: m.start()] if m else text
+    return re.split(r"[;:.]\s", before)[-1]
+
+
+def classify(spec, section, text):
+    overrides = OVERRIDES.get(spec, {})
+    # the longest matching prefix wins, so a specific override beats a
+    # whole-section one
+    matches = [(len(p), role) for (s, p), role in overrides.items()
+               if s == section and text.startswith(p)]
+    if matches:
+        return max(matches)[1]
+    roles = [r for r, rx in ROLES if re.search(rx, subject(text), re.I)]
+    if len(roles) == 1 and roles[0] in REASONS:
+        return roles[0]
+    if roles and all(r in ("client", "intermediary", "cache") for r in roles):
+        return roles[-1] if "cache" in roles else "intermediary"
+    return None
+
+
+def toml_string(s):
+    if "'''" in s:
+        sys.exit(f"cannot quote: {s!r}")
+    return "'''\n" + s + "'''"
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    reqdir = Path(sys.argv[1])
+    spec = reqdir.name
+    outdir = Path(".duvet/exceptions") / reqdir.relative_to(".duvet/requirements")
+    for old in outdir.glob("section-*.toml"):
+        old.unlink()
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    counts = {}
+    for f in sorted(reqdir.glob("section-*.toml")):
+        data = tomllib.loads(f.read_text())
+        section = data["target"].split("#section-")[1]
+        entries = []
+        for req in data.get("spec", []):
+            text = " ".join(req["quote"].split())
+            role = classify(spec, section, text)
+            counts[role] = counts.get(role, 0) + 1
+            if role:
+                entries.append(f"[[exception]]\nquote = {toml_string(req['quote'])}\n"
+                               f"reason = {toml_string(REASONS[role] + chr(10))}\n")
+        if entries:
+            (outdir / f.name).write_text(
+                f'# generated by scripts/duvet-exceptions\ntarget = "{data["target"]}"\n\n'
+                + "\n".join(entries))
+
+    for role, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        print(f"{role or 'in scope':14} {n}")
+
+
+if __name__ == "__main__":
+    main()

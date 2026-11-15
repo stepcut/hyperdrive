@@ -94,8 +94,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    secured and specific to that agent.
 
   SECTION: [Caches](#section-3.8)
-    TEXT[!MAY]: Any client or server MAY employ a cache, though a cache
-    TEXT[!MAY]:    cannot be used while acting as a tunnel.
+    TEXT[!MAY,exception]: Any client or server MAY employ a cache, though a cache
+    TEXT[!MAY,exception]:    cannot be used while acting as a tunnel.
 
   SECTION: [URI References](#section-4.1)
     TEXT[!SHOULD]:    It is RECOMMENDED that all senders and recipients support, at a
@@ -112,9 +112,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    identifier.
     TEXT[!MUST]: A recipient that processes such a URI reference MUST
     TEXT[!MUST]:    reject it as invalid.
-    TEXT[!MUST]:    A client MUST ensure that its HTTP requests for an "https" resource
-    TEXT[!MUST]:    are secured, prior to being communicated, and that it only accepts
-    TEXT[!MUST]:    secured responses to those requests.
+    TEXT[!MUST,exception]:    A client MUST ensure that its HTTP requests for an "https" resource
+    TEXT[!MUST,exception]:    are secured, prior to being communicated, and that it only accepts
+    TEXT[!MUST,exception]:    secured responses to those requests.
 
   SECTION: [http(s) Normalization and Comparison](#section-4.2.3)
     TEXT[implementation,test]: When not being used as the target of an OPTIONS request, an empty
@@ -139,53 +139,53 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,implementation]:    authority for the sake of phishing attacks.
 
   SECTION: [http Origins](#section-4.3.2)
-    TEXT[!MAY]:    When an "http" URI is used within a context that calls for access to
-    TEXT[!MAY]:    the indicated resource, a client MAY attempt access by resolving the
-    TEXT[!MAY]:    host identifier to an IP address, establishing a TCP connection to
-    TEXT[!MAY]:    that address on the indicated port, and sending over that connection
-    TEXT[!MAY]:    an HTTP request message containing a request target that matches the
-    TEXT[!MAY]:    client's target URI (Section 7.1).
+    TEXT[!MAY,exception]:    When an "http" URI is used within a context that calls for access to
+    TEXT[!MAY,exception]:    the indicated resource, a client MAY attempt access by resolving the
+    TEXT[!MAY,exception]:    host identifier to an IP address, establishing a TCP connection to
+    TEXT[!MAY,exception]:    that address on the indicated port, and sending over that connection
+    TEXT[!MAY,exception]:    an HTTP request message containing a request target that matches the
+    TEXT[!MAY,exception]:    client's target URI (Section 7.1).
 
   SECTION: [https Origins](#section-4.3.3)
-    TEXT[!MAY]:    When an "https" URI is used within a context that calls for access to
-    TEXT[!MAY]:    the indicated resource, a client MAY attempt access by resolving the
-    TEXT[!MAY]:    host identifier to an IP address, establishing a TCP connection to
-    TEXT[!MAY]:    that address on the indicated port, securing the connection end-to-
-    TEXT[!MAY]:    end by successfully initiating TLS over TCP with confidentiality and
-    TEXT[!MAY]:    integrity protection, and sending over that connection an HTTP
-    TEXT[!MAY]:    request message containing a request target that matches the client's
-    TEXT[!MAY]:    target URI (Section 7.1).
+    TEXT[!MAY,exception]:    When an "https" URI is used within a context that calls for access to
+    TEXT[!MAY,exception]:    the indicated resource, a client MAY attempt access by resolving the
+    TEXT[!MAY,exception]:    host identifier to an IP address, establishing a TCP connection to
+    TEXT[!MAY,exception]:    that address on the indicated port, securing the connection end-to-
+    TEXT[!MAY,exception]:    end by successfully initiating TLS over TCP with confidentiality and
+    TEXT[!MAY,exception]:    integrity protection, and sending over that connection an HTTP
+    TEXT[!MAY,exception]:    request message containing a request target that matches the client's
+    TEXT[!MAY,exception]:    target URI (Section 7.1).
 
   SECTION: [https Certificate Verification](#section-4.3.4)
-    TEXT[!MUST]:    To establish a secured connection to dereference a URI, a client MUST
-    TEXT[!MUST]:    verify that the service's identity is an acceptable match for the
-    TEXT[!MUST]:    URI's origin server.
-    TEXT[!MUST]:    In general, a client MUST verify the service identity using the
-    TEXT[!MUST]:    verification process defined in Section 6 of [RFC6125].
-    TEXT[!MUST]: The client
-    TEXT[!MUST]:    MUST construct a reference identity from the service's host: if the
-    TEXT[!MUST]:    host is a literal IP address (Section 4.3.5), the reference identity
-    TEXT[!MUST]:    is an IP-ID, otherwise the host is a name and the reference identity
-    TEXT[!MUST]:    is a DNS-ID.
-    TEXT[!MUST]:    A reference identity of type CN-ID MUST NOT be used by clients.
-    TEXT[!MUST]:    If the certificate is not valid for the target URI's origin, a user
-    TEXT[!MUST]:    agent MUST either obtain confirmation from the user before proceeding
-    TEXT[!MUST]:    (see Section 3.5) or terminate the connection with a bad certificate
-    TEXT[!MUST]:    error.
-    TEXT[!MUST]: Automated clients MUST log the error to an appropriate audit
-    TEXT[!MUST]:    log (if available) and SHOULD terminate the connection (with a bad
-    TEXT[!MUST]:    certificate error).
-    TEXT[!MUST]: Automated clients MAY provide a configuration
-    TEXT[!MUST]:    setting that disables this check, but MUST provide a setting which
-    TEXT[!MUST]:    enables it.
+    TEXT[!MUST,exception]:    To establish a secured connection to dereference a URI, a client MUST
+    TEXT[!MUST,exception]:    verify that the service's identity is an acceptable match for the
+    TEXT[!MUST,exception]:    URI's origin server.
+    TEXT[!MUST,exception]:    In general, a client MUST verify the service identity using the
+    TEXT[!MUST,exception]:    verification process defined in Section 6 of [RFC6125].
+    TEXT[!MUST,exception]: The client
+    TEXT[!MUST,exception]:    MUST construct a reference identity from the service's host: if the
+    TEXT[!MUST,exception]:    host is a literal IP address (Section 4.3.5), the reference identity
+    TEXT[!MUST,exception]:    is an IP-ID, otherwise the host is a name and the reference identity
+    TEXT[!MUST,exception]:    is a DNS-ID.
+    TEXT[!MUST,exception]:    A reference identity of type CN-ID MUST NOT be used by clients.
+    TEXT[!MUST,exception]:    If the certificate is not valid for the target URI's origin, a user
+    TEXT[!MUST,exception]:    agent MUST either obtain confirmation from the user before proceeding
+    TEXT[!MUST,exception]:    (see Section 3.5) or terminate the connection with a bad certificate
+    TEXT[!MUST,exception]:    error.
+    TEXT[!MUST,exception]: Automated clients MUST log the error to an appropriate audit
+    TEXT[!MUST,exception]:    log (if available) and SHOULD terminate the connection (with a bad
+    TEXT[!MUST,exception]:    certificate error).
+    TEXT[!MUST,exception]: Automated clients MAY provide a configuration
+    TEXT[!MUST,exception]:    setting that disables this check, but MUST provide a setting which
+    TEXT[!MUST,exception]:    enables it.
 
   SECTION: [Field Names](#section-5.1)
     TEXT[implementation,test]:      field-name     = token
     TEXT[implementation,test]:    Field names are case-insensitive
-    TEXT[!MUST]:    A proxy MUST forward unrecognized header fields unless the field name
-    TEXT[!MUST]:    is listed in the Connection header field (Section 7.6.1) or the proxy
-    TEXT[!MUST]:    is specifically configured to block, or otherwise transform, such
-    TEXT[!MUST]:    fields.
+    TEXT[!MUST,exception]:    A proxy MUST forward unrecognized header fields unless the field name
+    TEXT[!MUST,exception]:    is listed in the Connection header field (Section 7.6.1) or the proxy
+    TEXT[!MUST,exception]:    is specifically configured to block, or otherwise transform, such
+    TEXT[!MUST,exception]:    fields.
     TEXT[!SHOULD]: Other recipients SHOULD ignore unrecognized header and
     TEXT[!SHOULD]:    trailer fields.
 
@@ -197,11 +197,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY,implementation]:    (",") and optional whitespace (OWS, defined in Section 5.6.3).
     TEXT[implementation,test]: For
     TEXT[implementation,test]:    consistency, use comma SP.
-    TEXT[!MUST,implementation,test]:    The order in which field lines with the same name are received is
-    TEXT[!MUST,implementation,test]:    therefore significant to the interpretation of the field value
-    TEXT[!MUST]: ; a
-    TEXT[!MUST]:    proxy MUST NOT change the order of these field line values when
-    TEXT[!MUST]:    forwarding a message.
+    TEXT[!MUST,implementation,test,exception]:    The order in which field lines with the same name are received is
+    TEXT[!MUST,implementation,test,exception]:    therefore significant to the interpretation of the field value
+    TEXT[!MUST,exception]: ; a
+    TEXT[!MUST,exception]:    proxy MUST NOT change the order of these field line values when
+    TEXT[!MUST,exception]:    forwarding a message.
     TEXT[!MUST]:    This means that, aside from the well-known exception noted below, a
     TEXT[!MUST]:    sender MUST NOT generate multiple field lines with the same name in a
     TEXT[!MUST]:    message (whether in the headers or trailers) or append a field line
@@ -220,10 +220,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    A server that receives a request header field line, field value, or
     TEXT[!MUST]:    set of fields larger than it wishes to process MUST respond with an
     TEXT[!MUST]:    appropriate 4xx (Client Error) status code.
-    TEXT[!MAY]:    A client MAY discard or truncate received field lines that are larger
-    TEXT[!MAY]:    than the client wishes to process if the field semantics are such
-    TEXT[!MAY]:    that the dropped value(s) can be safely ignored without changing the
-    TEXT[!MAY]:    message framing or response semantics.
+    TEXT[!MAY,exception]:    A client MAY discard or truncate received field lines that are larger
+    TEXT[!MAY,exception]:    than the client wishes to process if the field semantics are such
+    TEXT[!MAY,exception]:    that the dropped value(s) can be safely ignored without changing the
+    TEXT[!MAY,exception]:    message framing or response semantics.
 
   SECTION: [Field Values](#section-5.5)
     TEXT[implementation,test]:      field-value    = *field-content
@@ -236,8 +236,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,implementation]:    message,
     TEXT[!MUST,implementation,test]: a field parsing implementation MUST exclude such whitespace
     TEXT[!MUST,implementation,test]:    prior to evaluating the field value.
-    TEXT[!SHOULD]: Specifications for newly defined fields SHOULD
-    TEXT[!SHOULD]:    limit their values to visible US-ASCII octets (VCHAR), SP, and HTAB.
+    TEXT[!SHOULD,exception]: Specifications for newly defined fields SHOULD
+    TEXT[!SHOULD,exception]:    limit their values to visible US-ASCII octets (VCHAR), SP, and HTAB.
     TEXT[!SHOULD]:    A recipient SHOULD treat other allowed octets in field content (i.e.,
     TEXT[!SHOULD]:    obs-text) as opaque data.
     TEXT[!MUST,implementation]:    Field values containing CR, LF, or NUL characters are invalid and
@@ -320,22 +320,22 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    the past that had the same last two digits.
 
   SECTION: [Message Abstraction](#section-6)
-    TEXT[!MUST]: However, a client MUST retain knowledge of the
-    TEXT[!MUST]:    request when parsing, interpreting, or caching a corresponding
-    TEXT[!MUST]:    response.
+    TEXT[!MUST,exception]: However, a client MUST retain knowledge of the
+    TEXT[!MUST,exception]:    request when parsing, interpreting, or caching a corresponding
+    TEXT[!MUST,exception]:    response.
 
   SECTION: [Control Data](#section-6.2)
-    TEXT[!SHOULD]:    A client SHOULD send a request version equal to the highest version
-    TEXT[!SHOULD]:    to which the client is conformant and whose major version is no
-    TEXT[!SHOULD]:    higher than the highest version supported by the server, if this is
-    TEXT[!SHOULD]:    known.
-    TEXT[!MUST]: A client MUST NOT send a version to which it is not
-    TEXT[!MUST]:    conformant.
-    TEXT[!MAY]:    A client MAY send a lower request version if it is known that the
-    TEXT[!MAY]:    server incorrectly implements the HTTP specification, but only after
-    TEXT[!MAY]:    the client has attempted at least one normal request and determined
-    TEXT[!MAY]:    from the response status code or header fields (e.g., Server) that
-    TEXT[!MAY]:    the server improperly handles higher request versions.
+    TEXT[!SHOULD,exception]:    A client SHOULD send a request version equal to the highest version
+    TEXT[!SHOULD,exception]:    to which the client is conformant and whose major version is no
+    TEXT[!SHOULD,exception]:    higher than the highest version supported by the server, if this is
+    TEXT[!SHOULD,exception]:    known.
+    TEXT[!MUST,exception]: A client MUST NOT send a version to which it is not
+    TEXT[!MUST,exception]:    conformant.
+    TEXT[!MAY,exception]:    A client MAY send a lower request version if it is known that the
+    TEXT[!MAY,exception]:    server incorrectly implements the HTTP specification, but only after
+    TEXT[!MAY,exception]:    the client has attempted at least one normal request and determined
+    TEXT[!MAY,exception]:    from the response status code or header fields (e.g., Server) that
+    TEXT[!MAY,exception]:    the server improperly handles higher request versions.
     TEXT[!SHOULD]:    A server SHOULD send a response version equal to the highest version
     TEXT[!SHOULD]:    to which the server is conformant that has a major version less than
     TEXT[!SHOULD]:    or equal to the one received in the request.
@@ -361,9 +361,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    are necessary for the user agent to receive.
 
   SECTION: [Processing Trailer Fields](#section-6.5.2)
-    TEXT[!MUST]: Trailer fields that might be generated more
-    TEXT[!MUST]:    than once during a message MUST be defined as a list-based field even
-    TEXT[!MUST]:    if each member value is only processed once per field line received.
+    TEXT[!MUST,exception]: Trailer fields that might be generated more
+    TEXT[!MUST,exception]:    than once during a message MUST be defined as a list-based field even
+    TEXT[!MUST,exception]:    if each member value is only processed once per field line received.
     TEXT[!MAY]:    At the end of a message, a recipient MAY treat the set of received
     TEXT[!MAY]:    trailer fields as a data structure of name/value pairs, similar to
     TEXT[!MAY]:    (but separate from) the header fields.
@@ -386,9 +386,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    A recipient with a clock that receives a response with an invalid
     TEXT[!MAY]:    Date header field value MAY replace that value with the time that
     TEXT[!MAY]:    response was received.
-    TEXT[!MAY]:    A user agent MAY send a Date header field in a request, though
-    TEXT[!MAY]:    generally will not do so unless it is believed to convey useful
-    TEXT[!MAY]:    information to the server.
+    TEXT[!MAY,exception]:    A user agent MAY send a Date header field in a request, though
+    TEXT[!MAY,exception]:    generally will not do so unless it is believed to convey useful
+    TEXT[!MAY,exception]:    information to the server.
 
   SECTION: [Trailer](#section-6.6.2)
     TEXT[!SHOULD]:    A sender that intends to generate one or more trailer fields in a
@@ -407,11 +407,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
 
   SECTION: [Host and :authority](#section-7.2)
     TEXT[implementation]:      Host = uri-host [ ":" port ] ; Section 4
-    TEXT[!MUST]: A user agent MUST generate a Host header field in a request
-    TEXT[!MUST]:    unless it sends that information as an ":authority" pseudo-header
-    TEXT[!MUST]:    field.
-    TEXT[!SHOULD]: A user agent that sends Host SHOULD send it as the first
-    TEXT[!SHOULD]:    field in the header section of a request.
+    TEXT[!MUST,exception]: A user agent MUST generate a Host header field in a request
+    TEXT[!MUST,exception]:    unless it sends that information as an ":authority" pseudo-header
+    TEXT[!MUST,exception]:    field.
+    TEXT[!SHOULD,exception]: A user agent that sends Host SHOULD send it as the first
+    TEXT[!SHOULD,exception]:    field in the header section of a request.
 
   SECTION: [Rejecting Misdirected Requests](#section-7.4)
     TEXT[!MUST]:    Unless the connection is from a trusted gateway, an origin server
@@ -423,57 +423,57 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    target URI's origin, as defined by Section 4.2.2.
 
   SECTION: [Response Correlation](#section-7.5)
-    TEXT[!SHOULD]:    A client that receives a response while it is still sending the
-    TEXT[!SHOULD]:    associated request SHOULD continue sending that request unless it
-    TEXT[!SHOULD]:    receives an explicit indication to the contrary (see, e.g.,
-    TEXT[!SHOULD]:    Section 9.5 of [HTTP/1.1] and Section 6.4 of [HTTP/2]).
+    TEXT[!SHOULD,exception]:    A client that receives a response while it is still sending the
+    TEXT[!SHOULD,exception]:    associated request SHOULD continue sending that request unless it
+    TEXT[!SHOULD,exception]:    receives an explicit indication to the contrary (see, e.g.,
+    TEXT[!SHOULD,exception]:    Section 9.5 of [HTTP/1.1] and Section 6.4 of [HTTP/2]).
 
   SECTION: [Message Forwarding](#section-7.6)
-    TEXT[!MUST]:    An intermediary not acting as a tunnel MUST implement the Connection
-    TEXT[!MUST]:    header field, as specified in Section 7.6.1, and exclude fields from
-    TEXT[!MUST]:    being forwarded that are only intended for the incoming connection.
-    TEXT[!MUST]:    An intermediary MUST NOT forward a message to itself unless it is
-    TEXT[!MUST]:    protected from an infinite request loop.
+    TEXT[!MUST,exception]:    An intermediary not acting as a tunnel MUST implement the Connection
+    TEXT[!MUST,exception]:    header field, as specified in Section 7.6.1, and exclude fields from
+    TEXT[!MUST,exception]:    being forwarded that are only intended for the incoming connection.
+    TEXT[!MUST,exception]:    An intermediary MUST NOT forward a message to itself unless it is
+    TEXT[!MUST,exception]:    protected from an infinite request loop.
 
   SECTION: [Connection](#section-7.6.1)
     TEXT[!MUST]:    When a field aside from Connection is used to supply control
     TEXT[!MUST]:    information for or about the current connection, the sender MUST list
     TEXT[!MUST]:    the corresponding field name within the Connection header field.
-    TEXT[!MUST]:    Intermediaries MUST parse a received Connection header field before a
-    TEXT[!MUST]:    message is forwarded and, for each connection-option in this field,
-    TEXT[!MUST]:    remove any header or trailer field(s) from the message with the same
-    TEXT[!MUST]:    name as the connection-option, and then remove the Connection header
-    TEXT[!MUST]:    field itself (or replace it with the intermediary's own control
-    TEXT[!MUST]:    options for the forwarded message).
-    TEXT[!SHOULD]:    Furthermore, intermediaries SHOULD remove or replace fields that are
-    TEXT[!SHOULD]:    known to require removal before forwarding, whether or not they
-    TEXT[!SHOULD]:    appear as a connection-option, after applying those fields'
-    TEXT[!SHOULD]:    semantics.
+    TEXT[!MUST,exception]:    Intermediaries MUST parse a received Connection header field before a
+    TEXT[!MUST,exception]:    message is forwarded and, for each connection-option in this field,
+    TEXT[!MUST,exception]:    remove any header or trailer field(s) from the message with the same
+    TEXT[!MUST,exception]:    name as the connection-option, and then remove the Connection header
+    TEXT[!MUST,exception]:    field itself (or replace it with the intermediary's own control
+    TEXT[!MUST,exception]:    options for the forwarded message).
+    TEXT[!SHOULD,exception]:    Furthermore, intermediaries SHOULD remove or replace fields that are
+    TEXT[!SHOULD,exception]:    known to require removal before forwarding, whether or not they
+    TEXT[!SHOULD,exception]:    appear as a connection-option, after applying those fields'
+    TEXT[!SHOULD,exception]:    semantics.
     TEXT[!MUST]:    A sender MUST NOT send a connection option corresponding to a field
     TEXT[!MUST]:    that is intended for all recipients of the content.
 
   SECTION: [Max-Forwards](#section-7.6.2)
-    TEXT[!MUST]:    Each intermediary that receives a TRACE or OPTIONS request containing
-    TEXT[!MUST]:    a Max-Forwards header field MUST check and update its value prior to
-    TEXT[!MUST]:    forwarding the request.
-    TEXT[!MUST]: If the received value is zero (0), the
-    TEXT[!MUST]:    intermediary MUST NOT forward the request; instead, the intermediary
-    TEXT[!MUST]:    MUST respond as the final recipient.
-    TEXT[!MUST]: If the received Max-Forwards
-    TEXT[!MUST]:    value is greater than zero, the intermediary MUST generate an updated
-    TEXT[!MUST]:    Max-Forwards field in the forwarded message with a field value that
-    TEXT[!MUST]:    is the lesser of a) the received value decremented by one (1) or b)
-    TEXT[!MUST]:    the recipient's maximum supported value for Max-Forwards.
+    TEXT[!MUST,exception]:    Each intermediary that receives a TRACE or OPTIONS request containing
+    TEXT[!MUST,exception]:    a Max-Forwards header field MUST check and update its value prior to
+    TEXT[!MUST,exception]:    forwarding the request.
+    TEXT[!MUST,exception]: If the received value is zero (0), the
+    TEXT[!MUST,exception]:    intermediary MUST NOT forward the request; instead, the intermediary
+    TEXT[!MUST,exception]:    MUST respond as the final recipient.
+    TEXT[!MUST,exception]: If the received Max-Forwards
+    TEXT[!MUST,exception]:    value is greater than zero, the intermediary MUST generate an updated
+    TEXT[!MUST,exception]:    Max-Forwards field in the forwarded message with a field value that
+    TEXT[!MUST,exception]:    is the lesser of a) the received value decremented by one (1) or b)
+    TEXT[!MUST,exception]:    the recipient's maximum supported value for Max-Forwards.
     TEXT[!MAY]:    A recipient MAY ignore a Max-Forwards header field received with any
     TEXT[!MAY]:    other request methods.
 
   SECTION: [Via](#section-7.6.3)
-    TEXT[!MUST]:    A proxy MUST send an appropriate Via header field, as described
-    TEXT[!MUST]:    below, in each message that it forwards.
-    TEXT[!MUST]: An HTTP-to-HTTP gateway
-    TEXT[!MUST]:    MUST send an appropriate Via header field in each inbound request
-    TEXT[!MUST]:    message and MAY send a Via header field in forwarded response
-    TEXT[!MUST]:    messages.
+    TEXT[!MUST,exception]:    A proxy MUST send an appropriate Via header field, as described
+    TEXT[!MUST,exception]:    below, in each message that it forwards.
+    TEXT[!MUST,exception]: An HTTP-to-HTTP gateway
+    TEXT[!MUST,exception]:    MUST send an appropriate Via header field in each inbound request
+    TEXT[!MUST,exception]:    message and MAY send a Via header field in forwarded response
+    TEXT[!MUST,exception]:    messages.
     TEXT[!MAY]: However, if the real host is considered to be sensitive
     TEXT[!MAY]:    information, a sender MAY replace it with a pseudonym.
     TEXT[!MAY]: If a port is
@@ -483,15 +483,15 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    recipient, analogous to the User-Agent and Server header fields.
     TEXT[!MAY]:    However, comments in Via are optional, and a recipient MAY remove
     TEXT[!MAY]:    them prior to forwarding the message.
-    TEXT[!SHOULD]:    An intermediary used as a portal through a network firewall SHOULD
-    TEXT[!SHOULD]:    NOT forward the names and ports of hosts within the firewall region
-    TEXT[!SHOULD]:    unless it is explicitly enabled to do so.
-    TEXT[!SHOULD]: If not enabled, such an
-    TEXT[!SHOULD]:    intermediary SHOULD replace each received-by host of any host behind
-    TEXT[!SHOULD]:    the firewall by an appropriate pseudonym for that host.
-    TEXT[!MAY]:    An intermediary MAY combine an ordered subsequence of Via header
-    TEXT[!MAY]:    field list members into a single member if the entries have identical
-    TEXT[!MAY]:    received-protocol values.
+    TEXT[!SHOULD,exception]:    An intermediary used as a portal through a network firewall SHOULD
+    TEXT[!SHOULD,exception]:    NOT forward the names and ports of hosts within the firewall region
+    TEXT[!SHOULD,exception]:    unless it is explicitly enabled to do so.
+    TEXT[!SHOULD,exception]: If not enabled, such an
+    TEXT[!SHOULD,exception]:    intermediary SHOULD replace each received-by host of any host behind
+    TEXT[!SHOULD,exception]:    the firewall by an appropriate pseudonym for that host.
+    TEXT[!MAY,exception]:    An intermediary MAY combine an ordered subsequence of Via header
+    TEXT[!MAY,exception]:    field list members into a single member if the entries have identical
+    TEXT[!MAY,exception]:    received-protocol values.
     TEXT[!SHOULD]:    A sender SHOULD NOT combine multiple list members unless they are all
     TEXT[!SHOULD]:    under the same organizational control and the hosts have already been
     TEXT[!SHOULD]:    replaced by pseudonyms.
@@ -499,30 +499,30 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    different received-protocol values.
 
   SECTION: [Message Transformations](#section-7.7)
-    TEXT[!MAY]:    If a proxy receives a target URI with a host name that is not a fully
-    TEXT[!MAY]:    qualified domain name, it MAY add its own domain to the host name it
-    TEXT[!MAY]:    received when forwarding the request.
-    TEXT[!MUST]: A proxy MUST NOT change the
-    TEXT[!MUST]:    host name if the target URI contains a fully qualified domain name.
-    TEXT[!MUST]:    A proxy MUST NOT modify the "absolute-path" and "query" parts of the
-    TEXT[!MUST]:    received target URI when forwarding it to the next inbound server
-    TEXT[!MUST]:    except as required by that forwarding protocol.
-    TEXT[!MUST]:    A proxy MUST NOT transform the content (Section 6.4) of a response
-    TEXT[!MUST]:    message that contains a no-transform cache directive (Section 5.2.2.6
-    TEXT[!MUST]:    of [CACHING]).
-    TEXT[!MAY]:    A proxy MAY transform the content of a message that does not contain
-    TEXT[!MAY]:    a no-transform cache directive.
-    TEXT[!SHOULD]:    A proxy SHOULD NOT modify header fields that provide information
-    TEXT[!SHOULD]:    about the endpoints of the communication chain, the resource state,
-    TEXT[!SHOULD]:    or the selected representation (other than the content) unless the
-    TEXT[!SHOULD]:    field's definition specifically allows such modification or the
-    TEXT[!SHOULD]:    modification is deemed necessary for privacy or security.
+    TEXT[!MAY,exception]:    If a proxy receives a target URI with a host name that is not a fully
+    TEXT[!MAY,exception]:    qualified domain name, it MAY add its own domain to the host name it
+    TEXT[!MAY,exception]:    received when forwarding the request.
+    TEXT[!MUST,exception]: A proxy MUST NOT change the
+    TEXT[!MUST,exception]:    host name if the target URI contains a fully qualified domain name.
+    TEXT[!MUST,exception]:    A proxy MUST NOT modify the "absolute-path" and "query" parts of the
+    TEXT[!MUST,exception]:    received target URI when forwarding it to the next inbound server
+    TEXT[!MUST,exception]:    except as required by that forwarding protocol.
+    TEXT[!MUST,exception]:    A proxy MUST NOT transform the content (Section 6.4) of a response
+    TEXT[!MUST,exception]:    message that contains a no-transform cache directive (Section 5.2.2.6
+    TEXT[!MUST,exception]:    of [CACHING]).
+    TEXT[!MAY,exception]:    A proxy MAY transform the content of a message that does not contain
+    TEXT[!MAY,exception]:    a no-transform cache directive.
+    TEXT[!SHOULD,exception]:    A proxy SHOULD NOT modify header fields that provide information
+    TEXT[!SHOULD,exception]:    about the endpoints of the communication chain, the resource state,
+    TEXT[!SHOULD,exception]:    or the selected representation (other than the content) unless the
+    TEXT[!SHOULD,exception]:    field's definition specifically allows such modification or the
+    TEXT[!SHOULD,exception]:    modification is deemed necessary for privacy or security.
 
   SECTION: [Upgrade](#section-7.8)
-    TEXT[!MAY]:    A client MAY send a list of protocol names in the Upgrade header
-    TEXT[!MAY]:    field of a request to invite the server to switch to one or more of
-    TEXT[!MAY]:    the named protocols, in order of descending preference, before
-    TEXT[!MAY]:    sending the final response.
+    TEXT[!MAY,exception]:    A client MAY send a list of protocol names in the Upgrade header
+    TEXT[!MAY,exception]:    field of a request to invite the server to switch to one or more of
+    TEXT[!MAY,exception]:    the named protocols, in order of descending preference, before
+    TEXT[!MAY,exception]:    sending the final response.
     TEXT[!MAY]: A server MAY ignore a received Upgrade
     TEXT[!MAY]:    header field if it wishes to continue using the current protocol on
     TEXT[!MAY]:    that connection.
@@ -603,12 +603,12 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    limited to textual documents.
 
   SECTION: [Content-Length](#section-8.6)
-    TEXT[!SHOULD]:    A user agent SHOULD send Content-Length in a request when the method
-    TEXT[!SHOULD]:    defines a meaning for enclosed content and it is not sending
-    TEXT[!SHOULD]:    Transfer-Encoding.
-    TEXT[!SHOULD]: A user agent SHOULD NOT send a Content-Length header field
-    TEXT[!SHOULD]:    when the request message does not contain content and the method
-    TEXT[!SHOULD]:    semantics do not anticipate such data.
+    TEXT[!SHOULD,exception]:    A user agent SHOULD send Content-Length in a request when the method
+    TEXT[!SHOULD,exception]:    defines a meaning for enclosed content and it is not sending
+    TEXT[!SHOULD,exception]:    Transfer-Encoding.
+    TEXT[!SHOULD,exception]: A user agent SHOULD NOT send a Content-Length header field
+    TEXT[!SHOULD,exception]:    when the request message does not contain content and the method
+    TEXT[!SHOULD,exception]:    semantics do not anticipate such data.
     TEXT[!MUST]:    A server MAY send a Content-Length header field in a response to a
     TEXT[!MUST]:    HEAD request (Section 9.3.2); a server MUST NOT send Content-Length
     TEXT[!MUST]:    in such a response unless its field value equals the decimal number
@@ -718,9 +718,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Safe Methods](#section-9.2.1)
     TEXT[implementation,test]:    Of the request methods defined by this specification, the GET, HEAD,
     TEXT[implementation,test]:    OPTIONS, and TRACE methods are defined to be safe.
-    TEXT[!SHOULD]:    A user agent SHOULD distinguish between safe and unsafe methods when
-    TEXT[!SHOULD]:    presenting potential actions to a user, such that the user can be
-    TEXT[!SHOULD]:    made aware of an unsafe action before it is requested.
+    TEXT[!SHOULD,exception]:    A user agent SHOULD distinguish between safe and unsafe methods when
+    TEXT[!SHOULD,exception]:    presenting potential actions to a user, such that the user can be
+    TEXT[!SHOULD,exception]:    made aware of an unsafe action before it is requested.
     TEXT[!MUST]: If the purpose of such a
     TEXT[!MUST]:    resource is to perform an unsafe action, then the resource owner MUST
     TEXT[!MUST]:    disable or disallow that action when it is accessed using a safe
@@ -730,25 +730,25 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[implementation,test]: Of the request methods
     TEXT[implementation,test]:    defined by this specification, PUT, DELETE, and safe request methods
     TEXT[implementation,test]:    are idempotent.
-    TEXT[!SHOULD]:    A client SHOULD NOT automatically retry a request with a non-
-    TEXT[!SHOULD]:    idempotent method unless it has some means to know that the request
-    TEXT[!SHOULD]:    semantics are actually idempotent, regardless of the method, or some
-    TEXT[!SHOULD]:    means to detect that the original request was never applied.
-    TEXT[!MUST]:    A proxy MUST NOT automatically retry non-idempotent requests.
-    TEXT[!SHOULD]:    client SHOULD NOT automatically retry a failed automatic retry.
+    TEXT[!SHOULD,exception]:    A client SHOULD NOT automatically retry a request with a non-
+    TEXT[!SHOULD,exception]:    idempotent method unless it has some means to know that the request
+    TEXT[!SHOULD,exception]:    semantics are actually idempotent, regardless of the method, or some
+    TEXT[!SHOULD,exception]:    means to detect that the original request was never applied.
+    TEXT[!MUST,exception]:    A proxy MUST NOT automatically retry non-idempotent requests.
+    TEXT[!SHOULD,exception]:    client SHOULD NOT automatically retry a failed automatic retry.
 
   SECTION: [GET](#section-9.3.1)
-    TEXT[!SHOULD]: A client SHOULD NOT generate content in a GET
-    TEXT[!SHOULD]:    request unless it is made directly to an origin server that has
-    TEXT[!SHOULD]:    previously indicated, in or out of band, that such a request has a
-    TEXT[!SHOULD]:    purpose and will be adequately supported.
+    TEXT[!SHOULD,exception]: A client SHOULD NOT generate content in a GET
+    TEXT[!SHOULD,exception]:    request unless it is made directly to an origin server that has
+    TEXT[!SHOULD,exception]:    previously indicated, in or out of band, that such a request has a
+    TEXT[!SHOULD,exception]:    purpose and will be adequately supported.
     TEXT[!SHOULD]: An origin server SHOULD
     TEXT[!SHOULD]:    NOT rely on private agreements to receive content, since participants
     TEXT[!SHOULD]:    in HTTP communication are often unaware of intermediaries along the
     TEXT[!SHOULD]:    request chain.
-    TEXT[!MAY]:    The response to a GET request is cacheable; a cache MAY use it to
-    TEXT[!MAY]:    satisfy subsequent GET and HEAD requests unless otherwise indicated
-    TEXT[!MAY]:    by the Cache-Control header field (Section 5.2 of [CACHING]).
+    TEXT[!MAY,exception]:    The response to a GET request is cacheable; a cache MAY use it to
+    TEXT[!MAY,exception]:    satisfy subsequent GET and HEAD requests unless otherwise indicated
+    TEXT[!MAY,exception]:    by the Cache-Control header field (Section 5.2 of [CACHING]).
 
   SECTION: [HEAD](#section-9.3.2)
     TEXT[!MUST]:    The HEAD method is identical to GET except that the server MUST NOT
@@ -757,17 +757,17 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    request as it would have sent if the request method had been GET.
     TEXT[!MAY]:    However, a server MAY omit header fields for which a value is
     TEXT[!MAY]:    determined only while generating the content.
-    TEXT[!SHOULD]: A client SHOULD NOT generate content
-    TEXT[!SHOULD]:    in a HEAD request unless it is made directly to an origin server that
-    TEXT[!SHOULD]:    has previously indicated, in or out of band, that such a request has
-    TEXT[!SHOULD]:    a purpose and will be adequately supported.
+    TEXT[!SHOULD,exception]: A client SHOULD NOT generate content
+    TEXT[!SHOULD,exception]:    in a HEAD request unless it is made directly to an origin server that
+    TEXT[!SHOULD,exception]:    has previously indicated, in or out of band, that such a request has
+    TEXT[!SHOULD,exception]:    a purpose and will be adequately supported.
     TEXT[!SHOULD]: An origin server SHOULD
     TEXT[!SHOULD]:    NOT rely on private agreements to receive content, since participants
     TEXT[!SHOULD]:    in HTTP communication are often unaware of intermediaries along the
     TEXT[!SHOULD]:    request chain.
-    TEXT[!MAY]:    The response to a HEAD request is cacheable; a cache MAY use it to
-    TEXT[!MAY]:    satisfy subsequent HEAD requests unless otherwise indicated by the
-    TEXT[!MAY]:    Cache-Control header field (Section 5.2 of [CACHING]).
+    TEXT[!MAY,exception]:    The response to a HEAD request is cacheable; a cache MAY use it to
+    TEXT[!MAY,exception]:    satisfy subsequent HEAD requests unless otherwise indicated by the
+    TEXT[!MAY,exception]:    Cache-Control header field (Section 5.2 of [CACHING]).
 
   SECTION: [POST](#section-9.3.3)
     TEXT[!SHOULD]:    If one or more resources has been created on the origin server as a
@@ -823,10 +823,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [DELETE](#section-9.3.5)
     TEXT[!SHOULD]:    If a DELETE method is successfully applied, the origin server SHOULD
     TEXT[!SHOULD]:    send
-    TEXT[!SHOULD]: A client SHOULD NOT generate content
-    TEXT[!SHOULD]:    in a DELETE request unless it is made directly to an origin server
-    TEXT[!SHOULD]:    that has previously indicated, in or out of band, that such a request
-    TEXT[!SHOULD]:    has a purpose and will be adequately supported.
+    TEXT[!SHOULD,exception]: A client SHOULD NOT generate content
+    TEXT[!SHOULD,exception]:    in a DELETE request unless it is made directly to an origin server
+    TEXT[!SHOULD,exception]:    that has previously indicated, in or out of band, that such a request
+    TEXT[!SHOULD,exception]:    has a purpose and will be adequately supported.
     TEXT[!SHOULD]: An origin server
     TEXT[!SHOULD]:    SHOULD NOT rely on private agreements to receive content, since
     TEXT[!SHOULD]:    participants in HTTP communication are often unaware of
@@ -836,78 +836,78 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[implementation]:    CONNECT uses a special form of request target, unique to this method,
     TEXT[implementation]:    consisting of only the host and port number of the tunnel
     TEXT[implementation]:    destination, separated by a colon.
-    TEXT[!MUST]: There is no default port; a
-    TEXT[!MUST]:    client MUST send the port number even if the CONNECT request is based
-    TEXT[!MUST]:    on a URI reference that contains an authority component with an
-    TEXT[!MUST]:    elided port (Section 4.1).
+    TEXT[!MUST,exception]: There is no default port; a
+    TEXT[!MUST,exception]:    client MUST send the port number even if the CONNECT request is based
+    TEXT[!MUST,exception]:    on a URI reference that contains an authority component with an
+    TEXT[!MUST,exception]:    elided port (Section 4.1).
     TEXT[!MUST,implementation,test]:    A server MUST reject a CONNECT request that targets an empty or
     TEXT[!MUST,implementation,test]:    invalid port number
     TEXT[!MUST,implementation]: , typically by responding with a 400 (Bad Request)
     TEXT[!MUST,implementation]:    status code.
     TEXT[!MAY]:    An origin server MAY accept a CONNECT request, but most origin
     TEXT[!MAY]:    servers do not implement CONNECT.
-    TEXT[!MUST]:    A tunnel is closed when a tunnel intermediary detects that either
-    TEXT[!MUST]:    side has closed its connection: the intermediary MUST attempt to send
-    TEXT[!MUST]:    any outstanding data that came from the closed side to the other
-    TEXT[!MUST]:    side, close both connections, and then discard any remaining data
-    TEXT[!MUST]:    left undelivered.
-    TEXT[!SHOULD]: Proxies that support CONNECT SHOULD
-    TEXT[!SHOULD]:    restrict its use to a limited set of known ports or a configurable
-    TEXT[!SHOULD]:    list of safe request targets.
+    TEXT[!MUST,exception]:    A tunnel is closed when a tunnel intermediary detects that either
+    TEXT[!MUST,exception]:    side has closed its connection: the intermediary MUST attempt to send
+    TEXT[!MUST,exception]:    any outstanding data that came from the closed side to the other
+    TEXT[!MUST,exception]:    side, close both connections, and then discard any remaining data
+    TEXT[!MUST,exception]:    left undelivered.
+    TEXT[!SHOULD,exception]: Proxies that support CONNECT SHOULD
+    TEXT[!SHOULD,exception]:    restrict its use to a limited set of known ports or a configurable
+    TEXT[!SHOULD,exception]:    list of safe request targets.
     TEXT[!MUST]:    A server MUST NOT send any Transfer-Encoding or Content-Length header
     TEXT[!MUST]:    fields in a 2xx (Successful) response to CONNECT.
-    TEXT[!MUST]: A client MUST
-    TEXT[!MUST]:    ignore any Content-Length or Transfer-Encoding header fields received
-    TEXT[!MUST]:    in a successful response to CONNECT.
+    TEXT[!MUST,exception]: A client MUST
+    TEXT[!MUST,exception]:    ignore any Content-Length or Transfer-Encoding header fields received
+    TEXT[!MUST,exception]:    in a successful response to CONNECT.
 
   SECTION: [OPTIONS](#section-9.3.7)
     TEXT[!SHOULD]:    A server generating a successful response to OPTIONS SHOULD send any
     TEXT[!SHOULD]:    header that might indicate optional features implemented by the
     TEXT[!SHOULD]:    server and applicable to the target resource (e.g., Allow), including
     TEXT[!SHOULD]:    potential extensions not defined by this specification.
-    TEXT[!MAY]:    A client MAY send a Max-Forwards header field in an OPTIONS request
-    TEXT[!MAY]:    to target a specific recipient in the request chain (see
-    TEXT[!MAY]:    Section 7.6.2).
-    TEXT[!MUST]: A proxy MUST NOT generate a Max-Forwards header
-    TEXT[!MUST]:    field while forwarding a request unless that request was received
-    TEXT[!MUST]:    with a Max-Forwards field.
-    TEXT[!MUST]:    A client that generates an OPTIONS request containing content MUST
-    TEXT[!MUST]:    send a valid Content-Type header field describing the representation
-    TEXT[!MUST]:    media type.
+    TEXT[!MAY,exception]:    A client MAY send a Max-Forwards header field in an OPTIONS request
+    TEXT[!MAY,exception]:    to target a specific recipient in the request chain (see
+    TEXT[!MAY,exception]:    Section 7.6.2).
+    TEXT[!MUST,exception]: A proxy MUST NOT generate a Max-Forwards header
+    TEXT[!MUST,exception]:    field while forwarding a request unless that request was received
+    TEXT[!MUST,exception]:    with a Max-Forwards field.
+    TEXT[!MUST,exception]:    A client that generates an OPTIONS request containing content MUST
+    TEXT[!MUST,exception]:    send a valid Content-Type header field describing the representation
+    TEXT[!MUST,exception]:    media type.
 
   SECTION: [TRACE](#section-9.3.8)
     TEXT[!SHOULD]: The final recipient of the request SHOULD
     TEXT[!SHOULD]:    reflect the message received, excluding some fields described below,
     TEXT[!SHOULD]:    back to the client as the content of a 200 (OK) response.
-    TEXT[!MUST]:    A client MUST NOT generate fields in a TRACE request containing
-    TEXT[!MUST]:    sensitive data that might be disclosed by the response.
+    TEXT[!MUST,exception]:    A client MUST NOT generate fields in a TRACE request containing
+    TEXT[!MUST,exception]:    sensitive data that might be disclosed by the response.
     TEXT[!SHOULD]: The final
     TEXT[!SHOULD]:    recipient of the request SHOULD exclude any request fields that are
     TEXT[!SHOULD]:    likely to contain sensitive data when that recipient generates the
     TEXT[!SHOULD]:    response content.
-    TEXT[!MUST]:    A client MUST NOT send content in a TRACE request.
+    TEXT[!MUST,exception]:    A client MUST NOT send content in a TRACE request.
 
   SECTION: [Expect](#section-10.1.1)
     TEXT[!MAY]:    A server that receives an Expect field value containing a member
     TEXT[!MAY]:    other than 100-continue MAY respond with a 417 (Expectation Failed)
     TEXT[!MAY]:    status code to indicate that the unexpected expectation cannot be
     TEXT[!MAY]:    met.
-    TEXT[!MUST]:    *  A client MUST NOT generate a 100-continue expectation in a request
-    TEXT[!MUST]:       that does not include content.
-    TEXT[!MUST]:    *  A client that will wait for a 100 (Continue) response before
-    TEXT[!MUST]:       sending the request content MUST send an Expect header field
-    TEXT[!MUST]:       containing a 100-continue expectation.
-    TEXT[!MAY]:    *  A client that sends a 100-continue expectation is not required to
-    TEXT[!MAY]:       wait for any specific length of time; such a client MAY proceed to
-    TEXT[!MAY]:       send the content even if it has not yet received a response.
-    TEXT[!SHOULD]:       Furthermore, since 100 (Continue) responses cannot be sent through
-    TEXT[!SHOULD]:       an HTTP/1.0 intermediary, such a client SHOULD NOT wait for an
-    TEXT[!SHOULD]:       indefinite period before sending the content.
-    TEXT[!SHOULD]:    *  A client that receives a 417 (Expectation Failed) status code in
-    TEXT[!SHOULD]:       response to a request containing a 100-continue expectation SHOULD
-    TEXT[!SHOULD]:       repeat that request without a 100-continue expectation, since the
-    TEXT[!SHOULD]:       417 response merely indicates that the response chain does not
-    TEXT[!SHOULD]:       support expectations (e.g., it passes through an HTTP/1.0 server).
+    TEXT[!MUST,exception]:    *  A client MUST NOT generate a 100-continue expectation in a request
+    TEXT[!MUST,exception]:       that does not include content.
+    TEXT[!MUST,exception]:    *  A client that will wait for a 100 (Continue) response before
+    TEXT[!MUST,exception]:       sending the request content MUST send an Expect header field
+    TEXT[!MUST,exception]:       containing a 100-continue expectation.
+    TEXT[!MAY,exception]:    *  A client that sends a 100-continue expectation is not required to
+    TEXT[!MAY,exception]:       wait for any specific length of time; such a client MAY proceed to
+    TEXT[!MAY,exception]:       send the content even if it has not yet received a response.
+    TEXT[!SHOULD,exception]:       Furthermore, since 100 (Continue) responses cannot be sent through
+    TEXT[!SHOULD,exception]:       an HTTP/1.0 intermediary, such a client SHOULD NOT wait for an
+    TEXT[!SHOULD,exception]:       indefinite period before sending the content.
+    TEXT[!SHOULD,exception]:    *  A client that receives a 417 (Expectation Failed) status code in
+    TEXT[!SHOULD,exception]:       response to a request containing a 100-continue expectation SHOULD
+    TEXT[!SHOULD,exception]:       repeat that request without a 100-continue expectation, since the
+    TEXT[!SHOULD,exception]:       417 response merely indicates that the response chain does not
+    TEXT[!SHOULD,exception]:       support expectations (e.g., it passes through an HTTP/1.0 server).
     TEXT[!MUST]:    *  A server that receives a 100-continue expectation in an HTTP/1.0
     TEXT[!MUST]:       request MUST ignore that expectation.
     TEXT[!MAY]:    *  A server MAY omit sending a 100 (Continue) response if it has
@@ -926,51 +926,51 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    origin server MUST send either:
     TEXT[!MUST]:    The origin server MUST NOT wait for the content before sending the
     TEXT[!MUST]:    100 (Continue) response.
-    TEXT[!MUST]:    Upon receiving an HTTP/1.1 (or later) request that has a method,
-    TEXT[!MUST]:    target URI, and complete header section that contains a 100-continue
-    TEXT[!MUST]:    expectation and indicates a request content will follow, a proxy MUST
-    TEXT[!MUST]:    either:
-    TEXT[!MAY]:    If the proxy believes (from configuration or past interaction) that
-    TEXT[!MAY]:    the next inbound server only supports HTTP/1.0, the proxy MAY
-    TEXT[!MAY]:    generate an immediate 100 (Continue) response to encourage the client
-    TEXT[!MAY]:    to begin sending the content.
+    TEXT[!MUST,exception]:    Upon receiving an HTTP/1.1 (or later) request that has a method,
+    TEXT[!MUST,exception]:    target URI, and complete header section that contains a 100-continue
+    TEXT[!MUST,exception]:    expectation and indicates a request content will follow, a proxy MUST
+    TEXT[!MUST,exception]:    either:
+    TEXT[!MAY,exception]:    If the proxy believes (from configuration or past interaction) that
+    TEXT[!MAY,exception]:    the next inbound server only supports HTTP/1.0, the proxy MAY
+    TEXT[!MAY,exception]:    generate an immediate 100 (Continue) response to encourage the client
+    TEXT[!MAY,exception]:    to begin sending the content.
 
   SECTION: [From](#section-10.1.2)
-    TEXT[!SHOULD]:    user agent SHOULD NOT send a From header field without explicit
-    TEXT[!SHOULD]:    configuration by the user, since that might conflict with the user's
-    TEXT[!SHOULD]:    privacy interests or their site's security policy.
-    TEXT[!SHOULD]:    A robotic user agent SHOULD send a valid From header field so that
-    TEXT[!SHOULD]:    the person responsible for running the robot can be contacted if
-    TEXT[!SHOULD]:    problems occur on servers, such as if the robot is sending excessive,
-    TEXT[!SHOULD]:    unwanted, or invalid requests.
+    TEXT[!SHOULD,exception]:    user agent SHOULD NOT send a From header field without explicit
+    TEXT[!SHOULD,exception]:    configuration by the user, since that might conflict with the user's
+    TEXT[!SHOULD,exception]:    privacy interests or their site's security policy.
+    TEXT[!SHOULD,exception]:    A robotic user agent SHOULD send a valid From header field so that
+    TEXT[!SHOULD,exception]:    the person responsible for running the robot can be contacted if
+    TEXT[!SHOULD,exception]:    problems occur on servers, such as if the robot is sending excessive,
+    TEXT[!SHOULD,exception]:    unwanted, or invalid requests.
     TEXT[!SHOULD]:    A server SHOULD NOT use the From header field for access control or
     TEXT[!SHOULD]:    authentication, since its value is expected to be visible to anyone
     TEXT[!SHOULD]:    receiving or observing the request and is often recorded within
     TEXT[!SHOULD]:    logfiles and error reports without any expectation of privacy.
 
   SECTION: [Referer](#section-10.1.3)
-    TEXT[!MUST]: A user
-    TEXT[!MUST]:    agent MUST NOT include the fragment and userinfo components of the
-    TEXT[!MUST]:    URI reference [URI], if any, when generating the Referer field value.
-    TEXT[!MUST]:    If the target URI was obtained from a source that does not have its
-    TEXT[!MUST]:    own URI (e.g., input from the user keyboard, or an entry within the
-    TEXT[!MUST]:    user's bookmarks/favorites), the user agent MUST either exclude the
-    TEXT[!MUST]:    Referer header field or send it with a value of "about:blank".
-    TEXT[!MAY]:    The Referer header field value need not convey the full URI of the
-    TEXT[!MAY]:    referring resource; a user agent MAY truncate parts other than the
-    TEXT[!MAY]:    referring origin.
-    TEXT[!SHOULD]: A user agent SHOULD NOT send a Referer header field if
-    TEXT[!SHOULD]:    the referring resource was accessed with a secure protocol and the
-    TEXT[!SHOULD]:    request target has an origin differing from that of the referring
-    TEXT[!SHOULD]:    resource, unless the referring resource explicitly allows Referer to
-    TEXT[!SHOULD]:    be sent.
-    TEXT[!MUST]: A user agent MUST NOT send a Referer header field in an
-    TEXT[!MUST]:    unsecured HTTP request if the referring resource was accessed with a
-    TEXT[!MUST]:    secure protocol.
-    TEXT[!SHOULD]: An
-    TEXT[!SHOULD]:    intermediary SHOULD NOT modify or delete the Referer header field
-    TEXT[!SHOULD]:    when the field value shares the same scheme and host as the target
-    TEXT[!SHOULD]:    URI.
+    TEXT[!MUST,exception]: A user
+    TEXT[!MUST,exception]:    agent MUST NOT include the fragment and userinfo components of the
+    TEXT[!MUST,exception]:    URI reference [URI], if any, when generating the Referer field value.
+    TEXT[!MUST,exception]:    If the target URI was obtained from a source that does not have its
+    TEXT[!MUST,exception]:    own URI (e.g., input from the user keyboard, or an entry within the
+    TEXT[!MUST,exception]:    user's bookmarks/favorites), the user agent MUST either exclude the
+    TEXT[!MUST,exception]:    Referer header field or send it with a value of "about:blank".
+    TEXT[!MAY,exception]:    The Referer header field value need not convey the full URI of the
+    TEXT[!MAY,exception]:    referring resource; a user agent MAY truncate parts other than the
+    TEXT[!MAY,exception]:    referring origin.
+    TEXT[!SHOULD,exception]: A user agent SHOULD NOT send a Referer header field if
+    TEXT[!SHOULD,exception]:    the referring resource was accessed with a secure protocol and the
+    TEXT[!SHOULD,exception]:    request target has an origin differing from that of the referring
+    TEXT[!SHOULD,exception]:    resource, unless the referring resource explicitly allows Referer to
+    TEXT[!SHOULD,exception]:    be sent.
+    TEXT[!MUST,exception]: A user agent MUST NOT send a Referer header field in an
+    TEXT[!MUST,exception]:    unsecured HTTP request if the referring resource was accessed with a
+    TEXT[!MUST,exception]:    secure protocol.
+    TEXT[!SHOULD,exception]: An
+    TEXT[!SHOULD,exception]:    intermediary SHOULD NOT modify or delete the Referer header field
+    TEXT[!SHOULD,exception]:    when the field value shares the same scheme and host as the target
+    TEXT[!SHOULD,exception]:    URI.
 
   SECTION: [TE](#section-10.1.4)
     TEXT[!MUST]:    A sender of TE MUST also send a "TE" connection option within the
@@ -978,8 +978,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    to forward this field.
 
   SECTION: [User-Agent](#section-10.1.5)
-    TEXT[!SHOULD]: A user agent SHOULD send a User-Agent header field in each
-    TEXT[!SHOULD]:    request unless specifically configured not to do so.
+    TEXT[!SHOULD,exception]: A user agent SHOULD send a User-Agent header field in each
+    TEXT[!SHOULD,exception]:    request unless specifically configured not to do so.
     TEXT[!MUST]:    A sender SHOULD limit generated product identifiers to what is
     TEXT[!MUST]:    necessary to identify the product; a sender MUST NOT generate
     TEXT[!MUST]:    advertising or other nonessential information within the product
@@ -988,24 +988,24 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    product-version that is not a version identifier (i.e., successive
     TEXT[!SHOULD]:    versions of the same product name ought to differ only in the
     TEXT[!SHOULD]:    product-version portion of the product identifier).
-    TEXT[!SHOULD]:    A user agent SHOULD NOT generate a User-Agent header field containing
-    TEXT[!SHOULD]:    needlessly fine-grained detail and SHOULD limit the addition of
-    TEXT[!SHOULD]:    subproducts by third parties.
+    TEXT[!SHOULD,exception]:    A user agent SHOULD NOT generate a User-Agent header field containing
+    TEXT[!SHOULD,exception]:    needlessly fine-grained detail and SHOULD limit the addition of
+    TEXT[!SHOULD,exception]:    subproducts by third parties.
 
   SECTION: [Allow](#section-10.2.1)
     TEXT[!MUST]: An origin server MUST generate an Allow
     TEXT[!MUST]:    header field in a 405 (Method Not Allowed) response and MAY do so in
     TEXT[!MUST]:    any other response.
-    TEXT[!MUST]:    A proxy MUST NOT modify the Allow header field -- it does not need to
-    TEXT[!MUST]:    understand all of the indicated methods in order to handle them
-    TEXT[!MUST]:    according to the generic message handling rules.
+    TEXT[!MUST,exception]:    A proxy MUST NOT modify the Allow header field -- it does not need to
+    TEXT[!MUST,exception]:    understand all of the indicated methods in order to handle them
+    TEXT[!MUST,exception]:    according to the generic message handling rules.
 
   SECTION: [Location](#section-10.2.2)
-    TEXT[!MUST]:    If the Location value provided in a 3xx (Redirection) response does
-    TEXT[!MUST]:    not have a fragment component, a user agent MUST process the
-    TEXT[!MUST]:    redirection as if the value inherits the fragment component of the
-    TEXT[!MUST]:    URI reference used to generate the target URI (i.e., the redirection
-    TEXT[!MUST]:    inherits the original reference's fragment, if any).
+    TEXT[!MUST,exception]:    If the Location value provided in a 3xx (Redirection) response does
+    TEXT[!MUST,exception]:    not have a fragment component, a user agent MUST process the
+    TEXT[!MUST,exception]:    redirection as if the value inherits the fragment component of the
+    TEXT[!MUST,exception]:    URI reference used to generate the target URI (i.e., the redirection
+    TEXT[!MUST,exception]:    inherits the original reference's fragment, if any).
 
   SECTION: [Server](#section-10.2.4)
     TEXT[!MAY]: An origin server MAY generate a Server header field in
@@ -1027,18 +1027,18 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    (Unauthorized) response that contains a WWW-Authenticate header field
     TEXT[!SHOULD]:    with at least one (possibly new) challenge applicable to the
     TEXT[!SHOULD]:    requested resource.
-    TEXT[!SHOULD]:    Likewise, upon receipt of a request that omits proxy credentials or
-    TEXT[!SHOULD]:    contains invalid or partial proxy credentials, a proxy that requires
-    TEXT[!SHOULD]:    authentication SHOULD generate a 407 (Proxy Authentication Required)
-    TEXT[!SHOULD]:    response that contains a Proxy-Authenticate header field with at
-    TEXT[!SHOULD]:    least one (possibly new) challenge applicable to the proxy.
+    TEXT[!SHOULD,exception]:    Likewise, upon receipt of a request that omits proxy credentials or
+    TEXT[!SHOULD,exception]:    contains invalid or partial proxy credentials, a proxy that requires
+    TEXT[!SHOULD,exception]:    authentication SHOULD generate a 407 (Proxy Authentication Required)
+    TEXT[!SHOULD,exception]:    response that contains a Proxy-Authenticate header field with at
+    TEXT[!SHOULD,exception]:    least one (possibly new) challenge applicable to the proxy.
 
   SECTION: [Establishing a Protection Space (Realm)](#section-11.5)
-    TEXT[!MAY]: If a prior request has been authorized,
-    TEXT[!MAY]:    the user agent MAY reuse the same credentials for all other requests
-    TEXT[!MAY]:    within that protection space for a period of time determined by the
-    TEXT[!MAY]:    authentication scheme, parameters, and/or user preferences (such as a
-    TEXT[!MAY]:    configurable inactivity timeout).
+    TEXT[!MAY,exception]: If a prior request has been authorized,
+    TEXT[!MAY,exception]:    the user agent MAY reuse the same credentials for all other requests
+    TEXT[!MAY,exception]:    within that protection space for a period of time determined by the
+    TEXT[!MAY,exception]:    authentication scheme, parameters, and/or user preferences (such as a
+    TEXT[!MAY,exception]:    configurable inactivity timeout).
     TEXT[!MUST]:    For historical reasons, a sender MUST only generate the quoted-string
     TEXT[!MUST]:    syntax.
 
@@ -1048,28 +1048,28 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    server MAY generate a WWW-Authenticate header field in other response
     TEXT[!MAY]:    messages to indicate that supplying credentials (or different
     TEXT[!MAY]:    credentials) might affect the response.
-    TEXT[!MUST]:    A proxy forwarding a response MUST NOT modify any WWW-Authenticate
-    TEXT[!MUST]:    header fields in that response.
+    TEXT[!MUST,exception]:    A proxy forwarding a response MUST NOT modify any WWW-Authenticate
+    TEXT[!MUST,exception]:    header fields in that response.
 
   SECTION: [Authorization](#section-11.6.2)
-    TEXT[!MUST]:    A proxy forwarding a request MUST NOT modify any Authorization header
-    TEXT[!MUST]:    fields in that request.
+    TEXT[!MUST,exception]:    A proxy forwarding a request MUST NOT modify any Authorization header
+    TEXT[!MUST,exception]:    fields in that request.
 
   SECTION: [Proxy-Authenticate](#section-11.7.1)
-    TEXT[!MUST]: A proxy MUST send at least
-    TEXT[!MUST]:    one Proxy-Authenticate header field in each 407 (Proxy Authentication
-    TEXT[!MUST]:    Required) response that it generates.
+    TEXT[!MUST,exception]: A proxy MUST send at least
+    TEXT[!MUST,exception]:    one Proxy-Authenticate header field in each 407 (Proxy Authentication
+    TEXT[!MUST,exception]:    Required) response that it generates.
 
   SECTION: [Proxy-Authorization](#section-11.7.2)
-    TEXT[!MAY]: A proxy MAY
-    TEXT[!MAY]:    relay the credentials from the client request to the next proxy if
-    TEXT[!MAY]:    that is the mechanism by which the proxies cooperatively authenticate
-    TEXT[!MAY]:    a given request.
+    TEXT[!MAY,exception]: A proxy MAY
+    TEXT[!MAY,exception]:    relay the credentials from the client request to the next proxy if
+    TEXT[!MAY,exception]:    that is the mechanism by which the proxies cooperatively authenticate
+    TEXT[!MAY,exception]:    a given request.
 
   SECTION: [Proactive Negotiation](#section-12.1)
-    TEXT[!MAY]: In order to improve the
-    TEXT[!MAY]:    server's guess, a user agent MAY send request header fields that
-    TEXT[!MAY]:    describe its preferences.
+    TEXT[!MAY,exception]: In order to improve the
+    TEXT[!MAY,exception]:    server's guess, a user agent MAY send request header fields that
+    TEXT[!MAY,exception]:    describe its preferences.
 
   SECTION: [Quality Values](#section-12.4.2)
     TEXT[!MUST]:    A sender of qvalue MUST NOT generate more than three digits after the
@@ -1083,9 +1083,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    parameter ordering.
 
   SECTION: [Accept-Charset](#section-12.5.2)
-    TEXT[!MAY]: A user agent MAY
-    TEXT[!MAY]:    associate a quality value with each charset to indicate the user's
-    TEXT[!MAY]:    relative preference for that charset, as defined in Section 12.4.2.
+    TEXT[!MAY,exception]: A user agent MAY
+    TEXT[!MAY,exception]:    associate a quality value with each charset to indicate the user's
+    TEXT[!MAY,exception]:    relative preference for that charset, as defined in Section 12.4.2.
 
   SECTION: [Accept-Encoding](#section-12.5.3)
     TEXT[!MAY]:    Each codings value MAY be given an associated quality value (weight)
@@ -1102,18 +1102,18 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    Encoding header field.
 
   SECTION: [Accept-Language](#section-12.5.4)
-    TEXT[!MUST]: A user agent that
-    TEXT[!MUST]:    does not provide such control to the user MUST NOT send an Accept-
-    TEXT[!MUST]:    Language header field.
+    TEXT[!MUST,exception]: A user agent that
+    TEXT[!MUST,exception]:    does not provide such control to the user MUST NOT send an Accept-
+    TEXT[!MUST,exception]:    Language header field.
 
   SECTION: [Vary](#section-12.5.5)
-    TEXT[!MUST]: A proxy MUST
-    TEXT[!MUST]:    NOT generate "*" in a Vary field value.
-    TEXT[!MUST]: To inform cache recipients that they MUST NOT use this response
-    TEXT[!MUST]:        to satisfy a later request unless the later request has the same
-    TEXT[!MUST]:        values for the listed header fields as the original request
-    TEXT[!MUST]:        (Section 4.1 of [CACHING]) or reuse of the response has been
-    TEXT[!MUST]:        validated by the origin server.
+    TEXT[!MUST,exception]: A proxy MUST
+    TEXT[!MUST,exception]:    NOT generate "*" in a Vary field value.
+    TEXT[!MUST,exception]: To inform cache recipients that they MUST NOT use this response
+    TEXT[!MUST,exception]:        to satisfy a later request unless the later request has the same
+    TEXT[!MUST,exception]:        values for the listed header fields as the original request
+    TEXT[!MUST,exception]:        (Section 4.1 of [CACHING]) or reuse of the response has been
+    TEXT[!MUST,exception]:        validated by the origin server.
     TEXT[!SHOULD]:    An origin server SHOULD generate a Vary header field on a cacheable
     TEXT[!SHOULD]:    response when it wishes that response to be selectively reused for
     TEXT[!SHOULD]:    subsequent requests.
@@ -1138,23 +1138,23 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    but the user agent might not be aware of it, perhaps because the
     TEXT[!MAY]:    prior response was lost or an equivalent change was made by some
     TEXT[!MAY]:    other user agent).
-    TEXT[!MAY]:    A client MAY send an If-Match header field in a GET request to
-    TEXT[!MAY]:    indicate that it would prefer a 412 (Precondition Failed) response if
-    TEXT[!MAY]:    the selected representation does not match.
-    TEXT[!MAY]:    A cache or intermediary MAY ignore If-Match because its
-    TEXT[!MAY]:    interoperability features are only necessary for an origin server.
+    TEXT[!MAY,exception]:    A client MAY send an If-Match header field in a GET request to
+    TEXT[!MAY,exception]:    indicate that it would prefer a 412 (Precondition Failed) response if
+    TEXT[!MAY,exception]:    the selected representation does not match.
+    TEXT[!MAY,exception]:    A cache or intermediary MAY ignore If-Match because its
+    TEXT[!MAY,exception]:    interoperability features are only necessary for an origin server.
 
   SECTION: [If-None-Match](#section-13.1.2)
     TEXT[!MUST]:    A recipient MUST use the weak comparison function when comparing
     TEXT[!MUST]:    entity tags for If-None-Match (Section 8.8.3.2), since weak entity
     TEXT[!MUST]:    tags can be used for cache validation even if there have been changes
     TEXT[!MUST]:    to the representation data.
-    TEXT[!SHOULD]: When a client desires to update one or more
-    TEXT[!SHOULD]:    stored responses that have entity tags, the client SHOULD generate an
-    TEXT[!SHOULD]:    If-None-Match header field containing a list of those entity tags
-    TEXT[!SHOULD]:    when making a GET request; this allows recipient servers to send a
-    TEXT[!SHOULD]:    304 (Not Modified) response to indicate when one of those stored
-    TEXT[!SHOULD]:    responses matches the selected representation.
+    TEXT[!SHOULD,exception]: When a client desires to update one or more
+    TEXT[!SHOULD,exception]:    stored responses that have entity tags, the client SHOULD generate an
+    TEXT[!SHOULD,exception]:    If-None-Match header field containing a list of those entity tags
+    TEXT[!SHOULD,exception]:    when making a GET request; this allows recipient servers to send a
+    TEXT[!SHOULD,exception]:    304 (Not Modified) response to indicate when one of those stored
+    TEXT[!SHOULD,exception]:    responses matches the selected representation.
     TEXT[!MUST]:    When an origin server receives a request that selects a
     TEXT[!MUST]:    representation and that request includes an If-None-Match header
     TEXT[!MUST]:    field, the origin server MUST evaluate the If-None-Match condition
@@ -1220,27 +1220,27 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    but the user agent might not be aware of it, perhaps because the
     TEXT[!MAY]:    prior response was lost or an equivalent change was made by some
     TEXT[!MAY]:    other user agent).
-    TEXT[!MAY]:    A client MAY send an If-Unmodified-Since header field in a GET
-    TEXT[!MAY]:    request to indicate that it would prefer a 412 (Precondition Failed)
-    TEXT[!MAY]:    response if the selected representation has been modified.
-    TEXT[!MAY]:    A cache or intermediary MAY ignore If-Unmodified-Since because its
-    TEXT[!MAY]:    interoperability features are only necessary for an origin server.
+    TEXT[!MAY,exception]:    A client MAY send an If-Unmodified-Since header field in a GET
+    TEXT[!MAY,exception]:    request to indicate that it would prefer a 412 (Precondition Failed)
+    TEXT[!MAY,exception]:    response if the selected representation has been modified.
+    TEXT[!MAY,exception]:    A cache or intermediary MAY ignore If-Unmodified-Since because its
+    TEXT[!MAY,exception]:    interoperability features are only necessary for an origin server.
 
   SECTION: [If-Range](#section-13.1.5)
-    TEXT[!MUST]:    A client MUST NOT generate an If-Range header field in a request that
-    TEXT[!MUST]:    does not contain a Range header field.
+    TEXT[!MUST,exception]:    A client MUST NOT generate an If-Range header field in a request that
+    TEXT[!MUST,exception]:    does not contain a Range header field.
     TEXT[!MUST]: A server MUST ignore an If-
     TEXT[!MUST]:    Range header field received in a request that does not contain a
     TEXT[!MUST]:    Range header field.
     TEXT[!MUST]: An origin server MUST ignore an If-Range header
     TEXT[!MUST]:    field received in a request for a target resource that does not
     TEXT[!MUST]:    support Range requests.
-    TEXT[!MUST]:    A client MUST NOT generate an If-Range header field containing an
-    TEXT[!MUST]:    entity tag that is marked as weak.
-    TEXT[!MUST]: A client MUST NOT generate an If-
-    TEXT[!MUST]:    Range header field containing an HTTP-date unless the client has no
-    TEXT[!MUST]:    entity tag for the corresponding representation and the date is a
-    TEXT[!MUST]:    strong validator in the sense defined by Section 8.8.2.2.
+    TEXT[!MUST,exception]:    A client MUST NOT generate an If-Range header field containing an
+    TEXT[!MUST,exception]:    entity tag that is marked as weak.
+    TEXT[!MUST,exception]: A client MUST NOT generate an If-
+    TEXT[!MUST,exception]:    Range header field containing an HTTP-date unless the client has no
+    TEXT[!MUST,exception]:    entity tag for the corresponding representation and the date is a
+    TEXT[!MUST,exception]:    strong validator in the sense defined by Section 8.8.2.2.
     TEXT[!MUST]:    A server that receives an If-Range header field on a Range request
     TEXT[!MUST]:    MUST evaluate the condition per Section 13.2 prior to performing the
     TEXT[!MUST]:    method.
@@ -1259,12 +1259,12 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    if its response to the same request without those conditions, prior
     TEXT[!MUST]:    to processing the request content, would have been a status code
     TEXT[!MUST]:    other than a 2xx (Successful) or 412 (Precondition Failed).
-    TEXT[!MUST]:    A server that is not the origin server for the target resource and
-    TEXT[!MUST]:    cannot act as a cache for requests on the target resource MUST NOT
-    TEXT[!MUST]:    evaluate the conditional request header fields defined by this
-    TEXT[!MUST]:    specification, and it MUST forward them if the request is forwarded,
-    TEXT[!MUST]:    since the generating client intends that they be evaluated by a
-    TEXT[!MUST]:    server that can provide a current representation.
+    TEXT[!MUST,exception]:    A server that is not the origin server for the target resource and
+    TEXT[!MUST,exception]:    cannot act as a cache for requests on the target resource MUST NOT
+    TEXT[!MUST,exception]:    evaluate the conditional request header fields defined by this
+    TEXT[!MUST,exception]:    specification, and it MUST forward them if the request is forwarded,
+    TEXT[!MUST,exception]:    since the generating client intends that they be evaluated by a
+    TEXT[!MUST,exception]:    server that can provide a current representation.
     TEXT[!MUST]: Likewise, a server
     TEXT[!MUST]:    MUST ignore the conditional request header fields defined by this
     TEXT[!MUST]:    specification when received with a request method that does not
@@ -1294,24 +1294,24 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    defined.
     TEXT[!MUST]:    An origin server MUST ignore a Range header field that contains a
     TEXT[!MUST]:    range unit it does not understand.
-    TEXT[!MAY]: A proxy MAY discard a Range
-    TEXT[!MAY]:    header field that contains a range unit it does not understand.
+    TEXT[!MAY,exception]: A proxy MAY discard a Range
+    TEXT[!MAY,exception]:    header field that contains a range unit it does not understand.
     TEXT[!MAY]:    A server that supports range requests MAY ignore or reject a Range
     TEXT[!MAY]:    header field that contains an invalid ranges-specifier
     TEXT[!MAY]:    (Section 14.1.1), a ranges-specifier with more than two overlapping
     TEXT[!MAY]:    ranges, or a set of many small ranges that are not listed in
     TEXT[!MAY]:    ascending order, since these are indications of either a broken
     TEXT[!MAY]:    client or a deliberate denial-of-service attack (Section 17.15).
-    TEXT[!SHOULD]:    client SHOULD NOT request multiple ranges that are inherently less
-    TEXT[!SHOULD]:    efficient to process and transfer than a single range that
-    TEXT[!SHOULD]:    encompasses the same data.
+    TEXT[!SHOULD,exception]:    client SHOULD NOT request multiple ranges that are inherently less
+    TEXT[!SHOULD,exception]:    efficient to process and transfer than a single range that
+    TEXT[!SHOULD,exception]:    encompasses the same data.
     TEXT[!MAY]:    A server that supports range requests MAY ignore a Range header field
     TEXT[!MAY]:    when the selected representation has no content (i.e., the selected
     TEXT[!MAY]:    representation's data is of zero length).
-    TEXT[!SHOULD]:    A client that is requesting multiple ranges SHOULD list those ranges
-    TEXT[!SHOULD]:    in ascending order (the order in which they would typically be
-    TEXT[!SHOULD]:    received in a complete representation) unless there is a specific
-    TEXT[!SHOULD]:    need to request a later part earlier.
+    TEXT[!SHOULD,exception]:    A client that is requesting multiple ranges SHOULD list those ranges
+    TEXT[!SHOULD,exception]:    in ascending order (the order in which they would typically be
+    TEXT[!SHOULD,exception]:    received in a complete representation) unless there is a specific
+    TEXT[!SHOULD,exception]:    need to request a later part earlier.
     TEXT[!SHOULD]:    If all of the preconditions are true, the server supports the Range
     TEXT[!SHOULD]:    header field for the target resource, the received Range field-value
     TEXT[!SHOULD]:    contains a valid ranges-specifier with a range-unit supported for
@@ -1328,10 +1328,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    SHOULD send a 416 (Range Not Satisfiable) response.
 
   SECTION: [Accept-Ranges](#section-14.3)
-    TEXT[!MAY]:    A client MAY generate range requests regardless of having received an
-    TEXT[!MAY]:    Accept-Ranges field.
-    TEXT[!MUST]:    Conversely, a client MUST NOT assume that receiving an Accept-Ranges
-    TEXT[!MUST]:    field means that future range requests will return partial responses.
+    TEXT[!MAY,exception]:    A client MAY generate range requests regardless of having received an
+    TEXT[!MAY,exception]:    Accept-Ranges field.
+    TEXT[!MUST,exception]:    Conversely, a client MUST NOT assume that receiving an Accept-Ranges
+    TEXT[!MUST,exception]:    field means that future range requests will return partial responses.
     TEXT[!MAY]:    A server that does not support any kind of range request for the
     TEXT[!MAY]:    target resource MAY send
     TEXT[!MAY]:    The Accept-Ranges field MAY be sent in a trailer section, but is
@@ -1344,8 +1344,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    field with a range unit (Section 14.1) that the recipient does not
     TEXT[!MUST]:    understand, the recipient MUST NOT attempt to recombine it with a
     TEXT[!MUST]:    stored representation.
-    TEXT[!SHOULD]: A proxy that receives such a message SHOULD
-    TEXT[!SHOULD]:    forward it downstream.
+    TEXT[!SHOULD,exception]: A proxy that receives such a message SHOULD
+    TEXT[!SHOULD,exception]:    forward it downstream.
     TEXT[!MUST]: A server MUST ignore a
     TEXT[!MUST]:    Content-Range header field received in a request with a method for
     TEXT[!MUST]:    which Content-Range support is not defined.
@@ -1369,21 +1369,21 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[implementation,test]: All valid status codes are within the
     TEXT[implementation,test]:    range of 100 to 599, inclusive.
     TEXT[implementation,test]:    The first digit of the status code defines the class of response.
-    TEXT[!MUST]: However, a client MUST
-    TEXT[!MUST]:    understand the class of any status code, as indicated by the first
-    TEXT[!MUST]:    digit, and treat an unrecognized status code as being equivalent to
-    TEXT[!MUST]:    the x00 status code of that class.
-    TEXT[!SHOULD]:    A client that receives a response with an invalid status code SHOULD
-    TEXT[!SHOULD]:    process the response as if it had a 5xx (Server Error) status code.
+    TEXT[!MUST,exception]: However, a client MUST
+    TEXT[!MUST,exception]:    understand the class of any status code, as indicated by the first
+    TEXT[!MUST,exception]:    digit, and treat an unrecognized status code as being equivalent to
+    TEXT[!MUST,exception]:    the x00 status code of that class.
+    TEXT[!SHOULD,exception]:    A client that receives a response with an invalid status code SHOULD
+    TEXT[!SHOULD,exception]:    process the response as if it had a 5xx (Server Error) status code.
 
   SECTION: [Informational 1xx](#section-15.2)
     TEXT[!MUST]: Since HTTP/1.0 did not define any 1xx status codes, a
     TEXT[!MUST]:    server MUST NOT send a 1xx response to an HTTP/1.0 client.
-    TEXT[!MUST]:    A client MUST be able to parse one or more 1xx responses received
-    TEXT[!MUST]:    prior to a final response, even if the client does not expect one.
-    TEXT[!MAY]:    user agent MAY ignore unexpected 1xx responses.
-    TEXT[!MUST]:    A proxy MUST forward 1xx responses unless the proxy itself requested
-    TEXT[!MUST]:    the generation of the 1xx response.
+    TEXT[!MUST,exception]:    A client MUST be able to parse one or more 1xx responses received
+    TEXT[!MUST,exception]:    prior to a final response, even if the client does not expect one.
+    TEXT[!MAY,exception]:    user agent MAY ignore unexpected 1xx responses.
+    TEXT[!MUST,exception]:    A proxy MUST forward 1xx responses unless the proxy itself requested
+    TEXT[!MUST,exception]:    the generation of the 1xx response.
 
   SECTION: [101 Switching Protocols](#section-15.2.2)
     TEXT[!MUST]: The server MUST
@@ -1401,9 +1401,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    provided, a server MUST NOT generate content in a 205 response.
 
   SECTION: [206 Partial Content](#section-15.3.7)
-    TEXT[!MUST]:    A client MUST inspect a 206 response's Content-Type and Content-Range
-    TEXT[!MUST]:    field(s) to determine what parts are enclosed and whether additional
-    TEXT[!MUST]:    requests are needed.
+    TEXT[!MUST,exception]:    A client MUST inspect a 206 response's Content-Type and Content-Range
+    TEXT[!MUST,exception]:    field(s) to determine what parts are enclosed and whether additional
+    TEXT[!MUST,exception]:    requests are needed.
     TEXT[!MUST]:    A server that generates a 206 response MUST generate the following
     TEXT[!MUST]:    header fields, in addition to those required in the subsections
     TEXT[!MUST]:    below, if the field would have been sent in a 200 (OK) response to
@@ -1452,82 +1452,82 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    generate a "multipart/byteranges" response with only a single body
     TEXT[!MAY]:    part if multiple ranges were requested and only one range was found
     TEXT[!MAY]:    to be satisfiable or only one range remained after coalescing.
-    TEXT[!MUST]:    client that cannot process a "multipart/byteranges" response MUST NOT
-    TEXT[!MUST]:    generate a request that asks for multiple ranges.
+    TEXT[!MUST,exception]:    client that cannot process a "multipart/byteranges" response MUST NOT
+    TEXT[!MUST,exception]:    generate a request that asks for multiple ranges.
     TEXT[!SHOULD]:    A server that generates a multipart response SHOULD send the parts in
     TEXT[!SHOULD]:    the same order that the corresponding range-spec appeared in the
     TEXT[!SHOULD]:    received Range header field, excluding those ranges that were deemed
     TEXT[!SHOULD]:    unsatisfiable or that were coalesced into other ranges.
-    TEXT[!MUST]: A client
-    TEXT[!MUST]:    that receives a multipart response MUST inspect the Content-Range
-    TEXT[!MUST]:    header field present in each body part in order to determine which
-    TEXT[!MUST]:    range is contained in that body part; a client cannot rely on
-    TEXT[!MUST]:    receiving the same ranges that it requested, nor the same order that
-    TEXT[!MUST]:    it requested.
+    TEXT[!MUST,exception]: A client
+    TEXT[!MUST,exception]:    that receives a multipart response MUST inspect the Content-Range
+    TEXT[!MUST,exception]:    header field present in each body part in order to determine which
+    TEXT[!MUST,exception]:    range is contained in that body part; a client cannot rely on
+    TEXT[!MUST,exception]:    receiving the same ranges that it requested, nor the same order that
+    TEXT[!MUST,exception]:    it requested.
 
   SECTION: [Combining Parts](#section-15.3.7.3)
-    TEXT[!MAY]:    A client that has received multiple partial responses to GET requests
-    TEXT[!MAY]:    on a target resource MAY combine those responses into a larger
-    TEXT[!MAY]:    continuous range if they share the same strong validator.
-    TEXT[!MUST]: If all of the matching stored responses
-    TEXT[!MUST]:    are 206 responses, then the stored response with the most recent
-    TEXT[!MUST]:    header fields is used as the source of header fields for the combined
-    TEXT[!MUST]:    response, except that the client MUST use other header fields
-    TEXT[!MUST]:    provided in the new response, aside from Content-Range, to replace
-    TEXT[!MUST]:    all instances of the corresponding header fields in the stored
-    TEXT[!MUST]:    response.
-    TEXT[!MUST]: If the union consists of the entire range of the
-    TEXT[!MUST]:    representation, then the client MUST process the combined response as
-    TEXT[!MUST]:    if it were a complete 200 (OK) response, including a Content-Length
-    TEXT[!MUST]:    header field that reflects the complete length.
-    TEXT[!MUST]: Otherwise, the
-    TEXT[!MUST]:    client MUST process the set of continuous ranges as one of the
-    TEXT[!MUST]:    following: an incomplete 200 (OK) response if the combined response
-    TEXT[!MUST]:    is a prefix of the representation, a single 206 (Partial Content)
-    TEXT[!MUST]:    response containing "multipart/byteranges" content, or multiple 206
-    TEXT[!MUST]:    (Partial Content) responses, each with one continuous range that is
-    TEXT[!MUST]:    indicated by a Content-Range header field.
+    TEXT[!MAY,exception]:    A client that has received multiple partial responses to GET requests
+    TEXT[!MAY,exception]:    on a target resource MAY combine those responses into a larger
+    TEXT[!MAY,exception]:    continuous range if they share the same strong validator.
+    TEXT[!MUST,exception]: If all of the matching stored responses
+    TEXT[!MUST,exception]:    are 206 responses, then the stored response with the most recent
+    TEXT[!MUST,exception]:    header fields is used as the source of header fields for the combined
+    TEXT[!MUST,exception]:    response, except that the client MUST use other header fields
+    TEXT[!MUST,exception]:    provided in the new response, aside from Content-Range, to replace
+    TEXT[!MUST,exception]:    all instances of the corresponding header fields in the stored
+    TEXT[!MUST,exception]:    response.
+    TEXT[!MUST,exception]: If the union consists of the entire range of the
+    TEXT[!MUST,exception]:    representation, then the client MUST process the combined response as
+    TEXT[!MUST,exception]:    if it were a complete 200 (OK) response, including a Content-Length
+    TEXT[!MUST,exception]:    header field that reflects the complete length.
+    TEXT[!MUST,exception]: Otherwise, the
+    TEXT[!MUST,exception]:    client MUST process the set of continuous ranges as one of the
+    TEXT[!MUST,exception]:    following: an incomplete 200 (OK) response if the combined response
+    TEXT[!MUST,exception]:    is a prefix of the representation, a single 206 (Partial Content)
+    TEXT[!MUST,exception]:    response containing "multipart/byteranges" content, or multiple 206
+    TEXT[!MUST,exception]:    (Partial Content) responses, each with one continuous range that is
+    TEXT[!MUST,exception]:    indicated by a Content-Range header field.
 
   SECTION: [Redirection 3xx](#section-15.4)
-    TEXT[!MAY]:    If a Location header field (Section 10.2.2) is provided, the user
-    TEXT[!MAY]:    agent MAY automatically redirect its request to the URI referenced by
-    TEXT[!MAY]:    the Location field value, even if the specific status code is not
-    TEXT[!MAY]:    understood.
-    TEXT[!SHOULD]:    When automatically following a redirected request, the user agent
-    TEXT[!SHOULD]:    SHOULD resend the original request message with the following
-    TEXT[!SHOULD]:    modifications:
-    TEXT[!SHOULD]:    A client SHOULD detect and intervene in cyclical redirections (i.e.,
-    TEXT[!SHOULD]:    "infinite" redirection loops).
+    TEXT[!MAY,exception]:    If a Location header field (Section 10.2.2) is provided, the user
+    TEXT[!MAY,exception]:    agent MAY automatically redirect its request to the URI referenced by
+    TEXT[!MAY,exception]:    the Location field value, even if the specific status code is not
+    TEXT[!MAY,exception]:    understood.
+    TEXT[!SHOULD,exception]:    When automatically following a redirected request, the user agent
+    TEXT[!SHOULD,exception]:    SHOULD resend the original request message with the following
+    TEXT[!SHOULD,exception]:    modifications:
+    TEXT[!SHOULD,exception]:    A client SHOULD detect and intervene in cyclical redirections (i.e.,
+    TEXT[!SHOULD,exception]:    "infinite" redirection loops).
 
   SECTION: [300 Multiple Choices](#section-15.4.1)
     TEXT[!SHOULD]:    If the server has a preferred choice, the server SHOULD generate a
     TEXT[!SHOULD]:    Location header field containing a preferred choice's URI reference.
-    TEXT[!MAY]:    The user agent MAY use the Location field value for automatic
-    TEXT[!MAY]:    redirection.
+    TEXT[!MAY,exception]:    The user agent MAY use the Location field value for automatic
+    TEXT[!MAY,exception]:    redirection.
     TEXT[!SHOULD]:    For request methods other than HEAD, the server SHOULD generate
     TEXT[!SHOULD]:    content in the 300 response containing a list of representation
     TEXT[!SHOULD]:    metadata and URI reference(s) from which the user or user agent can
     TEXT[!SHOULD]:    choose the one most preferred.
-    TEXT[!MAY]: The user agent MAY make a selection
-    TEXT[!MAY]:    from that list automatically if it understands the provided media
-    TEXT[!MAY]:    type.
+    TEXT[!MAY,exception]: The user agent MAY make a selection
+    TEXT[!MAY,exception]:    from that list automatically if it understands the provided media
+    TEXT[!MAY,exception]:    type.
 
   SECTION: [301 Moved Permanently](#section-15.4.2)
     TEXT[!SHOULD]:    The server SHOULD generate a Location header field in the response
     TEXT[!SHOULD]:    containing a preferred URI reference for the new permanent URI.
-    TEXT[!MAY]: The
-    TEXT[!MAY]:    user agent MAY use the Location field value for automatic
-    TEXT[!MAY]:    redirection.
-    TEXT[!MAY]:       |  *Note:* For historical reasons, a user agent MAY change the
-    TEXT[!MAY]:       |  request method from POST to GET for the subsequent request.
+    TEXT[!MAY,exception]: The
+    TEXT[!MAY,exception]:    user agent MAY use the Location field value for automatic
+    TEXT[!MAY,exception]:    redirection.
+    TEXT[!MAY,exception]:       |  *Note:* For historical reasons, a user agent MAY change the
+    TEXT[!MAY,exception]:       |  request method from POST to GET for the subsequent request.
 
   SECTION: [302 Found](#section-15.4.3)
     TEXT[!SHOULD]:    The server SHOULD generate a Location header field in the response
     TEXT[!SHOULD]:    containing a URI reference for the different URI.
-    TEXT[!MAY]: The user agent MAY
-    TEXT[!MAY]:    use the Location field value for automatic redirection.
-    TEXT[!MAY]:       |  *Note:* For historical reasons, a user agent MAY change the
-    TEXT[!MAY]:       |  request method from POST to GET for the subsequent request.
+    TEXT[!MAY,exception]: The user agent MAY
+    TEXT[!MAY,exception]:    use the Location field value for automatic redirection.
+    TEXT[!MAY,exception]:       |  *Note:* For historical reasons, a user agent MAY change the
+    TEXT[!MAY,exception]:       |  request method from POST to GET for the subsequent request.
 
   SECTION: [304 Not Modified](#section-15.4.5)
     TEXT[!MUST]:    The server generating a 304 response MUST generate any of the
@@ -1539,53 +1539,53 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    above listed fields unless said metadata exists for the purpose of
     TEXT[!SHOULD]:    guiding cache updates (e.g., Last-Modified might be useful if the
     TEXT[!SHOULD]:    response does not have an ETag field).
-    TEXT[!SHOULD]: If the conditional request originated
-    TEXT[!SHOULD]:    with an outbound client, such as a user agent with its own cache
-    TEXT[!SHOULD]:    sending a conditional GET to a shared proxy, then the proxy SHOULD
-    TEXT[!SHOULD]:    forward the 304 response to that client.
+    TEXT[!SHOULD,exception]: If the conditional request originated
+    TEXT[!SHOULD,exception]:    with an outbound client, such as a user agent with its own cache
+    TEXT[!SHOULD,exception]:    sending a conditional GET to a shared proxy, then the proxy SHOULD
+    TEXT[!SHOULD,exception]:    forward the 304 response to that client.
 
   SECTION: [307 Temporary Redirect](#section-15.4.8)
-    TEXT[!MUST]:    The 307 (Temporary Redirect) status code indicates that the target
-    TEXT[!MUST]:    resource resides temporarily under a different URI and the user agent
-    TEXT[!MUST]:    MUST NOT change the request method if it performs an automatic
-    TEXT[!MUST]:    redirection to that URI.
+    TEXT[!MUST,exception]:    The 307 (Temporary Redirect) status code indicates that the target
+    TEXT[!MUST,exception]:    resource resides temporarily under a different URI and the user agent
+    TEXT[!MUST,exception]:    MUST NOT change the request method if it performs an automatic
+    TEXT[!MUST,exception]:    redirection to that URI.
     TEXT[!SHOULD]:    The server SHOULD generate a Location header field in the response
     TEXT[!SHOULD]:    containing a URI reference for the different URI.
-    TEXT[!MAY]: The user agent MAY
-    TEXT[!MAY]:    use the Location field value for automatic redirection.
+    TEXT[!MAY,exception]: The user agent MAY
+    TEXT[!MAY,exception]:    use the Location field value for automatic redirection.
 
   SECTION: [308 Permanent Redirect](#section-15.4.9)
     TEXT[!SHOULD]:    The server SHOULD generate a Location header field in the response
     TEXT[!SHOULD]:    containing a preferred URI reference for the new permanent URI.
-    TEXT[!MAY]: The
-    TEXT[!MAY]:    user agent MAY use the Location field value for automatic
-    TEXT[!MAY]:    redirection.
+    TEXT[!MAY,exception]: The
+    TEXT[!MAY,exception]:    user agent MAY use the Location field value for automatic
+    TEXT[!MAY,exception]:    redirection.
 
   SECTION: [Client Error 4xx](#section-15.5)
     TEXT[!SHOULD]: Except when responding to a HEAD request, the
     TEXT[!SHOULD]:    server SHOULD send a representation containing an explanation of the
     TEXT[!SHOULD]:    error situation, and whether it is a temporary or permanent
     TEXT[!SHOULD]:    condition.
-    TEXT[!SHOULD]:    User agents SHOULD display any included representation to the user.
+    TEXT[!SHOULD,exception]:    User agents SHOULD display any included representation to the user.
 
   SECTION: [401 Unauthorized](#section-15.5.2)
     TEXT[!MUST]: The server generating a 401 response MUST send
     TEXT[!MUST]:    a WWW-Authenticate header field (Section 11.6.1) containing at least
     TEXT[!MUST]:    one challenge applicable to the target resource.
-    TEXT[!MAY]: The user agent MAY repeat the request with a new or
-    TEXT[!MAY]:    replaced Authorization header field (Section 11.6.2).
-    TEXT[!SHOULD]: If the 401
-    TEXT[!SHOULD]:    response contains the same challenge as the prior response, and the
-    TEXT[!SHOULD]:    user agent has already attempted authentication at least once, then
-    TEXT[!SHOULD]:    the user agent SHOULD present the enclosed representation to the
-    TEXT[!SHOULD]:    user, since it usually contains relevant diagnostic information.
+    TEXT[!MAY,exception]: The user agent MAY repeat the request with a new or
+    TEXT[!MAY,exception]:    replaced Authorization header field (Section 11.6.2).
+    TEXT[!SHOULD,exception]: If the 401
+    TEXT[!SHOULD,exception]:    response contains the same challenge as the prior response, and the
+    TEXT[!SHOULD,exception]:    user agent has already attempted authentication at least once, then
+    TEXT[!SHOULD,exception]:    the user agent SHOULD present the enclosed representation to the
+    TEXT[!SHOULD,exception]:    user, since it usually contains relevant diagnostic information.
 
   SECTION: [403 Forbidden](#section-15.5.4)
-    TEXT[!SHOULD]: The client
-    TEXT[!SHOULD]:    SHOULD NOT automatically repeat the request with the same
-    TEXT[!SHOULD]:    credentials.
-    TEXT[!MAY]: The client MAY repeat the request with new or different
-    TEXT[!MAY]:    credentials.
+    TEXT[!SHOULD,exception]: The client
+    TEXT[!SHOULD,exception]:    SHOULD NOT automatically repeat the request with the same
+    TEXT[!SHOULD,exception]:    credentials.
+    TEXT[!MAY,exception]: The client MAY repeat the request with new or different
+    TEXT[!MAY,exception]:    credentials.
     TEXT[!MAY]:    An origin server that wishes to "hide" the current existence of a
     TEXT[!MAY]:    forbidden target resource MAY instead respond with a status code of
     TEXT[!MAY]:    404 (Not Found).
@@ -1600,20 +1600,20 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    representation characteristics and corresponding resource identifiers
     TEXT[!SHOULD]:    from which the user or user agent can choose the one most
     TEXT[!SHOULD]:    appropriate.
-    TEXT[!MAY]: A user agent MAY automatically select the most
-    TEXT[!MAY]:    appropriate choice from that list.
+    TEXT[!MAY,exception]: A user agent MAY automatically select the most
+    TEXT[!MAY,exception]:    appropriate choice from that list.
 
   SECTION: [407 Proxy Authentication Required](#section-15.5.8)
-    TEXT[!MUST]: The
-    TEXT[!MUST]:    proxy MUST send a Proxy-Authenticate header field (Section 11.7.1)
-    TEXT[!MUST]:    containing a challenge applicable to that proxy for the request.
-    TEXT[!MAY]: The
-    TEXT[!MAY]:    client MAY repeat the request with a new or replaced
-    TEXT[!MAY]:    Proxy-Authorization header field (Section 11.7.2).
+    TEXT[!MUST,exception]: The
+    TEXT[!MUST,exception]:    proxy MUST send a Proxy-Authenticate header field (Section 11.7.1)
+    TEXT[!MUST,exception]:    containing a challenge applicable to that proxy for the request.
+    TEXT[!MAY,exception]: The
+    TEXT[!MAY,exception]:    client MAY repeat the request with a new or replaced
+    TEXT[!MAY,exception]:    Proxy-Authorization header field (Section 11.7.2).
 
   SECTION: [408 Request Timeout](#section-15.5.9)
-    TEXT[!MAY]:    If the client has an outstanding request in transit, it MAY repeat
-    TEXT[!MAY]:    that request.
+    TEXT[!MAY,exception]:    If the client has an outstanding request in transit, it MAY repeat
+    TEXT[!MAY,exception]:    that request.
 
   SECTION: [409 Conflict](#section-15.5.10)
     TEXT[!SHOULD]: The server
@@ -1621,9 +1621,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    to recognize the source of the conflict.
 
   SECTION: [411 Length Required](#section-15.5.12)
-    TEXT[!MAY]: The client MAY repeat the request if it adds a valid
-    TEXT[!MAY]:    Content-Length header field containing the length of the request
-    TEXT[!MAY]:    content.
+    TEXT[!MAY,exception]: The client MAY repeat the request if it adds a valid
+    TEXT[!MAY,exception]:    Content-Length header field containing the length of the request
+    TEXT[!MAY,exception]:    content.
 
   SECTION: [413 Content Too Large](#section-15.5.14)
     TEXT[!MAY]: The server MAY
@@ -1639,11 +1639,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    of the selected representation (Section 14.4).
 
   SECTION: [421 Misdirected Request](#section-15.5.20)
-    TEXT[!MAY]:    A client that receives a 421 (Misdirected Request) response MAY retry
-    TEXT[!MAY]:    the request, whether or not the request method is idempotent, over a
-    TEXT[!MAY]:    different connection, such as a fresh connection specific to the
-    TEXT[!MAY]:    target resource's origin, or via an alternative service [ALTSVC].
-    TEXT[!MUST]:    A proxy MUST NOT generate a 421 response.
+    TEXT[!MAY,exception]:    A client that receives a 421 (Misdirected Request) response MAY retry
+    TEXT[!MAY,exception]:    the request, whether or not the request method is idempotent, over a
+    TEXT[!MAY,exception]:    different connection, such as a fresh connection specific to the
+    TEXT[!MAY,exception]:    target resource's origin, or via an alternative service [ALTSVC].
+    TEXT[!MUST,exception]:    A proxy MUST NOT generate a 421 response.
 
   SECTION: [426 Upgrade Required](#section-15.5.22)
     TEXT[!MUST]: The server MUST send an Upgrade header field in a 426
@@ -1654,8 +1654,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    server SHOULD send a representation containing an explanation of the
     TEXT[!SHOULD]:    error situation, and whether it is a temporary or permanent
     TEXT[!SHOULD]:    condition.
-    TEXT[!SHOULD]: A user agent SHOULD display any included representation
-    TEXT[!SHOULD]:    to the user.
+    TEXT[!SHOULD,exception]: A user agent SHOULD display any included representation
+    TEXT[!SHOULD,exception]:    to the user.
 
   SECTION: [503 Service Unavailable](#section-15.6.4)
     TEXT[!MAY]: The server MAY send a Retry-After header field
@@ -1668,54 +1668,54 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    and what other protocols are supported by that server.
 
   SECTION: [Method Registry](#section-16.1.1)
-    TEXT[!MUST]:    HTTP method registrations MUST include the following fields:
+    TEXT[!MUST,exception]:    HTTP method registrations MUST include the following fields:
 
   SECTION: [Status Code Registry](#section-16.2.1)
-    TEXT[!MUST]:    A registration MUST include the following fields:
+    TEXT[!MUST,exception]:    A registration MUST include the following fields:
 
   SECTION: [Field Name Registry](#section-16.3.1)
-    TEXT[!MUST]: It MUST conform to the field-name
-    TEXT[!MUST]:       syntax defined in Section 5.1, and it SHOULD be restricted to just
-    TEXT[!MUST]:       letters, digits, and hyphen ('-') characters, with the first
-    TEXT[!MUST]:       character being a letter.
+    TEXT[!MUST,exception]: It MUST conform to the field-name
+    TEXT[!MUST,exception]:       syntax defined in Section 5.1, and it SHOULD be restricted to just
+    TEXT[!MUST,exception]:       letters, digits, and hyphen ('-') characters, with the first
+    TEXT[!MUST,exception]:       character being a letter.
 
   SECTION: [Considerations for New Field Names](#section-16.3.2.1)
-    TEXT[!SHOULD]: To be interoperable, new field names SHOULD
-    TEXT[!SHOULD]:    constrain themselves to alphanumeric characters, "-", and ".", and
-    TEXT[!SHOULD]:    SHOULD begin with a letter.
+    TEXT[!SHOULD,exception]: To be interoperable, new field names SHOULD
+    TEXT[!SHOULD,exception]:    constrain themselves to alphanumeric characters, "-", and ".", and
+    TEXT[!SHOULD,exception]:    SHOULD begin with a letter.
 
   SECTION: [Authentication Scheme Registry](#section-16.4.1)
-    TEXT[!MUST]:    Registrations MUST include the following fields:
+    TEXT[!MUST,exception]:    Registrations MUST include the following fields:
 
   SECTION: [Considerations for New Authentication Schemes](#section-16.4.2)
-    TEXT[!MUST]:    *  HTTP authentication is presumed to be stateless: all of the
-    TEXT[!MUST]:       information necessary to authenticate a request MUST be provided
-    TEXT[!MUST]:       in the request, rather than be dependent on the server remembering
-    TEXT[!MUST]:       prior requests.
-    TEXT[!MUST]: New schemes MUST
-    TEXT[!MUST]:       NOT use it in a way incompatible with that definition.
+    TEXT[!MUST,exception]:    *  HTTP authentication is presumed to be stateless: all of the
+    TEXT[!MUST,exception]:       information necessary to authenticate a request MUST be provided
+    TEXT[!MUST,exception]:       in the request, rather than be dependent on the server remembering
+    TEXT[!MUST,exception]:       prior requests.
+    TEXT[!MUST,exception]: New schemes MUST
+    TEXT[!MUST,exception]:       NOT use it in a way incompatible with that definition.
 
   SECTION: [Range Unit Registry](#section-16.5.1)
-    TEXT[!MUST]:    Registration of an HTTP Range Unit MUST include the following fields:
+    TEXT[!MUST,exception]:    Registration of an HTTP Range Unit MUST include the following fields:
 
   SECTION: [Content Coding Registry](#section-16.6.1)
-    TEXT[!MUST]:    Content coding registrations MUST include the following fields:
-    TEXT[!MUST]:    Names of content codings MUST NOT overlap with names of transfer
-    TEXT[!MUST]:    codings (per the "HTTP Transfer Coding Registry" located at
-    TEXT[!MUST]:    <https://www.iana.org/assignments/http-parameters/>) unless the
-    TEXT[!MUST]:    encoding transformation is identical (as is the case for the
-    TEXT[!MUST]:    compression codings defined in Section 8.4.1).
-    TEXT[!MUST]:    Values to be added to this namespace require IETF Review (see
-    TEXT[!MUST]:    Section 4.8 of [RFC8126]) and MUST conform to the purpose of content
-    TEXT[!MUST]:    coding defined in Section 8.4.1.
+    TEXT[!MUST,exception]:    Content coding registrations MUST include the following fields:
+    TEXT[!MUST,exception]:    Names of content codings MUST NOT overlap with names of transfer
+    TEXT[!MUST,exception]:    codings (per the "HTTP Transfer Coding Registry" located at
+    TEXT[!MUST,exception]:    <https://www.iana.org/assignments/http-parameters/>) unless the
+    TEXT[!MUST,exception]:    encoding transformation is identical (as is the case for the
+    TEXT[!MUST,exception]:    compression codings defined in Section 8.4.1).
+    TEXT[!MUST,exception]:    Values to be added to this namespace require IETF Review (see
+    TEXT[!MUST,exception]:    Section 4.8 of [RFC8126]) and MUST conform to the purpose of content
+    TEXT[!MUST,exception]:    coding defined in Section 8.4.1.
 
   SECTION: [Upgrade Token Registry](#section-16.7)
-    TEXT[!MUST]: The registration MUST name a responsible party for the
-    TEXT[!MUST]:        registration.
-    TEXT[!MUST]: The registration MUST name a point of contact.
-    TEXT[!MAY]: The registration MAY name a set of specifications associated with
-    TEXT[!MAY]:        that token.
-    TEXT[!SHOULD]: The registration SHOULD name a set of expected "protocol-version"
-    TEXT[!SHOULD]:        tokens associated with that token at the time of registration.
-    TEXT[!MAY]: The responsible party MAY change the registration at any time.
-    TEXT[!MAY]: The IESG MAY reassign responsibility for a protocol token.
+    TEXT[!MUST,exception]: The registration MUST name a responsible party for the
+    TEXT[!MUST,exception]:        registration.
+    TEXT[!MUST,exception]: The registration MUST name a point of contact.
+    TEXT[!MAY,exception]: The registration MAY name a set of specifications associated with
+    TEXT[!MAY,exception]:        that token.
+    TEXT[!SHOULD,exception]: The registration SHOULD name a set of expected "protocol-version"
+    TEXT[!SHOULD,exception]:        tokens associated with that token at the time of registration.
+    TEXT[!MAY,exception]: The responsible party MAY change the registration at any time.
+    TEXT[!MAY,exception]: The IESG MAY reassign responsibility for a protocol token.
