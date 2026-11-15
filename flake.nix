@@ -17,11 +17,31 @@
         hyperdrive-semantics = (haskellPackages pkgs).hyperdrive-semantics;
       });
 
+      # `nix flake check` builds the packages (which runs their test
+      # suites) and checks requirement coverage. Mutation testing is too
+      # slow for every check; run scripts/mutation-test separately.
+      checks = forAllSystems (pkgs: {
+        hyperdrive-semantics = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-semantics;
+
+        # Fails if any citation does not match the text of its RFC, or if
+        # requirement coverage differs from the committed snapshot.
+        duvet = pkgs.runCommand "duvet-report" {
+          nativeBuildInputs = [ self.packages.${pkgs.stdenv.hostPlatform.system}.duvet ];
+        } ''
+          cp -r ${self} src
+          chmod -R u+w src
+          cd src
+          duvet report --ci
+          touch $out
+        '';
+      });
+
       devShells = forAllSystems (pkgs: {
         default = (haskellPackages pkgs).shellFor {
           packages = p: [ p.hyperdrive-semantics ];
           nativeBuildInputs = [
             pkgs.cabal-install
+            pkgs.python3 # for scripts/mutation-test
             self.packages.${pkgs.stdenv.hostPlatform.system}.duvet
           ];
         };

@@ -1,0 +1,109 @@
+# Deliberate bugs that the test suite must catch. See scripts/mutation-test.
+#
+# Each mutant should be a plausible mistake that changes behaviour. If
+# one survives, either add a test that catches it or, if the change
+# really makes no observable difference, remove it from this file.
+
+file: src/Hyperdrive/Semantics/Syntax.hs
+
+why: "=" is a sub-delim, allowed in reg-names, paths and queries
+- isSubDelim w = B.elem w "!$&'()*+,;="
++ isSubDelim w = B.elem w "!$&'()*+,;"
+
+why: "~" is a tchar
+- || B.elem w "!#$%&'*+-.^_`|~"
++ || B.elem w "!#$%&'*+-.^_`|"
+
+why: OWS includes HTAB
+- isOWS w = w == 0x20 || w == 0x09
++ isOWS w = w == 0x20
+
+file: src/Hyperdrive/Semantics/Method.hs
+
+why: DELETE is idempotent
+- isIdempotent m = isSafe m || m == PUT || m == DELETE
++ isIdempotent m = isSafe m || m == PUT
+
+file: src/Hyperdrive/Semantics/Field.hs
+
+why: field names are case-insensitive, and normalized to lower case
+- | w >= 0x41 && w <= 0x5A = w + 0x20
++ | w >= 0x41 && w <= 0x5A = w
+
+why: NUL must be reported as one of the dangerous CR, LF or NUL
+- isCRLFNUL w = w == 0x0D || w == 0x0A || w == 0x00
++ isCRLFNUL w = w == 0x0D || w == 0x0A
+
+why: trailing whitespace is not part of a field value
+- stripOWS = B.dropWhileEnd isOWS . B.dropWhile isOWS
++ stripOWS = B.dropWhile isOWS
+
+why: RFC 9110 Section 5.3 says to combine with comma SP, for consistency
+- Just (FieldValue (stripOWS (B.intercalate ", " (map fieldValueBytes vs))))
++ Just (FieldValue (stripOWS (B.intercalate "," (map fieldValueBytes vs))))
+
+why: field lines must stay in the order they were received
+- appendField n v (Fields fs) = Fields (fs |> (n, v))
++ appendField n v (Fields fs) = Fields (Seq.reverse (Seq.reverse fs |> (n, v)))
+
+file: src/Hyperdrive/Semantics/Status.hs
+
+why: 599 is the largest valid status code
+- | c >= 100 && c <= 599 = Just (Status c)
++ | c >= 100 && c <= 600 = Just (Status c)
+
+file: src/Hyperdrive/Semantics/URI.hs
+
+why: an IPv6 address with "::" has at most 7 explicit pieces
+- guard (n <= 7)
++ guard (n <= 8)
+
+why: dec-octet does not allow leading zeros, so 01.2.3.4 is a reg-name
+- guard (B.length bs == 1 || B.head bs /= 0x30) -- no leading zeros
++ pure ()
+
+why: the largest dec-octet is 255
+- guard (n <= 255)
++ guard (n <= 256)
+
+why: h16 is at most 4 hex digits
+- guard (B.length bs >= 1 && B.length bs <= 4 && B.all isHEXDIG bs)
++ guard (B.length bs >= 1 && B.length bs <= 5 && B.all isHEXDIG bs)
+
+why: a port must fit in 16 bits
+- | n > 65535                     = Left AuthorityInvalidPort
++ | n > 65536                     = Left AuthorityInvalidPort
+
+why: the normal form of a percent-encoding uses upper case hex digits
+- go (0x25 : a : b : rest) = 0x25 : toUpper a : toUpper b : go rest
++ go (0x25 : a : b : rest) = 0x25 : toLower a : toLower b : go rest
+
+why: a percent-encoding needs two hex digits; this also indexes out of bounds
+- | w == 0x25 = i + 2 < n
++ | w == 0x25 = i + 1 < n
+
+why: the first hex digit of a percent-encoding is the high nibble
+- | isHEXDIG a && isHEXDIG b = (hexValue a * 16 + hexValue b :) <$> go rest
++ | isHEXDIG a && isHEXDIG b = (hexValue b * 16 + hexValue a :) <$> go rest
+
+why: "/" has no segments
+- ("" : segs) | segs /= [""] -> traverse decodeSegment segs
++ ("" : segs) -> traverse decodeSegment segs
+
+why: userinfo must be treated as an error
+- | B.elem 0x40 bs = Left AuthorityHasUserinfo -- '@' is not allowed anywhere in host or port
++ | False = Left AuthorityHasUserinfo
+
+file: src/Hyperdrive/Semantics/Target.hs
+
+why: the asterisk form may only be used with OPTIONS
+- validForMethod m TargetAsterisk  = m == OPTIONS
++ validForMethod _ TargetAsterisk  = True
+
+why: CONNECT to port 0 must be rejected
+- connectTarget (Authority h (Just p)) | p /= 0 = Just (TargetConnect h p)
++ connectTarget (Authority h (Just p)) = Just (TargetConnect h p)
+
+why: an empty path is only kept as-is for OPTIONS
+- | m /= OPTIONS = TargetURI s a (Path "/") q
++ | True = TargetURI s a (Path "/") q

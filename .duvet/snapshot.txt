@@ -195,8 +195,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY,implementation]:    the semantics of the message, by appending each subsequent field line
     TEXT[!MAY,implementation]:    value to the initial field line value in order, separated by a comma
     TEXT[!MAY,implementation]:    (",") and optional whitespace (OWS, defined in Section 5.6.3).
-    TEXT[implementation]:   For
-    TEXT[implementation]:    consistency, use comma SP.
+    TEXT[implementation,test]: For
+    TEXT[implementation,test]:    consistency, use comma SP.
     TEXT[!MUST,implementation,test]:    The order in which field lines with the same name are received is
     TEXT[!MUST,implementation,test]:    therefore significant to the interpretation of the field value
     TEXT[!MUST]: ; a

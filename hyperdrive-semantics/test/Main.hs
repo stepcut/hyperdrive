@@ -36,6 +36,7 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
     , testProperty "CR, LF and NUL are rejected"      prop_valueRejectsCRLFNUL
     , testProperty "accepted values match field-value" prop_valueGrammar
     , testProperty "combined values match field-value" prop_combineGrammar
+    , testProperty "values are combined with comma SP" prop_combineCommaSP
     , testProperty "field line order is preserved"    prop_fieldOrder
     ]
   , testGroup "Status"
@@ -181,6 +182,21 @@ prop_valueGrammar (Bytes bs) =
     Right v -> property (matchesFieldValue (fieldValueBytes v))
     Left _  -> property (not (matchesFieldValue (B.dropWhile isOWS (B.dropWhileEnd isOWS bs))))
 
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-5.3
+-- # For
+-- # consistency, use comma SP.
+prop_combineCommaSP :: Property
+prop_combineCommaSP = once $ conjoin
+  [ combined ["a"]           === Just "a"
+  , combined ["a", "b"]      === Just "a, b"
+  , combined ["a", "b, c"]   === Just "a, b, c"
+  , combined ["a", ""]       === Just "a,"
+  , combined ["", "a"]       === Just ", a"
+  , combined []              === Nothing
+  ]
+  where
+    combined vs = fmap fieldValueBytes (combineValues [ v | Right v <- map mkFieldValue vs ])
+
 prop_combineGrammar :: [Bytes] -> Property
 prop_combineGrammar bss =
   let vs = [ v | Bytes bs <- bss, Right v <- [mkFieldValue bs] ]
@@ -204,11 +220,13 @@ prop_fieldOrder bss =
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-15
 -- # All valid status codes are within the
 -- # range of 100 to 599, inclusive.
-prop_statusRange :: Int -> Property
-prop_statusRange c =
-  forAll (oneof [pure c, choose (0, 1000)]) $ \c' ->
-    isJust (mkStatus c') === (c' >= 100 && c' <= 599)
-      .&&. (isNothing (mkStatus c') || fmap statusCode (mkStatus c') == Just c')
+prop_statusRange :: Property
+prop_statusRange = once $ conjoin
+  [ counterexample (show c) $
+      isJust (mkStatus c) === (c >= 100 && c <= 599)
+        .&&. (isNothing (mkStatus c) || fmap statusCode (mkStatus c) == Just c)
+  -- every code that could plausibly be near the boundaries, and the extremes
+  | c <- [-1 .. 1000] ++ [minBound, maxBound] ]
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-15
 -- # The first digit of the status code defines the class of response.

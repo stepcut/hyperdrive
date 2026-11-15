@@ -20,3 +20,18 @@ Annotations in test modules are counted as tests. To generate the
 compliance report in `.duvet/reports/`:
 
     nix develop -c duvet report
+
+Checks
+------
+
+    nix flake check                      # build, run the test suites, check requirement coverage
+    nix develop -c scripts/mutation-test # check that the tests catch deliberate bugs
+
+`nix flake check` fails if a citation does not match its RFC, or if
+requirement coverage changes without `.duvet/snapshot.txt` being
+updated (run `nix develop -c duvet report` and commit the result).
+
+Each package's `mutants` file lists deliberate bugs that its test
+suite must catch. `scripts/mutation-test` applies each one in turn to
+a temporary copy of the project and fails if any of them survives. It
+takes several minutes, so CI runs it weekly rather than on every push.

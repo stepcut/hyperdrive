@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  # mutation testing is slow, so it runs weekly and on demand
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      # builds the packages, runs their test suites, and checks that
+      # requirement coverage matches .duvet/snapshot.txt
+      - run: nix flake check -L
+
+  mutation:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - run: nix develop -c scripts/mutation-test

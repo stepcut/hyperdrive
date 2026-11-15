@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Mutation testing: check that the test suite catches deliberate bugs.
+
+Each mutant in a package's `mutants` file replaces one exact piece of
+source code with a buggy version. For each mutant, this script builds
+and tests a temporary copy of the project with that one change applied.
+A mutant is
+
+  CAUGHT    if the test suite fails,
+  SURVIVED  if the test suite still passes: the tests have a blind spot,
+  INVALID   if the mutated code does not compile, and
+  STALE     if the original code no longer appears exactly once, which
+            means the mutants file is out of date with the source.
+
+The script exits with a non-zero status unless every mutant is caught.
+The working tree is never modified.
+
+Usage (from the repository root, inside `nix develop`):
+
+  scripts/mutation-test [PACKAGE-DIR ...]
+
+PACKAGE-DIR defaults to every directory with a `mutants` file.
+
+Format of the `mutants` file:
+
+  # comments and blank lines are ignored
+  file: src/Hyperdrive/Semantics/URI.hs
+  why: an IPv6 address with "::" has at most 7 explicit pieces
+  - guard (n <= 7)
+  + guard (n <= 8)
+
+`file:` applies to the mutants after it. `why:` is optional and is
+printed when a mutant survives. Each `-` line is the original code and
+must be followed by a `+` line with its replacement.
+"""
+
+import shutil
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
+CABAL = ["cabal", "--offline"]
+
+
+@dataclass
+class Mutant:
+    file: str
+    old: str
+    new: str
+    why: str
+    line: int  # in the mutants file
+
+
+def parse_mutants(path):
+    mutants, file, why, old = [], None, "", None
+    for n, raw in enumerate(path.read_text().splitlines(), start=1):
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("file:"):
+            file = line[len("file:"):].strip()
+        elif line.startswith("why:"):
+            why = line[len("why:"):].strip()
+        elif line.startswith("- "):
+            old = (line[2:], n)
+        elif line.startswith("+ "):
+            if old is None or file is None:
+                sys.exit(f"{path}:{n}: '+' line without a preceding 'file:' and '-' line")
+            mutants.append(Mutant(file, old[0], line[2:], why, old[1]))
+            old, why = None, ""
+        else:
+            sys.exit(f"{path}:{n}: cannot parse: {line}")
+    if old is not None:
+        sys.exit(f"{path}:{old[1]}: '-' line without a following '+' line")
+    return mutants
+
+
+def run(cmd, cwd):
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+
+
+def main():
+    root = Path(__file__).resolve().parent.parent
+    packages = [Path(p) for p in sys.argv[1:]] or sorted(p.parent.relative_to(root) for p in root.glob("*/mutants"))
+    if not packages:
+        sys.exit("no mutants files found")
+
+    with tempfile.TemporaryDirectory(prefix="mutation-test-") as tmp:
+        work = Path(tmp) / "repo"
+        # copy the project, minus build products and version control
+        shutil.copytree(root, work, ignore=shutil.ignore_patterns("dist-newstyle", ".git", ".duvet"))
+
+        print("building and testing the unmodified project ...", flush=True)
+        baseline = run(CABAL + ["test", "all"], work)
+        if baseline.returncode != 0:
+            print(baseline.stdout[-3000:], baseline.stderr[-3000:])
+            sys.exit("the unmodified project does not pass its tests; fix that first")
+
+        results = []
+        for pkg in packages:
+            for m in parse_mutants(root / pkg / "mutants"):
+                target = work / pkg / m.file
+                original = target.read_text()
+                where = f"{pkg}/mutants:{m.line} {pkg}/{m.file}"
+                count = original.count(m.old)
+                if count != 1:
+                    results.append(("STALE", where, m, f"original code found {count} times"))
+                    print(f"STALE     {where}", flush=True)
+                    continue
+                target.write_text(original.replace(m.old, m.new))
+                try:
+                    build = run(CABAL + ["build", "all"], work)
+                    if build.returncode != 0:
+                        status = "INVALID"
+                    else:
+                        test = run(CABAL + ["test", "all"], work)
+                        status = "CAUGHT" if test.returncode != 0 else "SURVIVED"
+                finally:
+                    target.write_text(original)
+                results.append((status, where, m, ""))
+                print(f"{status:9} {where}", flush=True)
+
+    bad = [r for r in results if r[0] != "CAUGHT"]
+    print(f"\n{len(results) - len(bad)} of {len(results)} mutants caught")
+    for status, where, m, note in bad:
+        print(f"\n{status}: {where}")
+        print(f"  - {m.old}\n  + {m.new}")
+        if m.why:
+            print(f"  why it matters: {m.why}")
+        if note:
+            print(f"  {note}")
+    sys.exit(1 if bad else 0)
+
+
+if __name__ == "__main__":
+    main()
