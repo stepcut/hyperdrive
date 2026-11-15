@@ -376,22 +376,31 @@ pathBytes :: Path -> ByteString
 pathBytes (Path bs) = bs
 
 data PathSegmentError
-  = DotSegment -- ^ a segment was @.@ or @..@, possibly percent-encoded
+  = SegmentContainsNUL -- ^ a segment contained @%00@
   deriving (Eq, Show)
 
--- = https://www.rfc-editor.org/rfc/rfc3986#section-3.3
--- # The path segments "." and "..", also known as dot-segments, are
--- # defined for relative reference within the path name hierarchy.
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-7.3
+-- # Applications must split the URI into its
+-- # components and subcomponents prior to decoding the octets, as
+-- # otherwise the decoded octets might be mistaken for delimiters.
 
--- | Split a path into percent-decoded segments.
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-7.3
+-- # Note, however, that the "%00" percent-encoding
+-- # (NUL) may require special handling and should be rejected if the
+-- # application is not expecting to receive raw data within a component.
+
+-- | Split a path into segments, then percent-decode each one.
 --
 -- > pathSegments "/"            == Right []
 -- > pathSegments "/a/b%2Fc/"    == Right ["a", "b/c", ""]
--- > pathSegments "/a/%2e%2e/b"  == Left DotSegment
+-- > pathSegments "/a/%2e%2e/b"  == Right ["a", "..", "b"]
+-- > pathSegments "/a%00"        == Left SegmentContainsNUL
 --
--- A request target is always absolute, so a dot-segment can only be
--- an attempt to climb out of the hierarchy. Rather than resolve it,
--- the path is rejected. Note that a decoded segment may contain "/".
+-- This is a faithful decoding: a segment may be @.@ or @..@, and an
+-- encoded "/" becomes part of a segment rather than a separator. Both
+-- are legitimate data to an application that is not using the path to
+-- name files. Anything that does map segments to files or other
+-- storage must use "Hyperdrive.Semantics.SafePath" instead.
 pathSegments :: Path -> Either PathSegmentError [ByteString]
 pathSegments (Path bs) =
   case B.split 0x2F bs of
@@ -400,8 +409,8 @@ pathSegments (Path bs) =
   where
     decodeSegment s =
       case percentDecode s of
-        Just d | d == "." || d == ".." -> Left DotSegment
-               | otherwise             -> Right d
+        Just d | B.elem 0x00 d -> Left SegmentContainsNUL
+               | otherwise     -> Right d
         Nothing -> Right s -- impossible: the Path invariant guarantees valid encoding
 
 ------------------------------------------------------------------------------

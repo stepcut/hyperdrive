@@ -38,7 +38,8 @@ uriTests = testGroup "URI"
   , testGroup "Path"
     [ testProperty "mkPath agrees with the ABNF"           prop_pathGrammar
     , testProperty "pathSegments decodes segments"         prop_pathSegments
-    , testProperty "dot-segments are rejected"             prop_dotSegments
+    , testProperty "dot-segments are decoded, not rejected" prop_dotSegments
+    , testProperty "NUL is rejected"                       prop_pathNUL
     ]
   , testGroup "Query"
     [ testProperty "mkQuery agrees with the ABNF"          prop_queryGrammar
@@ -317,24 +318,38 @@ encodeSegment = fmap concat . traverse enc . B.unpack
       | otherwise = pure (pct w)
     pct w = '%' : map toUpper (if w < 16 then '0' : showHex w "" else showHex w "")
 
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-7.3
+-- # Applications must split the URI into its
+-- # components and subcomponents prior to decoding the octets, as
+-- # otherwise the decoded octets might be mistaken for delimiters.
 prop_pathSegments :: Property
 prop_pathSegments =
   forAll (listOf (B.pack <$> listOf (frequency [(4, elements (B.unpack "abc.%/")), (1, arbitrary)]))) $ \segs ->
-    not (any (`elem` [".", ".."]) segs) && segs /= [""] ==>
+    segs /= [""] ==>
       forAll (traverse encodeSegment segs) $ \encoded ->
         let p = unsafeJust (mkPath (pack (concatMap ('/' :) encoded)))
-        in pathSegments p === Right segs
+            expected | any (B.elem 0) segs = Left SegmentContainsNUL
+                     | otherwise           = Right segs
+        in pathSegments p === expected
 
--- = https://www.rfc-editor.org/rfc/rfc3986#section-3.3
--- # The path segments "." and "..", also known as dot-segments, are
--- # defined for relative reference within the path name hierarchy.
+-- | pathSegments is a faithful decoding: dot-segments are data, and
+-- rejecting them is the job of Hyperdrive.Semantics.SafePath
 prop_dotSegments :: Property
 prop_dotSegments =
-  forAll (elements [".", "..", "%2e", "%2E", ".%2e", "%2E%2e"]) $ \dot ->
+  forAll (elements [(".", "."), ("..", ".."), ("%2e", "."), ("%2E", "."), (".%2e", ".."), ("%2E%2e", "..")]) $ \(dot, decoded) ->
   forAll (listOf (elements ["a", "b", ""])) $ \before ->
   forAll (listOf (elements ["a", "b", ""])) $ \rest ->
     let p = unsafeJust (mkPath (pack (concatMap ('/' :) (before ++ [dot] ++ rest))))
-    in pathSegments p === Left DotSegment
+    in pathSegments p === Right (map C.pack (before ++ [decoded] ++ rest))
+
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-7.3
+-- # Note, however, that the "%00" percent-encoding
+-- # (NUL) may require special handling and should be rejected if the
+-- # application is not expecting to receive raw data within a component.
+prop_pathNUL :: Property
+prop_pathNUL = once $ conjoin
+  [ pathSegments (unsafeJust (mkPath p)) === Left SegmentContainsNUL
+  | p <- ["/%00", "/a/b%00c", "/a%00/b"] ]
 
 ------------------------------------------------------------------------------
 -- Query

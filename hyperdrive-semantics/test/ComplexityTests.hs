@@ -16,6 +16,7 @@ import Data.Int (Int64)
 import Data.Maybe (fromMaybe)
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.Method
+import Hyperdrive.Semantics.SafePath
 import Hyperdrive.Semantics.URI
 import System.Mem (getAllocationCounter)
 import Test.QuickCheck
@@ -51,6 +52,8 @@ complexityTests = testGroup "Complexity (allocation is linear in input size)"
       maybe 0 (B.length . pathBytes) (mkPath (path n))
   , linear "pathSegments"  10000 $ \n ->
       either (const 0) length (pathSegments (fromMaybe (error "invalid path") (mkPath (path n))))
+  , linear "safePathSegments" 10000 $ \n ->
+      either (const 0) length (safePathSegments (fromMaybe (error "invalid path") (mkPath (path n))))
   , linear "mkQuery"       10000 $ \n ->
       maybe 0 (B.length . queryBytes) (mkQuery (C.replicate n '?' <> "%20"))
   , linear "percentDecode" 10000 $ \n ->

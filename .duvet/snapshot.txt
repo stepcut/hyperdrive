@@ -52,11 +52,19 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc3986
     TEXT[implementation]:       path-abempty  = *( "/" segment )
     TEXT[implementation]:       segment       = *pchar
     TEXT[implementation]:       pchar         = unreserved / pct-encoded / sub-delims / ":" / "@"
-    TEXT[implementation,test]:    The path segments "." and "..", also known as dot-segments, are
-    TEXT[implementation,test]:    defined for relative reference within the path name hierarchy.
 
   SECTION: [Query](#section-3.4)
     TEXT[implementation]:       query       = *( pchar / "/" / "?" )
+
+  SECTION: [Back-End Transcoding](#section-7.3)
+    TEXT[implementation,test]: Applications must split the URI into its
+    TEXT[implementation,test]:    components and subcomponents prior to decoding the octets, as
+    TEXT[implementation,test]:    otherwise the decoded octets might be mistaken for delimiters.
+    TEXT[implementation]:    Security checks of the data within a URI should be applied after
+    TEXT[implementation]:    decoding the octets.
+    TEXT[implementation,test]: Note, however, that the "%00" percent-encoding
+    TEXT[implementation,test]:    (NUL) may require special handling and should be rejected if the
+    TEXT[implementation,test]:    application is not expecting to receive raw data within a component.
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Requirements Notation](#section-2.2)
@@ -1719,3 +1727,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,exception]:        tokens associated with that token at the time of registration.
     TEXT[!MAY,exception]: The responsible party MAY change the registration at any time.
     TEXT[!MAY,exception]: The IESG MAY reassign responsibility for a protocol token.
+
+  SECTION: [Attacks Based on File and Path Names](#section-17.3)
+    TEXT[implementation]: Therefore, an origin server needs to avoid accessing
+    TEXT[implementation]:    names that have a special significance to the system when mapping the
+    TEXT[implementation]:    target resource to files, folders, or directories.
+    TEXT[implementation,test]:    For example, UNIX, Microsoft Windows, and other operating systems use
+    TEXT[implementation,test]:    ".." as a path component to indicate a directory level above the
+    TEXT[implementation,test]:    current one

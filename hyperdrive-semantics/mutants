@@ -94,6 +94,10 @@ why: userinfo must be treated as an error
 - | B.elem 0x40 bs = Left AuthorityHasUserinfo -- '@' is not allowed anywhere in host or port
 + | False = Left AuthorityHasUserinfo
 
+why: %00 should be rejected (RFC 3986 Section 7.3)
+- Just d | B.elem 0x00 d -> Left SegmentContainsNUL
++ Just d | False -> Left SegmentContainsNUL
+
 file: src/Hyperdrive/Semantics/Target.hs
 
 why: the asterisk form may only be used with OPTIONS
@@ -107,3 +111,17 @@ why: CONNECT to port 0 must be rejected
 why: an empty path is only kept as-is for OPTIONS
 - | m /= OPTIONS = TargetURI s a (Path "/") q
 + | True = TargetURI s a (Path "/") q
+
+file: src/Hyperdrive/Semantics/SafePath.hs
+
+why: ".." names the parent directory
+- | s == "." || s == ".." = Left DotSegment
++ | s == "."              = Left DotSegment
+
+why: a "/" sent as %2F would become a separator once segments are joined into a file path
+- | B.elem 0x2F s         = Left ContainsSlash
++ | False                 = Left ContainsSlash
+
+why: NUL truncates file names in C APIs
+- | B.elem 0x00 s         = Left ContainsNUL
++ | False                 = Left ContainsNUL

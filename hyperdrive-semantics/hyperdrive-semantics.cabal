@@ -23,6 +23,7 @@ library
   exposed-modules:  Hyperdrive.Semantics.Field
                     Hyperdrive.Semantics.Internal
                     Hyperdrive.Semantics.Method
+                    Hyperdrive.Semantics.SafePath
                     Hyperdrive.Semantics.Status
                     Hyperdrive.Semantics.Syntax
                     Hyperdrive.Semantics.Target
@@ -38,6 +39,7 @@ test-suite hyperdrive-semantics-tests
   main-is:          Main.hs
   other-modules:    ComplexityTests
                     ExhaustiveTests
+                    SafePathTests
                     URIOracle
                     URITests
   default-language: GHC2021

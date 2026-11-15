@@ -16,6 +16,7 @@ import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
 import ComplexityTests (complexityTests)
 import ExhaustiveTests (exhaustiveTests)
+import SafePathTests (safePathTests)
 import URITests (uriTests)
 
 main :: IO ()
@@ -46,6 +47,7 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
   , uriTests
   , complexityTests
   , exhaustiveTests
+  , safePathTests
   ]
 
 ------------------------------------------------------------------------------

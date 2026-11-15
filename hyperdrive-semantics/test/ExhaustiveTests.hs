@@ -74,7 +74,7 @@ exhaustiveTests = testGroup "Exhaustive"
     [ agrees "scheme"       "a1+-.:"    6 (isJust . mkScheme . C.pack) (O.matches O.scheme)
     , agrees "path"         "/%aF.?:2 " 6 (isJust . mkPath . C.pack)   (O.matches O.pathAbempty)
     , agrees "query"        "/%aF?#: "  6 (isJust . mkQuery . C.pack)  (O.matches O.query)
-    , exhaustive "pathSegments" "/.%2eEa"   7 $ \s ->
+    , exhaustive "pathSegments" "/.%20eE"   7 $ \s ->
         case mkPath (C.pack s) of
           Nothing -> True
           Just p  -> fmap (map C.unpack) (pathSegments p) == expectedSegments s
@@ -158,14 +158,14 @@ prop_ipv6Shapes =
 -- independent oracles
 ------------------------------------------------------------------------------
 
--- | Split on "/" and percent-decode each segment, rejecting dot
--- segments, written without reference to the implementation.
+-- | Split on "/" and percent-decode each segment, rejecting NUL,
+-- written without reference to the implementation.
 expectedSegments :: String -> Either PathSegmentError [String]
 expectedSegments s =
   case splitOn '/' s of
     ("" : segs) | segs /= [""] ->
       let decoded = map decode segs
-      in if any (`elem` [".", ".."]) decoded then Left DotSegment else Right decoded
+      in if any ('\0' `elem`) decoded then Left SegmentContainsNUL else Right decoded
     _ -> Right []
   where
     splitOn c xs = case break (== c) xs of

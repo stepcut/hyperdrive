@@ -16,6 +16,7 @@ module Hyperdrive.Semantics.Internal
   , IPvFuture(..)
   , Path(..)
   , Query(..)
+  , SafeSegment(..)
   ) where
 
 import Data.ByteString (ByteString)
@@ -67,4 +68,9 @@ newtype Path = Path ByteString
 
 -- | Invariant: the bytes match @query@.
 newtype Query = Query ByteString
+  deriving (Eq, Ord, Show)
+
+-- | Invariant: the bytes are a decoded path segment that is not @.@ or
+-- @..@ and contains no "/" or NUL.
+newtype SafeSegment = SafeSegment ByteString
   deriving (Eq, Ord, Show)
