@@ -100,6 +100,8 @@ data FieldValueError
 -- # message.
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-5.5
+-- = type=exception
+-- = reason=Other control characters are rejected too: a server has no safe context in which to retain them.
 -- # Field values containing other CTL characters are also
 -- # invalid; however, recipients MAY retain such characters for the sake
 -- # of robustness when they appear within a safe context (e.g., an

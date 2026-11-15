@@ -92,26 +92,26 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5952
     TEXT[!MUST]:    The use of the symbol "::" MUST be used to its maximum capability.
 
   SECTION: [Handling One 16-Bit 0 Field](#section-4.2.2)
-    TEXT[!MUST,implementation]:    The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
+    TEXT[!MUST,implementation,test]:    The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
 
   SECTION: [Choice in Placement of "::"](#section-4.2.3)
-    TEXT[!MUST,implementation]:    When there is an alternative choice in the placement of a "::", the
-    TEXT[!MUST,implementation]:    longest run of consecutive 16-bit 0 fields MUST be shortened (i.e.,
-    TEXT[!MUST,implementation]:    the sequence with three consecutive zero fields is shortened in 2001:
-    TEXT[!MUST,implementation]:    0:0:1:0:0:0:1).
-    TEXT[!MUST,implementation]: When the length of the consecutive 16-bit 0 fields
-    TEXT[!MUST,implementation]:    are equal (i.e., 2001:db8:0:0:1:0:0:1), the first sequence of zero
-    TEXT[!MUST,implementation]:    bits MUST be shortened.
+    TEXT[!MUST,implementation,test]:    When there is an alternative choice in the placement of a "::", the
+    TEXT[!MUST,implementation,test]:    longest run of consecutive 16-bit 0 fields MUST be shortened (i.e.,
+    TEXT[!MUST,implementation,test]:    the sequence with three consecutive zero fields is shortened in 2001:
+    TEXT[!MUST,implementation,test]:    0:0:1:0:0:0:1).
+    TEXT[!MUST,implementation,test]: When the length of the consecutive 16-bit 0 fields
+    TEXT[!MUST,implementation,test]:    are equal (i.e., 2001:db8:0:0:1:0:0:1), the first sequence of zero
+    TEXT[!MUST,implementation,test]:    bits MUST be shortened.
 
   SECTION: [Lowercase](#section-4.3)
     TEXT[!MUST]:    The characters "a", "b", "c", "d", "e", and "f" in an IPv6 address
     TEXT[!MUST]:    MUST be represented in lowercase.
 
   SECTION: [Text Representation of Special Addresses](#section-5)
-    TEXT[!SHOULD,implementation]: For these addresses, mixed notation is
-    TEXT[!SHOULD,implementation]:    RECOMMENDED if the following condition is met: the address can be
-    TEXT[!SHOULD,implementation]:    distinguished as having IPv4 addresses embedded in the lower 32 bits
-    TEXT[!SHOULD,implementation]:    solely from the address field through the use of a well-known prefix.
+    TEXT[!SHOULD,implementation,test]: For these addresses, mixed notation is
+    TEXT[!SHOULD,implementation,test]:    RECOMMENDED if the following condition is met: the address can be
+    TEXT[!SHOULD,implementation,test]:    distinguished as having IPv4 addresses embedded in the lower 32 bits
+    TEXT[!SHOULD,implementation,test]:    solely from the address field through the use of a well-known prefix.
     TEXT[implementation]:    Such prefixes are defined in [RFC4291] and [RFC2765] at the time of
     TEXT[implementation]:    this writing.
     TEXT[!MAY]: If it is known by some external method that a given
@@ -262,8 +262,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    trailer fields.
 
   SECTION: [Field Order](#section-5.3)
-    TEXT[!MAY,implementation]:    A recipient MAY combine multiple field lines within a field section
-    TEXT[!MAY,implementation]:    that have the same field name into one field line, without changing
+    TEXT[!MAY,implementation,test]:    A recipient MAY combine multiple field lines within a field section
+    TEXT[!MAY,implementation,test]:    that have the same field name into one field line
+    TEXT[!MAY,implementation]: , without changing
     TEXT[!MAY,implementation]:    the semantics of the message, by appending each subsequent field line
     TEXT[!MAY,implementation]:    value to the initial field line value in order, separated by a comma
     TEXT[!MAY,implementation]:    (",") and optional whitespace (OWS, defined in Section 5.6.3).
@@ -319,23 +320,29 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,implementation,test]:    a field value MUST either reject the message or replace each of those
     TEXT[!MUST,implementation,test]:    characters with SP before further processing or forwarding of that
     TEXT[!MUST,implementation,test]:    message.
-    TEXT[!MAY,implementation]: Field values containing other CTL characters are also
-    TEXT[!MAY,implementation]:    invalid; however, recipients MAY retain such characters for the sake
-    TEXT[!MAY,implementation]:    of robustness when they appear within a safe context (e.g., an
-    TEXT[!MAY,implementation]:    application-specific quoted string that will not be processed by any
-    TEXT[!MAY,implementation]:    downstream HTTP parser).
+    TEXT[!MAY,exception]: Field values containing other CTL characters are also
+    TEXT[!MAY,exception]:    invalid; however, recipients MAY retain such characters for the sake
+    TEXT[!MAY,exception]:    of robustness when they appear within a safe context (e.g., an
+    TEXT[!MAY,exception]:    application-specific quoted string that will not be processed by any
+    TEXT[!MAY,exception]:    downstream HTTP parser).
+    TEXT[test]:    For example, a textual date and a URI (either of which might contain
+    TEXT[test]:    a comma) could be safely carried in list-based field values like
+    TEXT[test]:    these:
 
   SECTION: [Sender Requirements](#section-5.6.1.1)
     TEXT[!MUST]:    In any production that uses the list construct, a sender MUST NOT
     TEXT[!MUST]:    generate empty list elements.
 
   SECTION: [Recipient Requirements](#section-5.6.1.2)
-    TEXT[!MUST]:    recipient MUST parse and ignore a reasonable number of empty list
-    TEXT[!MUST]:    elements: enough to handle common mistakes by senders that merge
-    TEXT[!MUST]:    values, but not so much that they could be used as a denial-of-
-    TEXT[!MUST]:    service mechanism.
-    TEXT[!MUST]: In other words, a recipient MUST accept lists
-    TEXT[!MUST]:    that satisfy the following syntax:
+    TEXT[!MUST,implementation,test]:    recipient MUST parse and ignore a reasonable number of empty list
+    TEXT[!MUST,implementation,test]:    elements: enough to handle common mistakes by senders that merge
+    TEXT[!MUST,implementation,test]:    values, but not so much that they could be used as a denial-of-
+    TEXT[!MUST,implementation,test]:    service mechanism.
+    TEXT[!MUST,implementation,test]: In other words, a recipient MUST accept lists
+    TEXT[!MUST,implementation,test]:    that satisfy the following syntax:
+    TEXT[implementation,test]:      #element => [ element ] *( OWS "," OWS [ element ] )
+    TEXT[test]:    Then the following are valid values for example-list (not including
+    TEXT[test]:    the double quotes, which are present for delimitation only):
 
   SECTION: [Tokens](#section-5.6.2)
     TEXT[implementation]:    Tokens are short textual identifiers that do not include whitespace
@@ -368,15 +375,30 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[implementation]:      OWS            = *( SP / HTAB )
 
   SECTION: [Quoted Strings](#section-5.6.4)
-    TEXT[!MUST]: Recipients
-    TEXT[!MUST]:    that process the value of a quoted-string MUST handle a quoted-pair
-    TEXT[!MUST]:    as if it were replaced by the octet following the backslash.
-    TEXT[!SHOULD]:    A sender SHOULD NOT generate a quoted-pair in a quoted-string except
-    TEXT[!SHOULD]:    where necessary to quote DQUOTE and backslash octets occurring within
-    TEXT[!SHOULD]:    that string.
+    TEXT[implementation]:      quoted-string  = DQUOTE *( qdtext / quoted-pair ) DQUOTE
+    TEXT[implementation]:      qdtext         = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+    TEXT[!MUST,implementation,test]: Recipients
+    TEXT[!MUST,implementation,test]:    that process the value of a quoted-string MUST handle a quoted-pair
+    TEXT[!MUST,implementation,test]:    as if it were replaced by the octet following the backslash.
+    TEXT[implementation]:      quoted-pair    = "\" ( HTAB / SP / VCHAR / obs-text )
+    TEXT[!SHOULD,implementation,test]:    A sender SHOULD NOT generate a quoted-pair in a quoted-string except
+    TEXT[!SHOULD,implementation,test]:    where necessary to quote DQUOTE and backslash octets occurring within
+    TEXT[!SHOULD,implementation,test]:    that string.
     TEXT[!SHOULD]: A sender SHOULD NOT generate a quoted-pair in a comment
     TEXT[!SHOULD]:    except where necessary to quote parentheses ["(" and ")"] and
     TEXT[!SHOULD]:    backslash octets occurring within that comment.
+
+  SECTION: [Parameters](#section-5.6.6)
+    TEXT[implementation]:      parameters      = *( OWS ";" OWS [ parameter ] )
+    TEXT[implementation]:      parameter       = parameter-name "=" parameter-value
+    TEXT[implementation]:      parameter-name  = token
+    TEXT[implementation]:      parameter-value = ( token / quoted-string )
+    TEXT[implementation]:    Parameter names are case-insensitive.
+    TEXT[implementation]:    A parameter value that matches the token production can be
+    TEXT[implementation]:    transmitted either as a token or within a quoted-string.  The quoted
+    TEXT[implementation]:    and unquoted values are equivalent.
+    TEXT[implementation,test]: *Note:* Parameters do not allow whitespace (not even "bad"
+    TEXT[implementation,test]:       |  whitespace) around the "=" character.
 
   SECTION: [Date/Time Formats](#section-5.6.7)
     TEXT[!MUST]:    A recipient that parses a timestamp value in an HTTP field MUST
@@ -643,6 +665,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Media Type](#section-8.3.1)
     TEXT[!MAY]:    The type/subtype MAY be followed by semicolon-delimited parameters
     TEXT[!MAY]:    (Section 5.6.6) in the form of name/value pairs.
+    TEXT[test]:    For example, the following media types are equivalent in describing
+    TEXT[test]:    HTML text data encoded in the UTF-8 character encoding scheme
 
   SECTION: [Multipart Types](#section-8.3.3)
     TEXT[!MUST]: The message body is itself a protocol element; a sender MUST

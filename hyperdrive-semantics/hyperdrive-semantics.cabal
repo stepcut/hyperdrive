@@ -21,6 +21,7 @@ library
   hs-source-dirs:   src
   default-language: GHC2021
   exposed-modules:  Hyperdrive.Semantics.Field
+                    Hyperdrive.Semantics.FieldSyntax
                     Hyperdrive.Semantics.Internal
                     Hyperdrive.Semantics.Method
                     Hyperdrive.Semantics.SafePath
@@ -39,6 +40,7 @@ test-suite hyperdrive-semantics-tests
   main-is:          Main.hs
   other-modules:    ComplexityTests
                     ExhaustiveTests
+                    FieldSyntaxTests
                     IndependentTests
                     SafePathTests
                     URIOracle

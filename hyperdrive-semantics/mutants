@@ -137,3 +137,45 @@ why: a "/" sent as %2F would become a separator once segments are joined into a 
 why: NUL truncates file names in C APIs
 - | B.elem 0x00 s         = Left ContainsNUL
 + | False                 = Left ContainsNUL
+
+file: src/Hyperdrive/Semantics/FieldSyntax.hs
+
+why: a comma inside a quoted-string does not separate list elements
+- 0x22 -> skipQuoted (i + 1) >>= go start              -- DQUOTE
++ 0x22 -> go start (i + 1)              -- DQUOTE
+
+why: a quoted-pair can quote a DQUOTE, which then does not end the string
+- 0x5C -> skipQuoted (i + 2)   -- quoted-pair
++ 0x5C -> skipQuoted (i + 1)   -- quoted-pair
+
+why: comments nest, so a ")" only ends the outermost comment at depth 1
+- 0x28 -> skipComment (depth + 1) (i + 1)
++ 0x28 -> skipComment depth (i + 1)
+
+why: whitespace around a list element is OWS, not part of the element
+- let e = B.dropWhileEnd isOWS (B.dropWhile isOWS (B.take (end - start) (B.drop start bs)))
++ let e = B.dropWhile isOWS (B.take (end - start) (B.drop start bs))
+
+why: empty list elements must be ignored
+- in [ e | not (B.null e) ]
++ in [ e ]
+
+why: obs-text is allowed in a quoted-string
+- || (w >= 0x23 && w <= 0x5B) || (w >= 0x5D && w <= 0x7E) || isObsText w
++ || (w >= 0x23 && w <= 0x5B) || (w >= 0x5D && w <= 0x7E)
+
+why: a quoted-pair cannot quote a control character
+- | isQuotedPairChar c -> go (c : acc) rest'
++ | True -> go (c : acc) rest'
+
+why: a backslash in a value must be escaped when quoting
+- escape w | w == 0x22 || w == 0x5C = B.pack [0x5C, w]
++ escape w | w == 0x22 = B.pack [0x5C, w]
+
+why: parameter names are case-insensitive
+- ((B.map toLower name, value) :) <$> go rest'
++ ((name, value) :) <$> go rest'
+
+why: trailing whitespace after the last parameter is not allowed by the grammar
+- | otherwise   -> Left InvalidParameter   -- OWS must be followed by ";"
++ | otherwise   -> Right []   -- OWS must be followed by ";"

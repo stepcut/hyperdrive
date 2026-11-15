@@ -15,6 +15,7 @@ import qualified Data.ByteString.Char8 as C
 import Data.Int (Int64)
 import Data.Maybe (fromMaybe)
 import Hyperdrive.Semantics.Field
+import Hyperdrive.Semantics.FieldSyntax
 import Hyperdrive.Semantics.Method
 import Hyperdrive.Semantics.SafePath
 import Hyperdrive.Semantics.URI
@@ -54,6 +55,25 @@ complexityTests = testGroup "Complexity (allocation is linear in input size)"
       either (const 0) length (pathSegments (fromMaybe (error "invalid path") (mkPath (path n))))
   , linear "safePathSegments" 10000 $ \n ->
       either (const 0) length (safePathSegments (fromMaybe (error "invalid path") (mkPath (path n))))
+  , linear "splitList (elements)" 10000 $ \n ->
+      either (const 0) length (splitList NoComments (fv (B.intercalate ", " (replicate n "a;q=1"))))
+    -- RFC 9110 Section 5.6.1.2: empty list elements must not be usable
+    -- for denial of service. See the citation in FieldSyntaxTests.
+  , linear "splitList (empty elements)" 10000 $ \n ->
+      either (const 0) length (splitList NoComments (fv ("a" <> C.replicate n ',' <> "b")))
+  , linear "splitList (quoted-string)" 10000 $ \n ->
+      either (const 0) length (splitList NoComments (fv ("\"" <> mconcat (replicate n "a,\\\"") <> "\"")))
+  , linear "splitList (nested comments)" 10000 $ \n ->
+      either (const 0) length (splitList AllowComments (fv (C.replicate n '(' <> C.replicate n ')')))
+  , linear "fieldListElements" 1000 $ \n ->
+      either (const 0) length (fieldListElements NoComments hConnection
+        (fieldsFromList (replicate n (hConnection, fv "a, b"))))
+  , linear "parseQuotedString" 10000 $ \n ->
+      either (const 0) (B.length . fst) (parseQuotedString ("\"" <> mconcat (replicate n "a\\\"") <> "\""))
+  , linear "quoteString" 10000 $ \n ->
+      maybe 0 B.length (quoteString (mconcat (replicate n "a\"\\")))
+  , linear "parseParameters" 10000 $ \n ->
+      either (const 0) length (parseParameters (mconcat (replicate n "; a=\"b\"")))
   , linear "mkQuery"       10000 $ \n ->
       maybe 0 (B.length . queryBytes) (mkQuery (C.replicate n '?' <> "%20"))
   , linear "percentDecode" 10000 $ \n ->
@@ -63,6 +83,7 @@ complexityTests = testGroup "Complexity (allocation is linear in input size)"
     values n = [ v | i <- [1 .. n], Right v <- [mkFieldValue (C.pack (show i))] ]
     path n = mconcat (replicate n "/a%2F")
     authority bs = either (const 0) (B.length . renderAuthority) (parseAuthority bs)
+    fv bs = either (error "invalid field value") id (mkFieldValue bs)
 
 -- | bytes allocated by evaluating the 'Int' result
 allocation :: Int -> IO Int64

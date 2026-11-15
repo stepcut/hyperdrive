@@ -283,6 +283,17 @@ prop_authorityExamples = conjoin
   ]
   where host' = show . authorityHost
 
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-4.2.2
+-- # The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
+
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-4.2.3
+-- # When there is an alternative choice in the placement of a "::", the
+-- # longest run of consecutive 16-bit 0 fields MUST be shortened (i.e.,
+-- # the sequence with three consecutive zero fields is shortened in 2001:
+-- # 0:0:1:0:0:0:1).  When the length of the consecutive 16-bit 0 fields
+-- # are equal (i.e., 2001:db8:0:0:1:0:0:1), the first sequence of zero
+-- # bits MUST be shortened.
+
 -- | RFC 5952, Section 4.2: the longest run of zeros is elided, the first
 -- if there is a tie, and a single zero is never elided.
 prop_renderIPv6 :: Property
@@ -294,6 +305,12 @@ prop_renderIPv6 = conjoin
   , r "[2001:DB8::0001]"         === Right "[2001:db8::1]"
   ]
   where r = fmap renderAuthority . parseAuthority
+
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-5
+-- # For these addresses, mixed notation is
+-- # RECOMMENDED if the following condition is met: the address can be
+-- # distinguished as having IPv4 addresses embedded in the lower 32 bits
+-- # solely from the address field through the use of a well-known prefix.
 
 -- = https://www.rfc-editor.org/rfc/rfc5952#section-5
 -- # The text representation method noted in Section 4 should be applied
