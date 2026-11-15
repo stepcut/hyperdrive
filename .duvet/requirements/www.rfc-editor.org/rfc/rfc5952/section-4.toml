@@ -1,0 +1,23 @@
+target = "https://www.rfc-editor.org/rfc/rfc5952#section-4"
+
+# A Recommendation for IPv6 Text Representation
+#
+#    A recommendation for a canonical text representation format of IPv6
+#    addresses is presented in this section.  The recommendation in this
+#    document is one that complies fully with [RFC4291], is implemented by
+#    various operating systems, and is human friendly.  The recommendation
+#    in this section SHOULD be followed by systems when generating an
+#    address to be represented as text, but all implementations MUST
+#    accept and be able to handle any legitimate [RFC4291] format.  It is
+#    advised that humans also follow these recommendations when spelling
+#    an address.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The recommendation
+in this section SHOULD be followed by systems when generating an
+address to be represented as text, but all implementations MUST
+accept and be able to handle any legitimate [RFC4291] format.
+'''
+

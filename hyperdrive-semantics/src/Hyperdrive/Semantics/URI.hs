@@ -82,6 +82,20 @@ pattern HTTPS = Scheme "https"
 
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
 -- # host        = IP-literal / IPv4address / reg-name
+
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-7.4
+-- # However, they
+-- # can become a security concern if an application attempts to filter
+-- # access to resources based on the IP address in string literal format.
+
+-- | A host, in normal form.
+--
+-- Only the dotted-decimal form of four octets is an IPv4 address, so
+-- names like @1234@, @1.2.3@ or @0x7f.0.0.1@ are registered names.
+-- System resolvers such as @getaddrinfo@ and @inet_aton@ may
+-- nevertheless treat them as IPv4 addresses. Code that allows or denies
+-- access by address must therefore resolve a registered name and check
+-- the numeric result, never compare against the name's text.
 data Host
   = HostRegName   !RegName
   | HostIPv4      !Word32
@@ -176,7 +190,11 @@ parseHost bs
         else Left AuthorityInvalidHost
   | Just a <- parseIPv4 bs = Right (HostIPv4 a)
   | B.null bs              = Left AuthorityEmptyHost
-  | isRegName bs           = Right (HostRegName (RegName (normalizeRegName bs)))
+  | isRegName bs           =
+      -- normalizing can turn a reg-name into an IPv4 address: %31.2.3.4
+      -- is 1.2.3.4, so first-match-wins applies to the normal form too
+      let n = normalizeRegName bs
+      in Right (maybe (HostRegName (RegName n)) HostIPv4 (parseIPv4 n))
   | otherwise              = Left AuthorityInvalidHost
 
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
@@ -194,13 +212,23 @@ isRegName = allEncoded (\w -> isUnreserved w || isSubDelim w)
 -- # for registered names and hexadecimal addresses for the sake of
 -- # uniformity, while only using uppercase letters for percent-encodings.
 
--- | lower case, except for the hex digits of percent-encodings
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2.2
+-- # These URIs should
+-- # be normalized by decoding any percent-encoded octet that corresponds
+-- # to an unreserved character, as described in Section 2.3.
+
+-- | Percent-encoded unreserved characters are decoded, letters are made
+-- lower case, and the hex digits of the remaining percent-encodings
+-- are made upper case.
 normalizeRegName :: ByteString -> ByteString
 normalizeRegName = B.pack . go . B.unpack
   where
-    go (0x25 : a : b : rest) = 0x25 : toUpper a : toUpper b : go rest
-    go (w : rest)            = toLower w : go rest
-    go []                    = []
+    go (0x25 : a : b : rest)
+      | isUnreserved c = toLower c : go rest
+      | otherwise      = 0x25 : toUpper a : toUpper b : go rest
+      where c = hexValue a * 16 + hexValue b
+    go (w : rest)      = toLower w : go rest
+    go []              = []
 
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
 -- # IP-literal = "[" ( IPv6address / IPvFuture  ) "]"
@@ -321,15 +349,49 @@ ipvFutureBytes (IPvFuture bs) = bs
 -- recommended by RFC 5952.
 renderHost :: Host -> ByteString
 renderHost (HostRegName r)   = regNameBytes r
-renderHost (HostIPv4 a)      =
-  B.intercalate "." [ C.pack (show ((a `shiftR` s) .&. 0xFF)) | s <- [24, 16, 8, 0] ]
+renderHost (HostIPv4 a)      = renderIPv4 a
 renderHost (HostIPv6 a)      = "[" <> renderIPv6 a <> "]"
 renderHost (HostIPvFuture f) = "[" <> ipvFutureBytes f <> "]"
 
+renderIPv4 :: Word32 -> ByteString
+renderIPv4 a =
+  B.intercalate "." [ C.pack (show ((a `shiftR` s) .&. 0xFF)) | s <- [24, 16, 8, 0] ]
+
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-5
+-- # For these addresses, mixed notation is
+-- # RECOMMENDED if the following condition is met: the address can be
+-- # distinguished as having IPv4 addresses embedded in the lower 32 bits
+-- # solely from the address field through the use of a well-known prefix.
+-- # Such prefixes are defined in [RFC4291] and [RFC2765] at the time of
+-- # this writing.
+
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-5
+-- # The text representation method noted in Section 4 should be applied
+-- # for the leading hexadecimal part (i.e., ::ffff:192.0.2.1 instead of
+-- # 0:0:0:0:0:ffff:192.0.2.1).
+
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-4.2.2
+-- # The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
+
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-4.2.3
+-- # When there is an alternative choice in the placement of a "::", the
+-- # longest run of consecutive 16-bit 0 fields MUST be shortened (i.e.,
+-- # the sequence with three consecutive zero fields is shortened in 2001:
+-- # 0:0:1:0:0:0:1).  When the length of the consecutive 16-bit 0 fields
+-- # are equal (i.e., 2001:db8:0:0:1:0:0:1), the first sequence of zero
+-- # bits MUST be shortened.
+
 -- | RFC 5952: lower case hex, no leading zeros, and the longest run of
 -- two or more zero pieces (the first, if there is a tie) replaced by
--- "::".
+-- "::". Addresses with the well-known prefixes for embedded IPv4
+-- addresses, IPv4-mapped (@::ffff:0:0/96@, RFC 4291) and
+-- IPv4-translated (@::ffff:0:0:0/96@, RFC 2765), end in dotted decimal.
+-- RFC 4291's deprecated IPv4-compatible prefix (@::/96@) is not
+-- included: it covers @::1@, which would otherwise become @::0.0.0.1@.
 renderIPv6 :: IPv6 -> ByteString
+renderIPv6 (IPv6 0 lo)
+  | lo `shiftR` 32 == 0x0000FFFF = "::ffff:"   <> renderIPv4 (fromIntegral lo)
+  | lo `shiftR` 32 == 0xFFFF0000 = "::ffff:0:" <> renderIPv4 (fromIntegral lo)
 renderIPv6 a =
   case longestZeroRun ps of
     Nothing       -> hexes ps

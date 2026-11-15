@@ -930,30 +930,30 @@ targetTests =
   , ("RFC 9110 7.1 (POLICY: extended CONNECT, RFC 8441/9220): CONNECT with an ordinary URI is allowed"
     , validForMethod CONNECT (uriT "/chat" Nothing))
   , ("RFC 9110 4.2.3 'an empty path component is equivalent to an absolute path of \"/\", so the normal form is to provide a path of \"/\"'"
-    , normalizeTarget GET (uriT "" Nothing) == uriT "/" Nothing)
+    , normalizeEmptyPath GET (uriT "" Nothing) == uriT "/" Nothing)
   , ("RFC 9110 4.2.3 empty path to '/': query preserved"
-    , normalizeTarget GET (uriT "" (Just "a=b")) == uriT "/" (Just "a=b"))
+    , normalizeEmptyPath GET (uriT "" (Just "a=b")) == uriT "/" (Just "a=b"))
   , ("RFC 9110 4.2.3 'When not being used as the target of an OPTIONS request': OPTIONS empty path left alone"
-    , normalizeTarget OPTIONS (uriT "" Nothing) == uriT "" Nothing)
+    , normalizeEmptyPath OPTIONS (uriT "" Nothing) == uriT "" Nothing)
   , ("RFC 9110 4.2.3 OPTIONS exception + 9.1 'case-sensitive': lowercase 'options' is not OPTIONS, so path becomes '/'"
-    , normalizeTarget (meth "options") (uriT "" Nothing) == uriT "/" Nothing)
+    , normalizeEmptyPath (meth "options") (uriT "" Nothing) == uriT "/" Nothing)
   , ("RFC 9110 4.2.3: empty path normalized for POST, CONNECT and unknown methods too"
-    , all (\m -> normalizeTarget m (uriT "" Nothing) == uriT "/" Nothing) [POST, CONNECT, HEAD, meth "FOO"])
+    , all (\m -> normalizeEmptyPath m (uriT "" Nothing) == uriT "/" Nothing) [POST, CONNECT, HEAD, meth "FOO"])
   , ("RFC 9110 4.2.3 'all other components are compared in a case-sensitive manner': non-empty path untouched"
-    , normalizeTarget GET (uriT "/A/%7esmith" Nothing) == uriT "/A/%7esmith" Nothing)
+    , normalizeEmptyPath GET (uriT "/A/%7esmith" Nothing) == uriT "/A/%7esmith" Nothing)
   , ("RFC 3986 6.2.3 'Normalization should not remove delimiters when their associated component is empty': empty query kept distinct from absent query"
-    , normalizeTarget GET (uriT "/" (Just "")) == uriT "/" (Just ""))
+    , normalizeEmptyPath GET (uriT "/" (Just "")) == uriT "/" (Just ""))
   , ("RFC 3986 3.4: absent query stays absent"
-    , normalizeTarget GET (uriT "/" Nothing) == uriT "/" Nothing)
+    , normalizeEmptyPath GET (uriT "/" Nothing) == uriT "/" Nothing)
   , ("RFC 9110 7.1: asterisk form unchanged by normalization"
-    , normalizeTarget OPTIONS TargetAsterisk == TargetAsterisk)
+    , normalizeEmptyPath OPTIONS TargetAsterisk == TargetAsterisk)
   , ("RFC 9110 9.3.6: CONNECT form unchanged by normalization"
-    , normalizeTarget CONNECT (TargetConnect (hostOf "example.com") 443) == TargetConnect (hostOf "example.com") 443)
+    , normalizeEmptyPath CONNECT (TargetConnect (hostOf "example.com") 443) == TargetConnect (hostOf "example.com") 443)
   , ("RFC 9110 4.2.1 default port is 80 for http, so :443 on http is not a default and must be kept"
-    , normalizeTarget GET (TargetURI HTTP (auth "example.com:443") (path "/") Nothing)
+    , normalizeEmptyPath GET (TargetURI HTTP (auth "example.com:443") (path "/") Nothing)
         == TargetURI HTTP (auth "example.com:443") (path "/") Nothing)
   , ("RFC 9110 4.2.2 default port is 443 for https, so :80 on https is not a default and must be kept"
-    , normalizeTarget GET (TargetURI HTTPS (auth "example.com:80") (path "") Nothing)
+    , normalizeEmptyPath GET (TargetURI HTTPS (auth "example.com:80") (path "") Nothing)
         == TargetURI HTTPS (auth "example.com:80") (path "/") Nothing)
   ]
 

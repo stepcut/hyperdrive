@@ -107,7 +107,11 @@ def main():
         print("building and testing the unmodified project ...", flush=True)
         baseline = run(test_command(), work)
         if baseline.returncode != 0:
-            print(baseline.stdout[-3000:], baseline.stderr[-3000:])
+            lines = baseline.stdout.splitlines()
+            failing = [i for i, l in enumerate(lines) if "FAIL" in l or "error" in l]
+            for i in failing[:10]:
+                print("\n".join(lines[i:i + 8]))
+            print(baseline.stderr[-3000:])
             sys.exit("the unmodified project does not pass its tests; fix that first")
 
         results = []

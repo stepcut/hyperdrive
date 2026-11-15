@@ -1,0 +1,48 @@
+target = "https://www.rfc-editor.org/rfc/rfc5952#section-5"
+
+# Text Representation of Special Addresses
+#
+#    Addresses such as IPv4-Mapped IPv6 addresses, ISATAP [RFC5214], and
+#    IPv4-translatable addresses [ADDR-FORMAT] have IPv4 addresses
+#    embedded in the low-order 32 bits of the address.  These addresses
+#    have a special representation that may mix hexadecimal and dot
+#    decimal notations.  The decimal notation may be used only for the
+#    last 32 bits of the address.  For these addresses, mixed notation is
+#    RECOMMENDED if the following condition is met: the address can be
+#    distinguished as having IPv4 addresses embedded in the lower 32 bits
+#    solely from the address field through the use of a well-known prefix.
+#    Such prefixes are defined in [RFC4291] and [RFC2765] at the time of
+#    this writing.  If it is known by some external method that a given
+#    prefix is used to embed IPv4, it MAY be represented as mixed
+#    notation.  Tools that provide options to specify prefixes that are
+#    (or are not) to be represented as mixed notation may be useful.
+# 
+#    There is a trade-off here where a recommendation to achieve an exact
+#    match in a search (no dot decimals whatsoever) and a recommendation
+#    to help the readability of an address (dot decimal whenever possible)
+#    does not result in the same solution.  The above recommendation is
+#    aimed at fixing the representation as much as possible while leaving
+#    the opportunity for future well-known prefixes to be represented in a
+#    human-friendly manner as tools adjust to newly assigned prefixes.
+# 
+#    The text representation method noted in Section 4 should be applied
+#    for the leading hexadecimal part (i.e., ::ffff:192.0.2.1 instead of
+#    0:0:0:0:0:ffff:192.0.2.1).
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+For these addresses, mixed notation is
+RECOMMENDED if the following condition is met: the address can be
+distinguished as having IPv4 addresses embedded in the lower 32 bits
+solely from the address field through the use of a well-known prefix.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If it is known by some external method that a given
+prefix is used to embed IPv4, it MAY be represented as mixed
+notation.
+'''
+

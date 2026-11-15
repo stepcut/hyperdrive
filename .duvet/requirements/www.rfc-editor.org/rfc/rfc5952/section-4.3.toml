@@ -1,0 +1,14 @@
+target = "https://www.rfc-editor.org/rfc/rfc5952#section-4.3"
+
+# Lowercase
+#
+#    The characters "a", "b", "c", "d", "e", and "f" in an IPv6 address
+#    MUST be represented in lowercase.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The characters "a", "b", "c", "d", "e", and "f" in an IPv6 address
+MUST be represented in lowercase.
+'''
+

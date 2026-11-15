@@ -56,6 +56,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc3986
   SECTION: [Query](#section-3.4)
     TEXT[implementation]:       query       = *( pchar / "/" / "?" )
 
+  SECTION: [Percent-Encoding Normalization](#section-6.2.2.2)
+    TEXT[implementation,test]: These URIs should
+    TEXT[implementation,test]:    be normalized by decoding any percent-encoded octet that corresponds
+    TEXT[implementation,test]:    to an unreserved character, as described in Section 2.3.
+
   SECTION: [Back-End Transcoding](#section-7.3)
     TEXT[implementation,test]: Applications must split the URI into its
     TEXT[implementation,test]:    components and subcomponents prior to decoding the octets, as
@@ -65,6 +70,65 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc3986
     TEXT[implementation,test]: Note, however, that the "%00" percent-encoding
     TEXT[implementation,test]:    (NUL) may require special handling and should be rejected if the
     TEXT[implementation,test]:    application is not expecting to receive raw data within a component.
+
+  SECTION: [Rare IP Address Formats](#section-7.4)
+    TEXT[implementation]: However, they
+    TEXT[implementation]:    can become a security concern if an application attempts to filter
+    TEXT[implementation]:    access to resources based on the IP address in string literal format.
+
+SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5952
+  SECTION: [A Recommendation for IPv6 Text Representation](#section-4)
+    TEXT[!MUST]: The recommendation
+    TEXT[!MUST]:    in this section SHOULD be followed by systems when generating an
+    TEXT[!MUST]:    address to be represented as text, but all implementations MUST
+    TEXT[!MUST]:    accept and be able to handle any legitimate [RFC4291] format.
+
+  SECTION: [Handling Leading Zeros in a 16-Bit Field](#section-4.1)
+    TEXT[!MUST]:    Leading zeros MUST be suppressed.
+    TEXT[!MUST]: A single 16-
+    TEXT[!MUST]:    bit 0000 field MUST be represented as 0.
+
+  SECTION: [Shorten as Much as Possible](#section-4.2.1)
+    TEXT[!MUST]:    The use of the symbol "::" MUST be used to its maximum capability.
+
+  SECTION: [Handling One 16-Bit 0 Field](#section-4.2.2)
+    TEXT[!MUST,implementation]:    The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
+
+  SECTION: [Choice in Placement of "::"](#section-4.2.3)
+    TEXT[!MUST,implementation]:    When there is an alternative choice in the placement of a "::", the
+    TEXT[!MUST,implementation]:    longest run of consecutive 16-bit 0 fields MUST be shortened (i.e.,
+    TEXT[!MUST,implementation]:    the sequence with three consecutive zero fields is shortened in 2001:
+    TEXT[!MUST,implementation]:    0:0:1:0:0:0:1).
+    TEXT[!MUST,implementation]: When the length of the consecutive 16-bit 0 fields
+    TEXT[!MUST,implementation]:    are equal (i.e., 2001:db8:0:0:1:0:0:1), the first sequence of zero
+    TEXT[!MUST,implementation]:    bits MUST be shortened.
+
+  SECTION: [Lowercase](#section-4.3)
+    TEXT[!MUST]:    The characters "a", "b", "c", "d", "e", and "f" in an IPv6 address
+    TEXT[!MUST]:    MUST be represented in lowercase.
+
+  SECTION: [Text Representation of Special Addresses](#section-5)
+    TEXT[!SHOULD,implementation]: For these addresses, mixed notation is
+    TEXT[!SHOULD,implementation]:    RECOMMENDED if the following condition is met: the address can be
+    TEXT[!SHOULD,implementation]:    distinguished as having IPv4 addresses embedded in the lower 32 bits
+    TEXT[!SHOULD,implementation]:    solely from the address field through the use of a well-known prefix.
+    TEXT[implementation]:    Such prefixes are defined in [RFC4291] and [RFC2765] at the time of
+    TEXT[implementation]:    this writing.
+    TEXT[!MAY]: If it is known by some external method that a given
+    TEXT[!MAY]:    prefix is used to embed IPv4, it MAY be represented as mixed
+    TEXT[!MAY]:    notation.
+    TEXT[implementation,test]:    The text representation method noted in Section 4 should be applied
+    TEXT[implementation,test]:    for the leading hexadecimal part (i.e., ::ffff:192.0.2.1 instead of
+    TEXT[implementation,test]:    0:0:0:0:0:ffff:192.0.2.1).
+
+  SECTION: [Notes on Combining IPv6 Addresses with Port Numbers](#section-6)
+    TEXT[!SHOULD]: This style is NOT RECOMMENDED because of its
+    TEXT[!SHOULD]:    ambiguity.
+    TEXT[!SHOULD]: The [] style as expressed in [RFC3986] SHOULD be
+    TEXT[!SHOULD]:    employed, and is the default unless otherwise specified.
+    TEXT[!MUST]: For
+    TEXT[!MUST]:    URIs containing IPv6 address literals, [RFC3986] MUST be followed, as
+    TEXT[!MUST]:    well as the rules defined in this document.
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Requirements Notation](#section-2.2)

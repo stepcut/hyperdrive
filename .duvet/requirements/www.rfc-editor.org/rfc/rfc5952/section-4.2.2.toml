@@ -1,0 +1,14 @@
+target = "https://www.rfc-editor.org/rfc/rfc5952#section-4.2.2"
+
+# Handling One 16-Bit 0 Field
+#
+#    The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
+#    For example, the representation 2001:db8:0:1:1:1:1:1 is correct, but
+#    2001:db8::1:1:1:1:1 is not correct.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
+'''
+

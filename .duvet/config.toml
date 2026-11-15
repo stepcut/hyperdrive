@@ -17,6 +17,9 @@ source = "https://www.rfc-editor.org/rfc/rfc9110"
 [[specification]]
 source = "https://www.rfc-editor.org/rfc/rfc3986"
 
+[[specification]]
+source = "https://www.rfc-editor.org/rfc/rfc5952"
+
 [report.html]
 enabled = true
 

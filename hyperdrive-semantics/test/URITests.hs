@@ -4,7 +4,7 @@ module URITests (uriTests, expectedAuthority, ipv6FromPieces) where
 import Data.Bits (shiftL, (.|.))
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
-import Data.Char (isDigit, toLower, toUpper)
+import Data.Char (digitToInt, isDigit, isHexDigit, toLower, toUpper)
 import Data.Either (isRight)
 import Data.List (intercalate)
 import qualified Data.List as L
@@ -30,6 +30,8 @@ uriTests = testGroup "URI"
     , testProperty "host is case-insensitive"              prop_hostCaseInsensitive
     , testProperty "examples"                              prop_authorityExamples
     , testProperty "IPv6 is rendered as in RFC 5952"       prop_renderIPv6
+    , testProperty "IPv4-mapped IPv6 uses mixed notation"  prop_renderIPv6Mixed
+    , testProperty "reg-names are normalized"              prop_regNameNormalForm
     ]
   , testGroup "Scheme"
     [ testProperty "mkScheme agrees with the ABNF"         prop_schemeGrammar
@@ -47,7 +49,7 @@ uriTests = testGroup "URI"
   , testGroup "Target"
     [ testProperty "special forms only with their method"  prop_validForMethod
     , testProperty "CONNECT needs a non-zero port"         prop_connectTarget
-    , testProperty "empty path is / except for OPTIONS"    prop_normalizeTarget
+    , testProperty "empty path is / except for OPTIONS"    prop_normalizeEmptyPath
     ]
   ]
 
@@ -123,6 +125,13 @@ genIPv4 :: Gen (String, [Word8])
 genIPv4 = do
   os <- vectorOf 4 arbitrary
   pure (intercalate "." (map show os), os)
+
+-- | percent-encode some of the digits, as %3X
+encodeSomeDigits :: String -> Gen String
+encodeSomeDigits = fmap concat . traverse enc
+  where
+    enc c | isDigit c = elements [[c], ['%', '3', c]]
+          | otherwise = pure [c]
 
 genRegName :: Gen String
 genRegName = concat <$> listOf (frequency
@@ -213,11 +222,24 @@ prop_ipv4Value = forAll genIPv4 $ \(txt, os) ->
 prop_ipv4FirstMatch :: Property
 prop_ipv4FirstMatch = checkCoverage $
   -- no ":", so that the whole string is the host
-  forAll (filter (/= ':') <$> mixed (oneof [fst <$> genIPv4, genRegName, (\(t, _) -> t ++ "0") <$> genIPv4])) $ \s ->
+  forAll (filter (/= ':') <$> mixed (oneof [fst <$> genIPv4, genRegName, (\(t, _) -> t ++ "0") <$> genIPv4, fst <$> genIPv4 >>= encodeSomeDigits])) $ \s ->
     let isIPv4 = case parseAuthority (pack s) of
                    Right (Authority (HostIPv4 _) _) -> True
                    _                                -> False
-    in cover 20 isIPv4 "IPv4" $ isIPv4 === O.matches O.ipv4address s
+    -- first-match-wins applies to the normal form, in which encoded
+    -- unreserved characters are decoded (RFC 3986 Section 6.2.2.2)
+    in cover 20 isIPv4 "IPv4" $
+       cover 0.5 (O.matches O.ipv4address (decodeUnreserved s) && not (O.matches O.ipv4address s)) "IPv4 once decoded" $
+       isIPv4 === O.matches O.ipv4address (decodeUnreserved s)
+
+-- | decode percent-encodings of unreserved characters, and nothing else
+decodeUnreserved :: String -> String
+decodeUnreserved ('%' : a : b : rest)
+  | isHexDigit a && isHexDigit b
+  , c <- toEnum (digitToInt a * 16 + digitToInt b)
+  , c `elem` (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ "-._~") = c : decodeUnreserved rest
+decodeUnreserved (c : rest) = c : decodeUnreserved rest
+decodeUnreserved [] = []
 
 prop_authorityRoundTrip :: Property
 prop_authorityRoundTrip = forAll genAuthority $ \s ->
@@ -258,7 +280,6 @@ prop_authorityExamples = conjoin
   , parseAuthority ":80"            === Left AuthorityEmptyHost
   , parseAuthority "[::1"           === Left AuthorityInvalidHost
   , parseAuthority "[::1]x"         === Left AuthorityInvalidHost
-  , fmap renderAuthority (parseAuthority "[::FFFF:1.2.3.4]:443") === Right "[::ffff:102:304]:443"
   ]
   where host' = show . authorityHost
 
@@ -271,6 +292,44 @@ prop_renderIPv6 = conjoin
   , r "[2001:0:0:1:0:0:0:1]"     === Right "[2001:0:0:1::1]"
   , r "[0:0:0:0:0:0:0:0]"        === Right "[::]"
   , r "[2001:DB8::0001]"         === Right "[2001:db8::1]"
+  ]
+  where r = fmap renderAuthority . parseAuthority
+
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-5
+-- # The text representation method noted in Section 4 should be applied
+-- # for the leading hexadecimal part (i.e., ::ffff:192.0.2.1 instead of
+-- # 0:0:0:0:0:ffff:192.0.2.1).
+prop_renderIPv6Mixed :: Property
+prop_renderIPv6Mixed = conjoin
+  -- IPv4-mapped, RFC 4291
+  [ r "[::FFFF:1.2.3.4]:443"      === Right "[::ffff:1.2.3.4]:443"
+  , r "[0:0:0:0:0:ffff:c000:201]" === Right "[::ffff:192.0.2.1]"
+  , r "[::ffff:0.0.0.0]"          === Right "[::ffff:0.0.0.0]"
+  -- IPv4-translated, RFC 2765
+  , r "[::ffff:0:c000:201]"       === Right "[::ffff:0:192.0.2.1]"
+  -- not a well-known prefix, so no mixed notation
+  , r "[::1]"                     === Right "[::1]"
+  , r "[::1.2.3.4]"               === Right "[::102:304]"
+  , r "[1::ffff:1.2.3.4]"         === Right "[1::ffff:102:304]"
+  , r "[::fffe:1.2.3.4]"          === Right "[::fffe:102:304]"
+  ]
+  where r = fmap renderAuthority . parseAuthority
+
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2.2
+-- # These URIs should
+-- # be normalized by decoding any percent-encoded octet that corresponds
+-- # to an unreserved character, as described in Section 2.3.
+prop_regNameNormalForm :: Property
+prop_regNameNormalForm = conjoin
+  [ r "%61.com"         === Right "a.com"
+  , r "%41.COM"         === Right "a.com"
+  , r "a%2d%2E%5f%7e"   === Right "a-._~"
+  , r "a%2fb"           === Right "a%2Fb"
+  , r "caf%c3%a9.fr"    === Right "caf%C3%A9.fr"
+  , r "%21x"            === Right "%21x"
+  -- normalization reveals an IPv4 address, and first-match-wins applies
+  , fmap authorityHost (parseAuthority "%31.2.3.4") === fmap authorityHost (parseAuthority "1.2.3.4")
+  , fmap authorityHost (parseAuthority "%61.com") === fmap authorityHost (parseAuthority "a.com")
   ]
   where r = fmap renderAuthority . parseAuthority
 
@@ -396,9 +455,9 @@ prop_connectTarget = conjoin
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-4.2.3
 -- # When not being used as the target of an OPTIONS request, an empty
 -- # path component is equivalent to an absolute path of "/"
-prop_normalizeTarget :: Property
-prop_normalizeTarget = conjoin
-  [ normalizeTarget GET     (exampleURI "")   === exampleURI "/"
-  , normalizeTarget OPTIONS (exampleURI "")   === exampleURI ""
-  , normalizeTarget GET     (exampleURI "/a") === exampleURI "/a"
+prop_normalizeEmptyPath :: Property
+prop_normalizeEmptyPath = conjoin
+  [ normalizeEmptyPath GET     (exampleURI "")   === exampleURI "/"
+  , normalizeEmptyPath OPTIONS (exampleURI "")   === exampleURI ""
+  , normalizeEmptyPath GET     (exampleURI "/a") === exampleURI "/a"
   ]

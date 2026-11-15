@@ -52,9 +52,10 @@ newtype Status = Status Int
 newtype Scheme = Scheme ByteString
   deriving (Eq, Ord, Show)
 
--- | Invariant: the bytes match @reg-name@, are not empty, have no
--- upper case letters, except that the hex digits of percent-encodings
--- are upper case.
+-- | Invariant: the bytes match @reg-name@, are not empty, and are in
+-- normal form: no percent-encoded unreserved characters, letters in
+-- lower case, and the hex digits of percent-encodings in upper case.
+-- They do not match @IPv4address@.
 newtype RegName = RegName ByteString
   deriving (Eq, Ord, Show)
 

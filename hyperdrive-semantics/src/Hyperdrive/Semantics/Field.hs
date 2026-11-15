@@ -112,6 +112,11 @@ data FieldValueError
 -- LF or NUL are rejected rather than repaired. Values containing any
 -- other control character are also rejected: we do not take up the
 -- option to retain them.
+--
+-- RFC 9110 requires rejecting the whole /message/, not just the field
+-- line, so a 'Left' must lead to the request being refused (typically
+-- with 400 Bad Request). Dropping the field line and carrying on is
+-- neither of the two behaviours the RFC allows.
 mkFieldValue :: ByteString -> Either FieldValueError FieldValue
 mkFieldValue bs
   | B.any isCRLFNUL v                            = Left ContainsCRLFNUL

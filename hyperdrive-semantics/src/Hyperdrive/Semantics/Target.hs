@@ -9,7 +9,7 @@ module Hyperdrive.Semantics.Target
   ( Target(..)
   , connectTarget
   , validForMethod
-  , normalizeTarget
+  , normalizeEmptyPath
   ) where
 
 import Data.Word (Word16)
@@ -71,7 +71,12 @@ validForMethod _ TargetURI{}     = True
 
 -- | Give an empty path its normal form of "/", unless the method is
 -- OPTIONS.
-normalizeTarget :: Method -> Target -> Target
-normalizeTarget m (TargetURI s a (Path "") q)
+--
+-- This is the only part of the scheme-based normalization of RFC 9110
+-- Section 4.2.3 that is done here. In particular a default port is
+-- kept, so @http://h:80/@ and @http://h/@ are different 'Target's, and
+-- percent-encodings in the path and query are kept as received.
+normalizeEmptyPath :: Method -> Target -> Target
+normalizeEmptyPath m (TargetURI s a (Path "") q)
   | m /= OPTIONS = TargetURI s a (Path "/") q
-normalizeTarget _ t = t
+normalizeEmptyPath _ t = t

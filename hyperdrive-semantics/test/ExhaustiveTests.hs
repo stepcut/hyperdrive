@@ -41,7 +41,7 @@ exhaustiveTests = testGroup "Exhaustive"
     , agrees "IPv4 and ports"     "0129.:5"   7 authorityOK expectedAuthority
     , agrees "h16 contents"       "0aG:"      7
         (\s -> authorityOK ("[" ++ s ++ "::]")) (\s -> expectedAuthority ("[" ++ s ++ "::]"))
-    , exhaustive "reg-name normal form" "aA%2fF.:" 6 $ \s ->
+    , exhaustive "reg-name normal form" "aA%26fF.:" 6 $ \s ->
         case parseAuthority (C.pack s) of
           Right a@(Authority (HostRegName _) _) -> C.unpack (renderAuthority a) == normalRegName s
           _                                     -> True
@@ -176,9 +176,10 @@ expectedSegments s =
     decode (c : rest) = c : decode rest
     decode [] = []
 
--- | RFC 3986, Section 3.2.2: lower case, except for the hex digits of
--- percent-encodings, which are upper case. The port, if any, is left
--- alone apart from dropping an empty one.
+-- | RFC 3986, Sections 3.2.2 and 6.2.2.2: percent-encoded unreserved
+-- characters decoded, then lower case, except for the hex digits of the
+-- remaining percent-encodings, which are upper case. The port, if any,
+-- is left alone apart from dropping an empty one.
 normalRegName :: String -> String
 normalRegName s =
   let (h, p) = break (== ':') s
@@ -187,7 +188,10 @@ normalRegName s =
                ds -> ':' : show (read ds :: Int)
   in go h ++ port
   where
-    go ('%' : a : b : rest) = '%' : toUpper a : toUpper b : go rest
+    go ('%' : a : b : rest)
+      | c `elem` (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ "-._~") = toLower c : go rest
+      | otherwise = '%' : toUpper a : toUpper b : go rest
+      where c = chr (digitToInt a * 16 + digitToInt b)
     go (c : rest)           = toLower c : go rest
     go []                   = []
 

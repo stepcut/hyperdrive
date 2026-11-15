@@ -1,0 +1,52 @@
+target = "https://www.rfc-editor.org/rfc/rfc5952#section-6"
+
+# Notes on Combining IPv6 Addresses with Port Numbers
+#
+#    There are many different ways to combine IPv6 addresses and port
+#    numbers that are represented in text.  Examples are shown below.
+# 
+#    o  [2001:db8::1]:80
+# 
+#    o  2001:db8::1:80
+# 
+#    o  2001:db8::1.80
+# 
+#    o  2001:db8::1 port 80
+# 
+#    o  2001:db8::1p80
+# 
+#    o  2001:db8::1#80
+# 
+#    The situation is not much different in IPv4, but the most ambiguous
+#    case with IPv6 is the second bullet.  This is due to the "::"usage in
+# 
+#    IPv6 addresses.  This style is NOT RECOMMENDED because of its
+#    ambiguity.  The [] style as expressed in [RFC3986] SHOULD be
+#    employed, and is the default unless otherwise specified.  Other
+#    styles are acceptable when there is exactly one style for the given
+#    context and cross-platform portability does not become an issue.  For
+#    URIs containing IPv6 address literals, [RFC3986] MUST be followed, as
+#    well as the rules defined in this document.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+This style is NOT RECOMMENDED because of its
+ambiguity.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The [] style as expressed in [RFC3986] SHOULD be
+employed, and is the default unless otherwise specified.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+For
+URIs containing IPv6 address literals, [RFC3986] MUST be followed, as
+well as the rules defined in this document.
+'''
+
