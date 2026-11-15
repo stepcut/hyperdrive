@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, PatternSynonyms #-}
-module URITests (uriTests) where
+module URITests (uriTests, expectedAuthority, ipv6FromPieces) where
 
 import Data.Bits (shiftL, (.|.))
 import qualified Data.ByteString as B
