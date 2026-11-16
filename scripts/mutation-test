@@ -6,9 +6,11 @@ source code with a buggy version. For each mutant, this script builds
 and tests a temporary copy of the project with that one change applied.
 A mutant is
 
-  CAUGHT    if the test suite fails,
+  CAUGHT    if the test suite fails, or if the build fails because a
+            quasiquoter rejected its input (a grammar checked at
+            compile time is a test that runs during the build),
   SURVIVED  if the test suite still passes: the tests have a blind spot,
-  INVALID   if the mutated code does not compile, and
+  INVALID   if the mutated code does not compile for any other reason, and
   STALE     if the original code no longer appears exactly once, which
             means the mutants file is out of date with the source.
 
@@ -157,17 +159,21 @@ def main():
                 print(f"STALE     {where}", flush=True)
                 continue
             target.write_text(original.replace(m.old, m.new))
+            note = ""
             try:
                 build = run(CABAL + ["build", "all"], work)
                 if build.returncode != 0:
-                    status = "INVALID"
+                    if "In the quasi-quotation" in build.stdout + build.stderr:
+                        status, note = "CAUGHT", "at compile time, by a quasiquoter"
+                    else:
+                        status = "INVALID"
                 else:
                     test = run(test_command(), work)
                     status = "CAUGHT" if test.returncode != 0 else "SURVIVED"
             finally:
                 target.write_text(original)
-            results.append((status, where, m, ""))
-            print(f"{status:9} {where}", flush=True)
+            results.append((status, where, m, note))
+            print(f"{status:9} {where}" + (f" ({note})" if note else ""), flush=True)
 
     bad = [r for r in results if r[0] != "CAUGHT"]
     print(f"\n{len(results) - len(bad)} of {len(results)} mutants caught")
