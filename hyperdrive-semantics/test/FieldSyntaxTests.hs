@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module FieldSyntaxTests (fieldSyntaxTests) where
+module FieldSyntaxTests (fieldSyntaxTests, quotedStringO) where
 
 import Control.Monad (replicateM, void)
 import Data.ByteString (ByteString)

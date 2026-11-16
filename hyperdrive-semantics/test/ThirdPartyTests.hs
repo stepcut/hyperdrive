@@ -11,12 +11,15 @@ import Data.Char (isDigit)
 import Data.List (nub, sort, (\\))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import FieldSyntaxTests (quotedStringO)
+import Hyperdrive.Semantics.FieldSyntax (parseQuotedString)
 import Hyperdrive.Semantics.SafePath
 import Hyperdrive.Semantics.URI
 import System.Environment (lookupEnv)
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
+import Text.ParserCombinators.ReadP (readP_to_S)
 
 thirdPartyTests :: TestTree
 thirdPartyTests = testGroup "Third-party data"
@@ -34,6 +37,8 @@ thirdPartyTests = testGroup "Third-party data"
       once (ioProperty prop_ssrfHosts)
   , testProperty "SecLists traversal payloads never escape through SafePath" $
       once (ioProperty prop_lfiPayloads)
+  , testProperty "structured-field-tests strings agree with parseQuotedString" $
+      once (ioProperty prop_sfStrings)
   ]
 
 ------------------------------------------------------------------------------
@@ -276,3 +281,68 @@ prop_lfiPayloads = do
          & tabulate "outcome" [ either id (const "accepted") (outcome p) | p <- payloads ]
          & tabulate "accepted, but a backslash is a separator on Windows" [ show (length windows) ]
   where (&) = flip ($)
+
+------------------------------------------------------------------------------
+-- structured-field-tests
+------------------------------------------------------------------------------
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4
+-- # Recipients
+-- # that process the value of a quoted-string MUST handle a quoted-pair
+-- # as if it were replaced by the octet following the backslash.
+
+-- | RFC 9651 strings are a strict subset of RFC 9110 quoted-strings, so:
+--
+-- * a string RFC 9651 accepts decodes to the same value;
+--
+-- * of the strings RFC 9651 rejects, we accept exactly those that the
+--   RFC 9110 grammar allows (tab, non-ASCII, escapes of characters other
+--   than DQUOTE and backslash), as decided by the ReadP transcription of
+--   that grammar in FieldSyntaxTests;
+--
+-- * and, as a check on the subset relation itself, the RFC 9110 grammar
+--   accepts every string RFC 9651 accepts.
+prop_sfStrings :: IO Property
+prop_sfStrings = do
+  tests <- concat <$> mapM load [ "test/data/structured-field-tests/string.json"
+                                , "test/data/structured-field-tests/string-generated.json" ]
+  let ours v = case parseQuotedString v of
+        Right (s, rest) | B.null rest -> Just s
+        _                             -> Nothing
+      rfc9110 v = not (null [ () | (_, "") <- readP_to_S quotedStringO (C.unpack v) ])
+      check :: (String, ByteString, Maybe ByteString) -> [(String, String)]
+      check (name, v, Just want) =
+        [ (name, "accepted by RFC 9651: same value") | ours v /= Just want ]
+        ++ [ (name, "accepted by RFC 9651, but not by the RFC 9110 grammar") | not (rfc9110 v) ]
+      check (name, v, Nothing)
+        | rfc9110 v = [ (name, "RFC 9110 allows it, so we must accept") | ours v == Nothing ]
+        | otherwise = [ (name, "RFC 9110 forbids it, so we must reject") | ours v /= Nothing ]
+      failures = concatMap check tests
+      outcome (_, v, Just _) | rfc9110 v = "accepted by both"
+      outcome (_, v, Nothing)
+        | rfc9110 v = "rejected by RFC 9651 only (tab, non-ASCII, other escapes)"
+        | otherwise = "rejected by both"
+      outcome _ = "?"
+  pure $ counterexample ("failures: " ++ show failures) (null failures)
+         .&&. counterexample "vacuous" (length tests > 250)
+         & tabulate "outcome" (map outcome tests)
+  where
+    (&) = flip ($)
+    -- (name, the field value as it arrives, the expected string or
+    -- Nothing if RFC 9651 parsing must fail)
+    load file = do
+      json <- A.eitherDecodeFileStrict file
+      entries <- either fail pure json :: IO [A.Value]
+      pure [ (T.unpack name, value raw, expected o)
+           | A.Object o <- entries
+           , Just (A.String name) <- [KM.lookup "name" o]
+           , Just (A.Array raw) <- [KM.lookup "raw" o] ]
+    -- field lines are combined with ", ", and RFC 9651 parsing discards
+    -- leading and trailing spaces
+    value raw = C.dropWhileEnd (== ' ') . C.dropWhile (== ' ') . B.intercalate ", "
+                  $ [ TE.encodeUtf8 t | A.String t <- foldr (:) [] raw ]
+    expected o
+      | KM.lookup "must_fail" o == Just (A.Bool True) = Nothing
+      | otherwise = case KM.lookup "expected" o of
+          Just (A.Array e) | (A.String v : _) <- foldr (:) [] e -> Just (TE.encodeUtf8 v)
+          _ -> Nothing

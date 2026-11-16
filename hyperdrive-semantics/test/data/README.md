@@ -50,3 +50,16 @@ The hosts used in server-side request forgery examples to reach internal
 addresses while getting past filters: decimal, octal and hexadecimal
 addresses, shorthand forms, IPv6 notations and names that resolve to
 loopback.
+
+## structured-field-tests/
+
+`string.json` and `string-generated.json` from
+[httpwg/structured-field-tests](https://github.com/httpwg/structured-field-tests)
+at commit `10781e4a59c387853c900cc06cdd8a3fd7ae4134` (2026-10-30).
+BSD-style license of the IETF Trust (`LICENSE.md`).
+
+Tests of strings in RFC 9651 Structured Field Values. Its `sf-string`
+is a strict subset of the RFC 9110 `quoted-string`: printable ASCII
+only, and only `\"` and `\\` as escapes. So strings it accepts must
+decode to the same value with `parseQuotedString`, and of those it
+rejects, we must reject exactly the ones RFC 9110 rejects too.

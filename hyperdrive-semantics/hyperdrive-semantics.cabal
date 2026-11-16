@@ -21,6 +21,8 @@ extra-source-files: test/data/README.md
                     test/data/payloadsallthethings/*.txt
                     test/data/payloadsallthethings/*.py
                     test/data/payloadsallthethings/LICENSE
+                    test/data/structured-field-tests/*.json
+                    test/data/structured-field-tests/LICENSE.md
 
 common warnings
   ghc-options: -Wall
