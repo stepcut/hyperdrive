@@ -12,10 +12,12 @@ import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
 import ParserTests (parserTests)
+import QQTests (qqTests)
 
 main :: IO ()
 main = do
  parser <- parserTests
+ qq <- qqTests
  defaultMain $ testGroup "hyperdrive-abnf"
   [ testGroup "RuleName"
     [ testProperty "mkRuleName accepts exactly rulename" prop_mkRuleName
@@ -24,6 +26,7 @@ main = do
     , testProperty "the spelling is kept"                prop_ruleNameSpelling
     ]
   , parser
+  , qq
   ]
 
 ------------------------------------------------------------------------------

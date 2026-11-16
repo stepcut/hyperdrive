@@ -170,6 +170,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5234
     TEXT[implementation]:          num-val        =  "%" (bin-val / dec-val / hex-val)
     TEXT[implementation,test]:          prose-val      =  "<" *(%x20-3D / %x3F-7E) ">"
 
+  SECTION: [Core Rules](#appendix-B.1)
+    TEXT[implementation,test]:    Certain basic rules are in uppercase, such as SP, HTAB, CRLF, DIGIT,
+    TEXT[implementation,test]:    ALPHA, etc.
+
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5952
   SECTION: [A Recommendation for IPv6 Text Representation](#section-4)
     TEXT[!MUST]: The recommendation

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveLift #-}
 -- | The syntax of ABNF (RFC 5234), extended with case-sensitive
 -- strings (RFC 7405) and comma-separated lists (RFC 9110,
 -- Section 5.6.1).
@@ -34,6 +35,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, toLower)
 import Data.List.NonEmpty (NonEmpty)
+import Language.Haskell.TH.Syntax (Lift)
 import Numeric.Natural (Natural)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
@@ -49,7 +51,7 @@ data Rule = Rule
   { ruleName      :: RuleName
   , ruleDefinedAs :: DefinedAs
   , ruleElements  :: Alternation
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # defined-as     =  *c-wsp ("=" / "=/") *c-wsp
@@ -58,13 +60,14 @@ data Rule = Rule
 data DefinedAs
   = Basic        -- ^ @=@
   | Incremental  -- ^ @=/@: adds alternatives to an earlier definition
-  deriving (Eq, Ord, Show, Enum, Bounded)
+  deriving (Eq, Ord, Show, Enum, Bounded, Lift)
 
 -- | The name of a rule. Comparison ignores case, but the spelling it
 -- was written with is kept for printing.
 --
 -- Invariant: the bytes match @rulename@.
 newtype RuleName = RuleName ByteString
+  deriving Lift
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-2.1
 -- # Rule names are case insensitive.
@@ -98,17 +101,17 @@ ruleNameBytes (RuleName bs) = bs
 -- # alternation    =  concatenation
 -- # *(*c-wsp "/" *c-wsp concatenation)
 newtype Alternation = Alternation (NonEmpty Concatenation)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # concatenation  =  repetition *(1*c-wsp repetition)
 newtype Concatenation = Concatenation (NonEmpty Repetition)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # repetition     =  [repeat] element
 data Repetition = Repetition (Maybe Repeat) Element
-  deriving (Eq, Show)
+  deriving (Eq, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # repeat         =  1*DIGIT / (*DIGIT "*" *DIGIT)
@@ -122,7 +125,7 @@ data Repeat = Repeat
   { repeatKind :: RepeatKind
   , repeatMin  :: Natural
   , repeatMax  :: Maybe Natural
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-3.7
 -- # That is, exactly <n> occurrences of <element>.
@@ -136,7 +139,7 @@ data Repeat = Repeat
 data RepeatKind
   = Star  -- ^ @*@: RFC 5234 repetition
   | Hash  -- ^ @#@: an RFC 9110 comma-separated list
-  deriving (Eq, Ord, Show, Enum, Bounded)
+  deriving (Eq, Ord, Show, Enum, Bounded, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # element        =  rulename / group / option /
@@ -162,7 +165,7 @@ data Element
   | NumVal Base NumValBody
     -- | Invariant: the bytes are in @%x20-3D / %x3F-7E@.
   | ProseVal ByteString
-  deriving (Eq, Show)
+  deriving (Eq, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc7405#section-2.2
 -- # char-val       =  case-insensitive-string /
@@ -183,12 +186,12 @@ data Element
 data Case
   = CaseInsensitive  -- ^ @\"...\"@ or @%i\"...\"@
   | CaseSensitive    -- ^ @%s\"...\"@
-  deriving (Eq, Ord, Show, Enum, Bounded)
+  deriving (Eq, Ord, Show, Enum, Bounded, Lift)
 
 -- | The base a value is written in. It does not change the meaning
 -- of the value, but it is kept so a grammar prints as it was written.
 data Base = Binary | Decimal | Hexadecimal
-  deriving (Eq, Ord, Show, Enum, Bounded)
+  deriving (Eq, Ord, Show, Enum, Bounded, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-2.3
 -- # In ABNF, a character is merely a non-negative integer.
@@ -199,4 +202,4 @@ data Base = Binary | Decimal | Hexadecimal
 data NumValBody
   = Values (NonEmpty Natural)  -- ^ @%x0D.0A@: a sequence of characters
   | Range Natural Natural      -- ^ @%x30-39@: one character in a range
-  deriving (Eq, Show)
+  deriving (Eq, Show, Lift)

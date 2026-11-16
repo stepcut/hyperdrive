@@ -119,3 +119,31 @@ why: blank lines before a page break would split a rule
 why: indentation is relative to the least indented line
 - indent  = minimum (maxBound : [ B.length (C.takeWhile (== ' ') l)
 + indent  = maximum (0 : [ B.length (C.takeWhile (== ' ') l)
+
+file: src/Hyperdrive/ABNF/QQ.hs
+
+why: only the indentation shared by every line is removed
+- let indent = minimum indents
++ let indent = head indents
+
+why: error columns count in the quoted text, before indentation is removed
+- Left (ParseError l c expected) -> Left (ParseError l (c + indent) expected)
++ Left (ParseError l c expected) -> Left (ParseError l c expected)
+
+why: ABNF is ASCII; packing other characters into bytes would corrupt them
+- case [ (l, c) | (l, line) <- zip [1 ..] ls, (c, ch) <- zip [1 ..] line, not (isAscii ch) ] of
++ case [ (l, c) | (l, line) <- zip [1 ..] ls, (c, ch) <- zip [1 ..] line, ch > '\255' ] of
+
+why: CR before LF is part of the line ending, not of the line
+- ls = map (\l -> if not (null l) && last l == '\r' then init l else l) (lines src)
++ ls = lines src
+
+file: src/Hyperdrive/ABNF/Core.hs
+
+why: the core rules must be exactly those of RFC 5234 Appendix B.1
+- CHAR           =  %x01-7F
++ CHAR           =  %x00-7F
+
+why: the core rules must be exactly those of RFC 5234 Appendix B.1
+- HEXDIG         =  DIGIT / "A" / "B" / "C" / "D" / "E" / "F"
++ HEXDIG         =  DIGIT / "A" / "B" / "C" / "D" / "E"
