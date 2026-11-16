@@ -28,6 +28,7 @@ library
                     Hyperdrive.ABNF.Parser
                     Hyperdrive.ABNF.Printer
                     Hyperdrive.ABNF.QQ
+                    Hyperdrive.ABNF.Recognize
                     Hyperdrive.ABNF.RFC
                     Hyperdrive.ABNF.Types
   build-depends:    base             >= 4.18 && < 5
@@ -43,6 +44,7 @@ test-suite hyperdrive-abnf-tests
   other-modules:    Generators
                     ParserTests
                     QQTests
+                    RecognizeTests
                     RFCTests
   default-language: GHC2021
   build-depends:    base

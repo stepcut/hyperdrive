@@ -183,3 +183,57 @@ why: RFC 9110 and 9112 start with a byte order mark
 why: prose before the rules is not ABNF
 - in not (B.null name) && "=" `B.isPrefixOf` C.dropWhile (== ' ') rest
 + in not (B.null name)
+
+file: src/Hyperdrive/ABNF/Recognize.hs
+
+why: an option may match nothing
+- Option alt   -> Set.insert pos <$> alternation ctx alt pos
++ Option alt   -> alternation ctx alt pos
+
+why: a maximum below the minimum allows no repetitions at all
+- | maybe False (< lo) hi = pure Set.empty
++ | False = pure Set.empty
+
+why: at most hi repetitions
+- | Set.null frontier || hi == Just k = pure seen
++ | Set.null frontier || hi == Just (k + 1) = pure seen
+
+why: a list's count is capped at the minimum only when there is no maximum
+- cap n = maybe (min n lo) (\m -> min n (m + 1)) hi
++ cap n = maybe (min n 1) (\m -> min n (m + 1)) hi
+
+why: #element allows the empty list for senders too
+- ++ [ pos | form == Sender, lo == 0 ]))
++ ))
+
+why: a recipient's list may start with an empty element
+- let start = Set.fromList ([ (e, cap 1) | e <- Set.toList firsts ] ++ [ (pos, 0) | form == Recipient ])
++ let start = Set.fromList [ (e, cap 1) | e <- Set.toList firsts ]
+
+why: a recipient's list may contain empty elements
+- pure (Set.fromList ([ (e, cap (n + 1)) | e <- Set.toList es ] ++ [ (q, n) | form == Recipient ]))
++ pure (Set.fromList [ (e, cap (n + 1)) | e <- Set.toList es ])
+
+why: the OWS after the comma may be shorter than the longest run
+- in if B.indexMaybe input afterOWS == Just 0x2C then [comma .. comma + run] else []
++ in if B.indexMaybe input afterOWS == Just 0x2C then [comma + run] else []
+
+why: unquoted strings are case-insensitive
+- CaseInsensitive -> B.map lower candidate == B.map lower s
++ CaseInsensitive -> candidate == s
+
+why: a sequence of values must all be present
+- pure $ if and (zipWith (\i v -> fmap fromIntegral (B.indexMaybe input i) == Just v) [pos ..] (toListNE vs))
++ pure $ if and (zipWith (\i v -> fmap fromIntegral (B.indexMaybe input i) == Just v) [pos ..] (take 1 (toListNE vs)))
+
+why: ranges include their maximum
+- Just w | fromIntegral w >= lo && fromIntegral w <= hi -> Set.singleton (pos + 1)
++ Just w | fromIntegral w >= lo && fromIntegral w < hi -> Set.singleton (pos + 1)
+
+why: re-entering a rule at the same position must not be mistaken for no match
+- Just InProgress  -> failWith (LeftRecursion ns' name)
++ Just InProgress  -> pure Set.empty
+
+why: a grammar's own definitions come before the core rules
+- Just alt -> case importOf alt of
++ Just alt | False -> case importOf alt of

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 -- | The collected ABNF of the RFCs hyperdrive implements, parsed from
 -- the published text.
-module RFCTests (rfcTests) where
+module RFCTests (rfcTests, Spec(..), loadSpecs) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -34,11 +34,16 @@ loadSpec n file heading = do
   grammar <- either (fail . ((n ++ ": ") ++) . show) pure (mkGrammar rules)
   pure (Spec n ls rules grammar)
 
+-- | RFC 9110, 9112 and 3986
+loadSpecs :: IO (Spec, Spec, Spec)
+loadSpecs = (,,)
+  <$> loadSpec "RFC 9110" "test/data/rfc9110.txt" "Appendix A.  Collected ABNF"
+  <*> loadSpec "RFC 9112" "test/data/rfc9112.txt" "Appendix A.  Collected ABNF"
+  <*> loadSpec "RFC 3986" "test/data/rfc3986.txt" "Appendix A.  Collected ABNF for URI"
+
 rfcTests :: IO TestTree
 rfcTests = do
-  http  <- loadSpec "RFC 9110" "test/data/rfc9110.txt" "Appendix A.  Collected ABNF"
-  http1 <- loadSpec "RFC 9112" "test/data/rfc9112.txt" "Appendix A.  Collected ABNF"
-  uri   <- loadSpec "RFC 3986" "test/data/rfc3986.txt" "Appendix A.  Collected ABNF for URI"
+  (http, http1, uri) <- loadSpecs
   let specs = [http, http1, uri]
       -- the citation tags the RFCs use for each other
       tags = [("HTTP", http), ("URI", uri)]

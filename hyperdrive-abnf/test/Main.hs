@@ -14,12 +14,14 @@ import Test.Tasty.QuickCheck (testProperty)
 import ParserTests (parserTests)
 import QQTests (qqTests)
 import RFCTests (rfcTests)
+import RecognizeTests (recognizeTests)
 
 main :: IO ()
 main = do
  parser <- parserTests
  qq <- qqTests
  rfc <- rfcTests
+ recognize <- recognizeTests
  defaultMain $ testGroup "hyperdrive-abnf"
   [ testGroup "RuleName"
     [ testProperty "mkRuleName accepts exactly rulename" prop_mkRuleName
@@ -30,6 +32,7 @@ main = do
   , parser
   , qq
   , rfc
+  , recognize
   ]
 
 ------------------------------------------------------------------------------

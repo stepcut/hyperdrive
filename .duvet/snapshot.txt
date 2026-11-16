@@ -113,9 +113,17 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5234
     TEXT[test]:          CR          =  %x0D
     TEXT[test]:          CRLF        =  %d13.10
     TEXT[test]:          command     =  "command string"
+    TEXT[test]:    will match only the string that comprises only the lowercase
+    TEXT[test]:    characters, abc.
 
   SECTION: [Concatenation:  Rule1 Rule2](#section-3.1)
+    TEXT[implementation]:    A rule can define a simple, ordered string of values (i.e., a
+    TEXT[implementation]:    concatenation of contiguous characters) by listing a sequence of rule
+    TEXT[implementation]:    names.
     TEXT[test]:          mumble      =  foo bar foo
+
+  SECTION: [Alternatives:  Rule1 / Rule2](#section-3.2)
+    TEXT[implementation]:    Elements separated by a forward slash ("/") are alternatives.
 
   SECTION: [Incremental Alternatives: Rule1 =/ Rule2](#section-3.3)
     TEXT[implementation]: That is, an initial rule may match one or more
@@ -138,6 +146,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5234
     TEXT[test]:         (elem foo) / (bar blat)
 
   SECTION: [Variable Repetition:  *Rule](#section-3.6)
+    TEXT[implementation]:          <a>*<b>element
+    TEXT[implementation]:    where <a> and <b> are optional decimal values, indicating at least
+    TEXT[implementation]:    <a> and at most <b> occurrences of the element.
     TEXT[implementation,test]:    Default values are 0 and infinity
     TEXT[test]:  so that *<element> allows any
     TEXT[test]:    number, including zero; 1*<element> requires at least one;
@@ -150,7 +161,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5234
     TEXT[test]:    characters.
 
   SECTION: [Optional Sequence:  [RULE]](#section-3.8)
+    TEXT[implementation]:    Square brackets enclose an optional element sequence:
     TEXT[test]:          [foo bar]
+    TEXT[test]:    is equivalent to
+    TEXT[test]:          *1(foo bar).
 
   SECTION: [Comment:  ; Comment](#section-3.9)
     TEXT[test]:    A semicolon starts a comment that continues to the end of line.
@@ -241,11 +255,17 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5952
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7405
   SECTION: [Terminal Values - Literal Text Strings](#section-2.1)
+    TEXT[implementation]:    Literal text strings in ABNF may be either case sensitive or case
+    TEXT[implementation]:    insensitive.
     TEXT[implementation]:    To be consistent with prior implementations of ABNF, having no prefix
     TEXT[implementation]:    means that the string is case insensitive and is equivalent to having
     TEXT[implementation]:    the "%i" prefix.
     TEXT[test]:          rulename = %i"aBc"
+    TEXT[test]:    will both match "abc", "Abc", "aBc", "abC", "ABc", "aBC", "AbC", and
+    TEXT[test]:    "ABC".
     TEXT[test]:          rulename = %s"aBc"
+    TEXT[test]:    will match only "aBc" and will not match "abc", "Abc", "abC", "ABc",
+    TEXT[test]:    "aBC", "AbC", or "ABC".
 
   SECTION: [ABNF Definition of ABNF - char-val](#section-2.2)
     TEXT[implementation,test]:          char-val       =  case-insensitive-string /
@@ -493,8 +513,13 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Sender Requirements](#section-5.6.1.1)
     TEXT[!MUST]:    In any production that uses the list construct, a sender MUST NOT
     TEXT[!MUST]:    generate empty list elements.
+    TEXT[implementation]:      1#element => element *( OWS "," OWS element )
+    TEXT[implementation]:      #element => [ 1#element ]
+    TEXT[test]:    and for n >= 1 and m > 1:
+    TEXT[implementation,test]:      <n>#<m>element => element <n-1>*<m-1>( OWS "," OWS element )
 
   SECTION: [Recipient Requirements](#section-5.6.1.2)
+    TEXT[implementation]:    Empty elements do not contribute to the count of elements present.
     TEXT[!MUST,implementation,test]:    recipient MUST parse and ignore a reasonable number of empty list
     TEXT[!MUST,implementation,test]:    elements: enough to handle common mistakes by senders that merge
     TEXT[!MUST,implementation,test]:    values, but not so much that they could be used as a denial-of-
@@ -506,6 +531,14 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[test]:      example-list-elmt = token ; see Section 5.6.2
     TEXT[test]:    Then the following are valid values for example-list (not including
     TEXT[test]:    the double quotes, which are present for delimitation only):
+    TEXT[test]:      "foo,bar"
+    TEXT[test]:      "foo ,bar,"
+    TEXT[test]:      "foo , ,bar,charlie"
+    TEXT[test]:    In contrast, the following values would be invalid, since at least
+    TEXT[test]:    one non-empty element is required by the example-list production:
+    TEXT[test]:      ""
+    TEXT[test]:      ","
+    TEXT[test]:      ",   ,"
 
   SECTION: [Tokens](#section-5.6.2)
     TEXT[implementation]:    Tokens are short textual identifiers that do not include whitespace
