@@ -12,6 +12,7 @@ module Hyperdrive.Semantics.FieldSyntax
   , quoteString
     -- * Parameters
   , parseParameters
+  , lookupParameter
   ) where
 
 import Data.ByteString (ByteString)
@@ -26,6 +27,7 @@ data FieldSyntaxError
   | UnterminatedComment
   | UnexpectedCloseParen     -- ^ a ")" with no matching "("
   | InvalidParameter
+  | DuplicateParameter ByteString -- ^ the (lower case) name of a parameter given more than once
   deriving (Eq, Show)
 
 ------------------------------------------------------------------------------
@@ -211,7 +213,11 @@ quoteString v
 -- case, since they are case-insensitive, and quoted values are
 -- unquoted, since quoted and unquoted values are equivalent. Empty
 -- parameters (@;;@) are skipped. Parameters are returned in order,
--- including any repeated names.
+-- including any repeated names; use 'lookupParameter' to read them.
+--
+-- A value can be any printable text, such as @"../../etc/passwd"@.
+-- Values that name files, like a @filename@ parameter, must be checked
+-- with "Hyperdrive.Semantics.SafePath" before use.
 parseParameters :: ByteString -> Either FieldSyntaxError [(ByteString, ByteString)]
 parseParameters = go
   where
@@ -241,3 +247,20 @@ parseParameters = go
 
     toLower w | w >= 0x41 && w <= 0x5A = w + 0x20
               | otherwise              = w
+
+-- | The value of the parameter with this name, which is compared
+-- case-insensitively. A name given more than once is an error rather
+-- than a choice between its values: as with repeated singleton fields,
+-- different implementations choose differently, and an attacker can
+-- send @charset=utf-8;charset=utf-7@ hoping that a filter checks one
+-- and the application uses the other. /O(n)/
+lookupParameter :: ByteString -> [(ByteString, ByteString)] -> Either FieldSyntaxError (Maybe ByteString)
+lookupParameter name ps =
+  case [ v | (k, v) <- ps, k == lname ] of
+    []  -> Right Nothing
+    [v] -> Right (Just v)
+    _   -> Left (DuplicateParameter lname)
+  where
+    lname = B.map lower name
+    lower w | w >= 0x41 && w <= 0x5A = w + 0x20
+            | otherwise              = w

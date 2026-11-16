@@ -43,6 +43,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc3986
     TEXT[implementation]:                   / "1" 2DIGIT            ; 100-199
     TEXT[implementation]:                   / "2" %x30-34 DIGIT     ; 200-249
     TEXT[implementation]:                   / "25" %x30-35          ; 250-255
+    TEXT[implementation]: The rightmost domain
+    TEXT[implementation]:    label of a fully qualified domain name in DNS may be followed by a
+    TEXT[implementation]:    single "." and should be if it is necessary to distinguish between
+    TEXT[implementation]:    the complete domain name and some local domain.
     TEXT[implementation]:       reg-name    = *( unreserved / pct-encoded / sub-delims )
 
   SECTION: [Port](#section-3.2.3)
@@ -72,9 +76,16 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc3986
     TEXT[implementation,test]:    application is not expecting to receive raw data within a component.
 
   SECTION: [Rare IP Address Formats](#section-7.4)
-    TEXT[implementation]: However, they
-    TEXT[implementation]:    can become a security concern if an application attempts to filter
-    TEXT[implementation]:    access to resources based on the IP address in string literal format.
+    TEXT[implementation]:    Although the URI syntax for IPv4address only allows the common
+    TEXT[implementation]:    dotted-decimal form of IPv4 address literal, many implementations
+    TEXT[implementation]:    that process URIs make use of platform-dependent system routines,
+    TEXT[implementation]:    such as gethostbyname() and inet_aton(), to translate the string
+    TEXT[implementation]:    literal to an actual IP address.  Unfortunately, such system routines
+    TEXT[implementation]:    often allow and process a much larger set of formats than those
+    TEXT[implementation]:    described in Section 3.2.2.
+    TEXT[implementation,test]: However, they
+    TEXT[implementation,test]:    can become a security concern if an application attempts to filter
+    TEXT[implementation,test]:    access to resources based on the IP address in string literal format.
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5952
   SECTION: [A Recommendation for IPv6 Text Representation](#section-4)
@@ -174,12 +185,18 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    minimum, URIs with lengths of 8000 octets in protocol elements.
 
   SECTION: [http URI Scheme](#section-4.2.1)
+    TEXT[implementation]: If the port
+    TEXT[implementation]:    subcomponent is empty or not given, TCP port 80 (the reserved port
+    TEXT[implementation]:    for WWW services) is the default.
     TEXT[!MUST]:    A sender MUST NOT generate an "http" URI with an empty host
     TEXT[!MUST]:    identifier.
     TEXT[!MUST,implementation,test]: A recipient that processes such a URI reference MUST
     TEXT[!MUST,implementation,test]:    reject it as invalid.
 
   SECTION: [https URI Scheme](#section-4.2.2)
+    TEXT[implementation]: If the port
+    TEXT[implementation]:    subcomponent is empty or not given, TCP port 443 (the reserved port
+    TEXT[implementation]:    for HTTP over TLS) is the default.
     TEXT[!MUST]:    A sender MUST NOT generate an "https" URI with an empty host
     TEXT[!MUST]:    identifier.
     TEXT[!MUST]: A recipient that processes such a URI reference MUST
@@ -189,6 +206,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,exception]:    secured responses to those requests.
 
   SECTION: [http(s) Normalization and Comparison](#section-4.2.3)
+    TEXT[implementation,test]: If the port is equal to the default port for a scheme, the normal
+    TEXT[implementation,test]:       form is to omit the port subcomponent.
     TEXT[implementation,test]: When not being used as the target of an OPTIONS request, an empty
     TEXT[implementation,test]:       path component is equivalent to an absolute path of "/"
     TEXT[implementation]: , so the
@@ -325,6 +344,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY,exception]:    of robustness when they appear within a safe context (e.g., an
     TEXT[!MAY,exception]:    application-specific quoted string that will not be processed by any
     TEXT[!MAY,exception]:    downstream HTTP parser).
+    TEXT[implementation]: This is true for both list-based and singleton fields, since
+    TEXT[implementation]:    a singleton field might be erroneously sent with multiple members and
+    TEXT[implementation]:    detecting such errors improves interoperability.
     TEXT[test]:    For example, a textual date and a URI (either of which might contain
     TEXT[test]:    a comma) could be safely carried in list-based field values like
     TEXT[test]:    these:
@@ -661,6 +683,14 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    Content-Type header field is not present, the recipient MAY either
     TEXT[!MAY]:    assume a media type of "application/octet-stream" ([RFC2046],
     TEXT[!MAY]:    Section 4.5.1) or examine the data to determine its type.
+    TEXT[implementation]:    Although Content-Type is defined as a singleton field, it is
+    TEXT[implementation]:    sometimes incorrectly generated multiple times, resulting in a
+    TEXT[implementation]:    combined field value that appears to be a list.
+    TEXT[implementation,test]: Recipients often
+    TEXT[implementation,test]:    attempt to handle this error by using the last syntactically valid
+    TEXT[implementation,test]:    member of the list, leading to potential interoperability and
+    TEXT[implementation,test]:    security issues if different implementations have different error
+    TEXT[implementation,test]:    handling behaviors.
 
   SECTION: [Media Type](#section-8.3.1)
     TEXT[!MAY]:    The type/subtype MAY be followed by semicolon-delimited parameters

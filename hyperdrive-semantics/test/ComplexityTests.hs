@@ -68,6 +68,12 @@ complexityTests = testGroup "Complexity (allocation is linear in input size)"
   , linear "fieldListElements" 1000 $ \n ->
       either (const 0) length (fieldListElements NoComments hConnection
         (fieldsFromList (replicate n (hConnection, fv "a, b"))))
+  , linear "lookupSingleton" 1000 $ \n ->
+      either (const 0) (maybe 0 (B.length . fieldValueBytes)) (lookupSingleton hHost
+        (fieldsFromList ((hHost, fv "a") : replicate n (hConnection, fv "b"))))
+  , linear "lookupParameter" 10000 $ \n ->
+      either (const 0) (maybe 0 B.length)
+        (lookupParameter "q" (("q", "1") : replicate n ("a", "b")))
   , linear "parseQuotedString" 10000 $ \n ->
       either (const 0) (B.length . fst) (parseQuotedString ("\"" <> mconcat (replicate n "a\\\"") <> "\""))
   , linear "quoteString" 10000 $ \n ->

@@ -19,6 +19,7 @@ import ExhaustiveTests (exhaustiveTests)
 import FieldSyntaxTests (fieldSyntaxTests)
 import IndependentTests (independentTests)
 import SafePathTests (safePathTests)
+import SecurityTests (securityTests)
 import URITests (uriTests)
 
 main :: IO ()
@@ -51,6 +52,7 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
   , exhaustiveTests
   , safePathTests
   , fieldSyntaxTests
+  , securityTests
   , testGroup "Independent re-derivation"
       [ testProperty d (once b) | (d, b) <- independentTests ]
   ]

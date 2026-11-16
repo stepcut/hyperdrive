@@ -23,6 +23,11 @@ module Hyperdrive.Semantics.URI
   , IPvFuture
   , ipvFutureBytes
   , renderHost
+    -- * Comparing hosts
+  , canonicalHost
+  , effectivePort
+  , authorityKey
+  , isNumericLookalike
     -- * Path
   , Path
   , mkPath
@@ -95,7 +100,9 @@ pattern HTTPS = Scheme "https"
 -- System resolvers such as @getaddrinfo@ and @inet_aton@ may
 -- nevertheless treat them as IPv4 addresses. Code that allows or denies
 -- access by address must therefore resolve a registered name and check
--- the numeric result, never compare against the name's text.
+-- the numeric result, never compare against the name's text; such names
+-- can be rejected outright with 'isNumericLookalike'. To decide whether
+-- two hosts are the same server, compare 'canonicalHost's, not 'Host's.
 data Host
   = HostRegName   !RegName
   | HostIPv4      !Word32
@@ -411,6 +418,111 @@ longestZeroRun ps =
                         in (i, len) : runs (i + len) (drop len xs)
     runs i (_ : xs) = runs (i + 1) xs
 
+------------------------------------------------------------------------------
+-- Comparing hosts
+------------------------------------------------------------------------------
+
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
+-- # The rightmost domain
+-- # label of a fully qualified domain name in DNS may be followed by a
+-- # single "." and should be if it is necessary to distinguish between
+-- # the complete domain name and some local domain.
+
+-- | A host in a form suitable for deciding whether two hosts are the
+-- same server, for example when matching virtual hosts or checking an
+-- allow-list. Two spellings that the network treats as the same are
+-- mapped to one:
+--
+-- * an IPv4-mapped IPv6 address (@[::ffff:127.0.0.1]@) becomes the IPv4
+--   address it maps (@127.0.0.1@), which is what a dual-stack socket
+--   connects to;
+--
+-- * a single trailing dot is removed from a registered name, so the
+--   fully-qualified @example.com.@ matches @example.com@. If the result
+--   is an IPv4 address (@1.2.3.4.@), it becomes one. A name ending in
+--   more than one dot has an empty label and is not the same name, so
+--   it is left alone; this also keeps @canonicalHost@ idempotent.
+--
+-- This is not a normal form for URIs: @example.com.@ and @example.com@
+-- are different URIs, and render differently. Use it for comparisons,
+-- not for output.
+--
+-- Numeric names that system resolvers may read as IPv4 addresses
+-- (@2130706433@, @0x7f.1@) are not mapped, since resolvers differ.
+-- Reject them with 'isNumericLookalike' instead.
+canonicalHost :: Host -> Host
+canonicalHost (HostIPv6 (IPv6 0 lo))
+  | lo `shiftR` 32 == 0x0000FFFF = HostIPv4 (fromIntegral lo)
+canonicalHost (HostRegName (RegName r))
+  | Just r' <- stripTrailingDot r =
+      maybe (HostRegName (RegName r')) HostIPv4 (parseIPv4 r')
+canonicalHost h = h
+
+-- | remove exactly one trailing dot, if there is one and it is not
+-- preceded by another
+stripTrailingDot :: ByteString -> Maybe ByteString
+stripTrailingDot r
+  | B.length r > 1 && B.last r == 0x2E && B.last (B.init r) /= 0x2E = Just (B.init r)
+  | otherwise = Nothing
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-4.2.1
+-- # If the port
+-- # subcomponent is empty or not given, TCP port 80 (the reserved port
+-- # for WWW services) is the default.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-4.2.2
+-- # If the port subcomponent is empty or not given, TCP port 443 (the
+-- # reserved port for HTTP over TLS) is the default.
+
+-- | The port a request is for: the one given, or else the default for
+-- http (80) or https (443). 'Nothing' for another scheme with no port.
+effectivePort :: Scheme -> Maybe Word16 -> Maybe Word16
+effectivePort _     (Just p) = Just p
+effectivePort HTTP  Nothing  = Just 80
+effectivePort HTTPS Nothing  = Just 443
+effectivePort _     Nothing  = Nothing
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-4.2.3
+-- # If the port is equal to the default port for a scheme, the normal
+-- # form is to omit the port subcomponent.
+
+-- | A key for comparing the authorities of two targets with the same
+-- scheme: @http://example.com:80@ and @http://Example.COM.@ have the
+-- same key.
+authorityKey :: Scheme -> Authority -> (Host, Maybe Word16)
+authorityKey s (Authority h p) = (canonicalHost h, effectivePort s p)
+
+-- RFC 1123, Section 2.1 (not checked by duvet, which cannot parse that
+-- RFC's section headings): "However, a valid host name can never have
+-- the dotted-decimal form #.#.#.#, since at least the highest-level
+-- component label will be alphabetic."
+
+-- = https://www.rfc-editor.org/rfc/rfc3986#section-7.4
+-- # Although the URI syntax for IPv4address only allows the common
+-- # dotted-decimal form of IPv4 address literal, many implementations
+-- # that process URIs make use of platform-dependent system routines,
+-- # such as gethostbyname() and inet_aton(), to translate the string
+-- # literal to an actual IP address.  Unfortunately, such system routines
+-- # often allow and process a much larger set of formats than those
+-- # described in Section 3.2.2.
+
+-- | Is this registered name numeric in its last label, like
+-- @2130706433@, @127.1@, @0177.0.0.1@ or @0x7f.0.0.1@?
+--
+-- By the URI grammar these are names rather than IPv4 addresses, but
+-- system resolvers such as @inet_aton@ and @getaddrinfo@ may read them
+-- as addresses, in decimal, octal or hexadecimal. No real host name has
+-- a numeric top-level label (RFC 1123, Section 2.1), so a server can
+-- safely reject such names, and should do so before applying any
+-- allow-list or deny-list to them. A single trailing dot is ignored.
+isNumericLookalike :: RegName -> Bool
+isNumericLookalike (RegName r) =
+  let r'    = maybe r id (stripTrailingDot r)
+      label = B.takeWhileEnd (/= 0x2E) r'
+  in not (B.null label)
+     && (  B.all isDIGIT label
+        || (B.take 2 label == "0x" && B.all isHEXDIG (B.drop 2 label)))
+
 renderAuthority :: Authority -> ByteString
 renderAuthority (Authority h p) =
   renderHost h <> maybe "" (\n -> ":" <> C.pack (show n)) p
@@ -463,6 +575,16 @@ data PathSegmentError
 -- are legitimate data to an application that is not using the path to
 -- name files. Anything that does map segments to files or other
 -- storage must use "Hyperdrive.Semantics.SafePath" instead.
+--
+-- A decoded segment may also contain any control character other than
+-- NUL, including CR, LF and ESC. Anything that writes segments to a
+-- log or terminal must escape them. (Response headers are protected:
+-- a 'Hyperdrive.Semantics.Field.FieldValue' cannot contain CR or LF.)
+--
+-- Routing and access control should both use these segments. Deciding
+-- access on the raw 'Path' and routing on the segments, or the other
+-- way round, lets differently spelled requests (@/%61dmin@, @/./admin@,
+-- @//admin@) pass a check meant for the path they reach.
 pathSegments :: Path -> Either PathSegmentError [ByteString]
 pathSegments (Path bs) =
   case B.split 0x2F bs of

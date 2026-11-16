@@ -43,6 +43,7 @@ test-suite hyperdrive-semantics-tests
                     FieldSyntaxTests
                     IndependentTests
                     SafePathTests
+                    SecurityTests
                     URIOracle
                     URITests
   default-language: GHC2021

@@ -17,7 +17,9 @@ module Hyperdrive.Semantics.Field
   , fieldsFromList
   , fieldsToList
   , appendField
-  , lookupField
+  , lookupSingleton
+  , RepeatedField(..)
+  , lookupFirst
   , lookupAll
     -- * Common field names
   , hConnection
@@ -175,9 +177,50 @@ fieldsToList (Fields fs) = toList fs
 appendField :: FieldName -> FieldValue -> Fields -> Fields
 appendField n v (Fields fs) = Fields (fs |> (n, v))
 
--- | the value of the first field line with this name. /O(n)/
-lookupField :: FieldName -> Fields -> Maybe FieldValue
-lookupField n = listToMaybe . lookupAll n
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.3
+-- # Although Content-Type is defined as a singleton field, it is
+-- # sometimes incorrectly generated multiple times, resulting in a
+-- # combined field value that appears to be a list.  Recipients often
+-- # attempt to handle this error by using the last syntactically valid
+-- # member of the list, leading to potential interoperability and
+-- # security issues if different implementations have different error
+-- # handling behaviors.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-5.5
+-- # This is true for both list-based and singleton fields, since
+-- # a singleton field might be erroneously sent with multiple members and
+-- # detecting such errors improves interoperability.
+
+-- | A singleton field appeared on more than one field line.
+newtype RepeatedField = RepeatedField FieldName
+  deriving (Eq, Show)
+
+-- | The value of a singleton field: one that may appear at most once,
+-- such as @Host@, @Content-Type@ or @Authorization@. More than one
+-- field line with the name is an error rather than a choice.
+--
+-- This is the lookup to use for any field that is not list-based.
+-- Taking the first or the last of several lines is what makes duplicate
+-- fields dangerous: a component in front of the server, such as a
+-- proxy, cache or firewall, may make the opposite choice, and then the
+-- two act on different values.
+--
+-- This only detects repeated field lines. A single line carrying
+-- several members (@Content-Type: text/plain, text/html@) can only be
+-- detected by the parser for that field, since some singleton fields,
+-- such as @Date@, legitimately contain commas. /O(n)/
+lookupSingleton :: FieldName -> Fields -> Either RepeatedField (Maybe FieldValue)
+lookupSingleton n fs =
+  case lookupAll n fs of
+    []  -> Right Nothing
+    [v] -> Right (Just v)
+    _   -> Left (RepeatedField n)
+
+-- | The value of the first field line with this name, ignoring any
+-- others. For singleton fields use 'lookupSingleton' instead: silently
+-- picking one of several values is unsafe. /O(n)/
+lookupFirst :: FieldName -> Fields -> Maybe FieldValue
+lookupFirst n = listToMaybe . lookupAll n
 
 -- | the values of every field line with this name, in order. /O(n)/
 lookupAll :: FieldName -> Fields -> [FieldValue]

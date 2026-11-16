@@ -46,6 +46,10 @@ why: field lines must stay in the order they were received
 - appendField n v (Fields fs) = Fields (fs |> (n, v))
 + appendField n v (Fields fs) = Fields (Seq.reverse (Seq.reverse fs |> (n, v)))
 
+why: a repeated singleton field must be an error, not a choice between values
+- _   -> Left (RepeatedField n)
++ (v : _) -> Right (Just v)
+
 file: src/Hyperdrive/Semantics/Status.hs
 
 why: 599 is the largest valid status code
@@ -109,6 +113,26 @@ why: RFC 3986 Section 6.2.2.2: encoded unreserved characters are decoded in the 
 why: once %31.2.3.4 is normalized to 1.2.3.4, first-match-wins makes it an IPv4 address
 - in Right (maybe (HostRegName (RegName n)) HostIPv4 (parseIPv4 n))
 + in Right (HostRegName (RegName n))
+
+why: an IPv4-mapped IPv6 address is the same host as the IPv4 address
+- | lo `shiftR` 32 == 0x0000FFFF = HostIPv4 (fromIntegral lo)
++ | False = HostIPv4 (fromIntegral lo)
+
+why: the fully-qualified example.com. is the same host as example.com
+- | Just r' <- stripTrailingDot r =
++ | Just r' <- Nothing =
+
+why: stripping more than one trailing dot makes canonicalHost not idempotent
+- | B.length r > 1 && B.last r == 0x2E && B.last (B.init r) /= 0x2E = Just (B.init r)
++ | B.length r > 1 && B.last r == 0x2E = Just (B.init r)
+
+why: resolvers read 0x7f.0.0.1 as hexadecimal
+- || (B.take 2 label == "0x" && B.all isHEXDIG (B.drop 2 label)))
++ )
+
+why: the default port for https is 443
+- effectivePort HTTPS Nothing  = Just 443
++ effectivePort HTTPS Nothing  = Nothing
 
 file: src/Hyperdrive/Semantics/Target.hs
 
@@ -179,3 +203,7 @@ why: parameter names are case-insensitive
 why: trailing whitespace after the last parameter is not allowed by the grammar
 - | otherwise   -> Left InvalidParameter   -- OWS must be followed by ";"
 + | otherwise   -> Right []   -- OWS must be followed by ";"
+
+why: a repeated parameter must be an error, not a choice between values
+- _   -> Left (DuplicateParameter lname)
++ (v : _) -> Right (Just v)

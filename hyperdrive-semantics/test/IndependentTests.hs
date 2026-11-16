@@ -404,13 +404,13 @@ fieldsTests =
   , ("RFC 9110 5.3: appendField onto emptyFields"
     , pairs (appendField hHost (fv "example.com") emptyFields) == [("host", "example.com")])
   , ("RFC 9110 5.1 'Field names are case-insensitive': lookup with a differently cased name finds the field"
-    , fmap fieldValueBytes (lookupField (fn "hOsT") (mkFields [("Host", "example.com")])) == Just "example.com")
-  , ("RFC 9110 5.3 order significant: lookupField returns the first of several lines"
-    , fmap fieldValueBytes (lookupField (fn "x") (mkFields [("X", "1"), ("Y", "2"), ("x", "3")])) == Just "1")
+    , fmap fieldValueBytes (lookupFirst (fn "hOsT") (mkFields [("Host", "example.com")])) == Just "example.com")
+  , ("RFC 9110 5.3 order significant: lookupFirst returns the first of several lines"
+    , fmap fieldValueBytes (lookupFirst (fn "x") (mkFields [("X", "1"), ("Y", "2"), ("x", "3")])) == Just "1")
   , ("RFC 9110 5.3 'order ... with the same name ... is significant': lookupAll returns every value in order"
     , map fieldValueBytes (lookupAll (fn "X") (mkFields [("X", "1"), ("Y", "2"), ("x", "3")])) == ["1", "3"])
   , ("RFC 9110 5.2: absent field gives Nothing / []"
-    , isNothing (lookupField hHost emptyFields) && null (lookupAll hHost (mkFields [("A", "1")])))
+    , isNothing (lookupFirst hHost emptyFields) && null (lookupAll hHost (mkFields [("A", "1")])))
   , ("RFC 9110 5.3 Note 'the \"Set-Cookie\" header field ... cannot be combined into a single field value': separate lines are kept separate"
     , map fieldValueBytes (lookupAll hSetCookie (mkFields [("Set-Cookie", "a=1; Expires=Wed, 21 Oct 2015 07:28:00 GMT"), ("Set-Cookie", "b=2")]))
         == ["a=1; Expires=Wed, 21 Oct 2015 07:28:00 GMT", "b=2"])
