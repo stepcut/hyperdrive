@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Print the public face of Haskell modules, for a blind review.
+
+Keeps each module's export list, type signatures, data declarations,
+pattern synonym definitions and Haddock comments; drops function bodies,
+imports and duvet citations (-- = / -- #), which would reveal our own
+reading of the RFCs. Used to give an independent reviewer the API
+without the implementation (see hyperdrive-semantics/test/
+IndependentTests.notes.md). Signatures of unexported helpers are kept
+too, so tell the reviewer to use only names in the export lists.
+
+Usage: scripts/extract-api src/Hyperdrive/Semantics/*.hs > API.md
+"""
+import re
+import sys
+from pathlib import Path
+out = []
+for f in sys.argv[1:]:
+    lines = Path(f).read_text().splitlines()
+    keep, i = [], 0
+    in_exports = False
+    while i < len(lines):
+        l = lines[i]
+        s = l.strip()
+        if s.startswith('-- =') or s.startswith('-- #'):
+            i += 1; continue
+        if l.startswith('module '):
+            in_exports = True
+        if in_exports:
+            keep.append(l)
+            if re.search(r'\)\s*where\s*$', l) or l.rstrip().endswith('where'):
+                in_exports = False
+            i += 1; continue
+        if s.startswith('{-#') or s.startswith('import '):
+            i += 1; continue
+        # haddock comment blocks
+        if re.match(r'^\s*-- [|^$*]', l) or (keep and keep[-1].lstrip().startswith('--') and s.startswith('--') and not s.startswith('---')):
+            keep.append(l); i += 1; continue
+        # type signatures (and their continuation lines)
+        if re.match(r'^(pattern )?[A-Za-z_][\w\', ]*\s*::', l):
+            keep.append(l); i += 1
+            while i < len(lines) and lines[i].startswith(' ') and not lines[i].strip().startswith('--'):
+                keep.append(lines[i]); i += 1
+            continue
+        # data/newtype declarations, with constructors and field docs
+        if re.match(r'^(data|newtype) ', l):
+            keep.append(l); i += 1
+            while i < len(lines) and (lines[i].startswith(' ') or not lines[i].strip()):
+                if not lines[i].strip():
+                    break
+                keep.append(lines[i]); i += 1
+            continue
+        # pattern synonym definitions reveal values, e.g. pattern GET = Method "GET"
+        if re.match(r'^pattern \w+\s*=', l):
+            keep.append(l); i += 1; continue
+        if not s and keep and keep[-1].strip():
+            keep.append('')
+        i += 1
+    out.append(f'### {Path(f).name}\n\n```haskell\n' + '\n'.join(keep).strip() + '\n```\n')
+print('\n'.join(out))
