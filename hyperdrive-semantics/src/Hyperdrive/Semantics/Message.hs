@@ -29,6 +29,7 @@ module Hyperdrive.Semantics.Message
   , requestHeaders
   , requestBody
   , RequestBody(..)
+  , IncompleteBody(..)
   , bytesBody
     -- * Responses
   , Response
@@ -38,19 +39,25 @@ module Hyperdrive.Semantics.Message
   , responseHeaders
   , responseContent
   , Content(..)
-  , FileRange(..)
+  , FileRange
+  , mkFileRange
+  , rangeOffset
+  , rangeLength
+  , checkResponseFor
+  , checkTrailers
     -- * Fields owned by the protocol layer
   , isProtocolField
   ) where
 
+import Control.Exception (Exception)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Foldable (find)
-import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Word (Word64, Word8)
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.Internal (FieldName(..))
-import Hyperdrive.Semantics.Method (Method)
+import Hyperdrive.Semantics.Method (Method, pattern CONNECT)
 import Hyperdrive.Semantics.Status (Status, StatusClass(..), statusClass, pattern NoContent, pattern ResetContent, pattern NotModified)
 import Hyperdrive.Semantics.Target (Target, normalizeEmptyPath, validForMethod)
 
@@ -108,15 +115,38 @@ firstProtocolField = find isProtocolField . map fst . fieldsToList
 -- Requests
 ------------------------------------------------------------------------------
 
--- | The content of a request, read as it arrives.
+-- | The content of a request did not arrive in full: the client
+-- disconnected or reset the stream, or sent less or more than it
+-- declared. Thrown by 'readChunk' and 'readTrailers'.
+data IncompleteBody = IncompleteBody
+  deriving (Eq, Show)
+
+instance Exception IncompleteBody
+
+-- | The content of a request, read as it arrives. A body has a single
+-- reader: reading it from more than one thread at a time is an error.
+--
+-- The guarantees every protocol layer gives:
+--
+-- * 'readChunk' returns an empty chunk only after the whole content has
+--   arrived. If it does not arrive in full, 'readChunk' throws
+--   'IncompleteBody', never an empty chunk, so a truncated upload is
+--   never mistaken for a complete one.
+--
+-- * If 'bodyLength' is @Just n@, exactly @n@ bytes are delivered, or
+--   'IncompleteBody' is thrown.
 data RequestBody = RequestBody
-  { -- | the length of the content, if it was declared in advance
+  { -- | The length the client declared in advance, if it did. It comes
+    -- from the client, so it is not a reason to allocate that much
+    -- memory: compare it with your own limit first.
     bodyLength   :: !(Maybe Word64)
-    -- | the next chunk of content; an empty chunk means the end, and
-    -- every later call also returns an empty chunk
+    -- | The next chunk of content. An empty chunk means the whole
+    -- content has arrived, and every later call also returns an empty
+    -- chunk.
   , readChunk    :: IO ByteString
-    -- | the trailer section. Any content not yet read is read and
-    -- discarded first.
+    -- | The trailer section. Any content not yet read is read and
+    -- discarded first, which can throw 'IncompleteBody'. Trailers are
+    -- never merged into the header section (RFC 9110 Section 6.5.2).
   , readTrailers :: IO Fields
   }
 
@@ -125,7 +155,7 @@ data RequestBody = RequestBody
 bytesBody :: ByteString -> IO RequestBody
 bytesBody bs = do
   ref <- newIORef bs
-  let next = do c <- readIORef ref; writeIORef ref B.empty; pure c
+  let next = atomicModifyIORef' ref (\c -> (B.empty, c))
   pure RequestBody
     { bodyLength   = Just (fromIntegral (B.length bs))
     , readChunk    = next
@@ -136,7 +166,9 @@ bytesBody bs = do
 --
 -- Invariants: the form of the target is valid for the method, an empty
 -- path has its normal form, and the header fields contain no protocol
--- fields ('isProtocolField').
+-- fields ('isProtocolField') and no @Host@. The authority the request
+-- is for is in the target and nowhere else, so routing and the
+-- application cannot act on two different hosts.
 data Request = Request
   { requestVersion :: !HttpVersion
   , requestMethod  :: !Method
@@ -154,13 +186,26 @@ data RequestError
 -- # These forms MUST
 -- # NOT be used with other methods.
 
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-7.2
+-- # The target URI's authority information is critical for handling a
+-- # request.
+
+-- RFC 9112, Section 3.2.2 (not yet in duvet's specifications): with an
+-- absolute-form request-target, "the origin server MUST ignore the
+-- received Host header field (if any)".
+
 -- | Build a request. The protocol layer has already reconstructed the
 -- target and interpreted the protocol fields, expressing what they say
--- as the version, the target and the body.
+-- as the version, the target and the body. @Host@ (or HTTP/2 and
+-- HTTP/3's @:authority@) has been folded into the target, and is
+-- rejected here: leaving it in the fields would let an application
+-- read a host that routing did not use, as when an absolute-form
+-- target and @Host@ disagree.
 mkRequest :: HttpVersion -> Method -> Target -> Fields -> RequestBody -> Either RequestError Request
 mkRequest version method target fields body
   | not (validForMethod method target)   = Left TargetNotValidForMethod
   | Just n <- firstProtocolField fields  = Left (RequestProtocolField n)
+  | not (null (lookupAll hHost fields))  = Left (RequestProtocolField hHost)
   | otherwise = Right (Request version method (normalizeEmptyPath method target) fields body)
 
 ------------------------------------------------------------------------------
@@ -168,9 +213,17 @@ mkRequest version method target fields body
 ------------------------------------------------------------------------------
 
 -- | A range of bytes in a file: the offset of the first byte and the
--- number of bytes.
+-- number of bytes. Invariant: the end does not overflow.
 data FileRange = FileRange { rangeOffset :: !Word64, rangeLength :: !Word64 }
   deriving (Eq, Show)
+
+-- | A range from an offset and a length, or 'Nothing' if its end would
+-- overflow. Whether the range lies within the file can only be checked
+-- when it is sent, since the file can change in the meantime.
+mkFileRange :: Word64 -> Word64 -> Maybe FileRange
+mkFileRange off len
+  | len <= maxBound - off = Just (FileRange off len)
+  | otherwise             = Nothing
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-6.4.1
 -- # All other responses do include content, although that content might
@@ -186,12 +239,24 @@ data Content
     -- | Part or all of a file, so that the IO layer can send it without
     -- copying it through user space. The path is chosen by the server,
     -- so any part that came from a request must have been checked with
-    -- "Hyperdrive.Semantics.SafePath".
+    -- "Hyperdrive.Semantics.SafePath". The protocol layer sends exactly
+    -- the length it announced: if the file has changed size by the time
+    -- it is read, or the range lies outside it, the response is aborted
+    -- rather than sending more or less.
   | ContentFile !FilePath !(Maybe FileRange)
     -- | Content produced as it is sent. The function is given a way to
     -- write a chunk and a way to flush what has been written, and
-    -- returns the trailer section once it has written all the content.
-    -- If a length is given, exactly that many bytes must be written.
+    -- returns the trailer section ('checkTrailers') once it has written
+    -- all the content. If a length is given, exactly that many bytes
+    -- must be written.
+    --
+    -- If the function throws, or writes more or less than the length it
+    -- gave, the protocol layer aborts the response: it closes the
+    -- connection or resets the stream, and never ends the content
+    -- normally, so that a truncated response cannot pass for a
+    -- complete one. Bytes beyond the declared length are never sent,
+    -- since on an HTTP/1.1 connection a client would take them for the
+    -- start of the next response. 'write' throws if the client has gone.
   | ContentStream !(Maybe Word64) ((ByteString -> IO ()) -> IO () -> IO Fields)
 
 -- | A final response, as an application produces it.
@@ -210,7 +275,26 @@ data ResponseError
   | ContentNotAllowed                 -- ^ content with a 204, 205 or 304 status
   | ContentRequired                   -- ^ no content with any other status
   | ResponseProtocolField !FieldName  -- ^ a field only the protocol layer may generate
+  | RepeatedSingleton !FieldName      -- ^ a field that may only appear once, appearing more than once
+  | TunnelNotSupported                -- ^ a 2xx response to CONNECT, which would open a tunnel
   deriving (Eq, Show)
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.3
+-- # Recipients often
+-- # attempt to handle this error by using the last syntactically valid
+-- # member of the list, leading to potential interoperability and
+-- # security issues if different implementations have different error
+-- # handling behaviors.
+
+-- | Response fields whose grammar allows a single value, so that a
+-- second field line could only make clients and caches disagree about
+-- which one applies. From RFC 9110: Content-Type, Content-Range,
+-- Content-Location, Location, ETag, Last-Modified, Retry-After, Date and
+-- Server; from RFC 9111: Age and Expires.
+singletonResponseFields :: [FieldName]
+singletonResponseFields = map FieldName
+  [ "content-type", "content-range", "content-location", "location", "etag"
+  , "last-modified", "retry-after", "date", "server", "age", "expires" ]
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-15.2
 -- # A 1xx response is terminated by the end of the header section; it
@@ -237,6 +321,7 @@ mkResponse :: Status -> Fields -> Content -> Either ResponseError Response
 mkResponse status fields content
   | statusClass status == Informational = Left InterimStatus
   | Just n <- firstProtocolField fields  = Left (ResponseProtocolField n)
+  | (n : _) <- repeated                  = Left (RepeatedSingleton n)
   | noContent, not (isNone content)     = Left ContentNotAllowed
   | not noContent, isNone content       = Left ContentRequired
   | otherwise                           = Right (Response status fields content)
@@ -244,3 +329,60 @@ mkResponse status fields content
     noContent = status `elem` [NoContent, ResetContent, NotModified]
     isNone ContentNone = True
     isNone _           = False
+    repeated = [ n | n <- singletonResponseFields, length (take 2 (lookupAll n fields)) > 1 ]
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-9.3.6
+-- # Any 2xx (Successful) response indicates that the sender (and all
+-- # inbound proxies) will switch to tunnel mode immediately after the
+-- # response header section; data received after that header section is
+-- # from the server identified by the request target.
+
+-- | Check a response against the request it answers. The protocol layer
+-- calls this before sending any response.
+--
+-- A 2xx response to CONNECT is rejected: a client takes it to mean the
+-- connection is now a tunnel, and would treat whatever follows as
+-- tunnelled data rather than HTTP. Tunnels are not supported yet.
+checkResponseFor :: Request -> Response -> Either ResponseError Response
+checkResponseFor req resp
+  | requestMethod req == CONNECT, statusClass (responseStatus resp) == Successful = Left TunnelNotSupported
+  | otherwise = Right resp
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-6.5.1
+-- # Many fields cannot be processed outside the header section because
+-- # their evaluation is necessary prior to receiving the content, such as
+-- # those that describe message framing, routing, authentication, request
+-- # modifiers, response controls, or content format.  A sender MUST NOT
+-- # generate a trailer field unless the sender knows the corresponding
+-- # header field name's definition permits the field to be sent in
+-- # trailers.
+
+-- | Check the trailer section a 'ContentStream' returned, rejecting the
+-- first field that cannot be a trailer.
+--
+-- RFC 9110 only lets a sender generate a trailer field whose definition
+-- permits it, which is the application's responsibility. This catches
+-- the fields that clearly cannot be trailers: the protocol fields, and
+-- fields that describe framing, routing, authentication, request
+-- modifiers, response controls or content format. Fields that RFC 9110
+-- explicitly allows in trailers, such as @ETag@ and
+-- @Authentication-Info@, are accepted.
+checkTrailers :: Fields -> Either FieldName Fields
+checkTrailers fields =
+  case find notTrailer (map fst (fieldsToList fields)) of
+    Just n  -> Left n
+    Nothing -> Right fields
+  where
+    notTrailer n@(FieldName b) = isProtocolField n || b `elem` notTrailerFields
+
+notTrailerFields :: [ByteString]
+notTrailerFields =
+  [ "trailer", "host"                                                  -- framing, routing
+  , "authorization", "proxy-authorization"                             -- authentication
+  , "www-authenticate", "proxy-authenticate"
+  , "expect", "max-forwards", "range", "if-match", "if-none-match"     -- request modifiers
+  , "if-modified-since", "if-unmodified-since", "if-range"
+  , "cache-control", "expires", "age", "vary", "location"              -- response controls
+  , "retry-after", "set-cookie"
+  , "content-type", "content-encoding", "content-language"             -- content format
+  , "content-range", "content-location" ]

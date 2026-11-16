@@ -255,5 +255,37 @@ why: every other response has content, possibly of zero length
 + | False       = Left ContentRequired
 
 why: after the end of the body, readChunk keeps returning an empty chunk
-- let next = do c <- readIORef ref; writeIORef ref B.empty; pure c
-+ let next = do c <- readIORef ref; pure c
+- let next = atomicModifyIORef' ref (\c -> (B.empty, c))
++ let next = atomicModifyIORef' ref (\c -> (c, c))
+
+why: Host must not be left in a request's fields, where it could disagree with the target
+- | not (null (lookupAll hHost fields))  = Left (RequestProtocolField hHost)
++ | False  = Left (RequestProtocolField hHost)
+
+why: a second line of a singleton field makes clients and caches disagree
+- repeated = [ n | n <- singletonResponseFields, length (take 2 (lookupAll n fields)) > 1 ]
++ repeated = []
+
+why: Location is a singleton field
+- [ "content-type", "content-range", "content-location", "location", "etag"
++ [ "content-type", "content-range", "content-location", "etag"
+
+why: a 2xx response to CONNECT opens a tunnel
+- | requestMethod req == CONNECT, statusClass (responseStatus resp) == Successful = Left TunnelNotSupported
++ | False = Left TunnelNotSupported
+
+why: only 2xx responses to CONNECT open a tunnel
+- | requestMethod req == CONNECT, statusClass (responseStatus resp) == Successful = Left TunnelNotSupported
++ | requestMethod req == CONNECT = Left TunnelNotSupported
+
+why: protocol fields such as Content-Length can never be trailers
+- notTrailer n@(FieldName b) = isProtocolField n || b `elem` notTrailerFields
++ notTrailer (FieldName b) = b `elem` notTrailerFields
+
+why: authentication fields cannot be trailers
+- , "authorization", "proxy-authorization"                             -- authentication
++ , "proxy-authorization"                             -- authentication
+
+why: the end of a file range must not overflow
+- | len <= maxBound - off = Just (FileRange off len)
++ | True = Just (FileRange off len)

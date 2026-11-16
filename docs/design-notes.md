@@ -110,13 +110,35 @@ Each item came from a security review of `hyperdrive-semantics`
 - **M1. Protocol fields on receipt.** Interpret and remove the fields
   that `isProtocolField` identifies before building a `Request`
   (`mkRequest` rejects them): framing becomes the body and its
-  `bodyLength`, and `Connection` options are acted on.
+  `bodyLength`. Fold `Host` (or `:authority`) into the target and remove
+  it, so the authority exists in one place only. Also remove every field
+  named as a connection option in `Connection` (RFC 9110 Section
+  7.6.1), not just `Connection` itself. Note that attackers can list a
+  field in `Connection` to make a proxy strip it, including fields the
+  proxy itself adds, such as `X-Forwarded-For`: never treat the absence
+  of a proxy-added field as meaningful.
 - **M2. Framing on sending.** Generate `Content-Length` or the version's
   framing from the `Content`: the length of the bytes, of the file or
-  range, or the length a stream declared. Abort the response if a stream
-  writes more or fewer bytes than it declared. Never send
-  `Content-Length` with a 1xx or 204 response, or a 2xx response to
+  range, or the length a stream declared. Send exactly that many bytes:
+  never send bytes beyond it, which an HTTP/1.1 client would read as the
+  start of the next response, and abort if a stream or file provides
+  more or fewer (a file can change size after it was measured). Never
+  send `Content-Length` with a 1xx or 204 response, or a 2xx response to
   CONNECT (RFC 9110 Section 8.6).
+- **M2a. Failure is never a normal end.** If producing content fails
+  (the stream throws, a file read fails, the length is wrong), close the
+  connection or reset the stream. Never end the content normally, with a
+  final zero-length chunk or a normal end of stream, or a truncated
+  response passes for a complete one to clients and caches.
+- **M2b. Incomplete requests.** When a request body does not arrive in
+  full (disconnect, reset, less or more than declared), `readChunk` and
+  `readTrailers` throw `IncompleteBody`; they never return the empty
+  chunk that means "complete". Enforce the server's own limit on body
+  size, whatever `bodyLength` says.
+- **M2c. Checks before sending.** Call `checkResponseFor` with the
+  request before sending any response (it rejects a 2xx response to
+  CONNECT, which would open a tunnel), and `checkTrailers` on the
+  trailers a stream returns, aborting if either fails.
 - **M3. HEAD.** Send the fields that describe the content, such as its
   length, and never the content itself. Applications build the same
   `Response` as for GET.
@@ -127,8 +149,9 @@ Each item came from a security review of `hyperdrive-semantics`
   reading a body sent with `Expect: 100-continue`, `103 Early Hints`),
   and must never be sent to an HTTP/1.0 client (RFC 9110 Section 15.2).
 - **M6. Trailers.** Only send trailer fields whose definitions allow it
-  (RFC 9110 Section 6.5.1); at least drop protocol fields from the
-  trailers a stream returns. In HTTP/1.1, trailers need chunked framing.
+  (RFC 9110 Section 6.5.1); `checkTrailers` rejects the ones that
+  clearly cannot be trailers. In HTTP/1.1, trailers need chunked
+  framing. Never merge received trailers into the header section.
 - **M7. Upgrade.** `Upgrade` is a protocol field. Present an HTTP/1.1
   upgrade (WebSocket) to applications the way HTTP/2 and HTTP/3 present
   it: as an extended CONNECT (RFC 8441, RFC 9220).

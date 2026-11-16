@@ -477,10 +477,14 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[implementation,test]:    be of zero length.
 
   SECTION: [Limitations on Use of Trailers](#section-6.5.1)
-    TEXT[!MUST]: A sender MUST NOT
-    TEXT[!MUST]:    generate a trailer field unless the sender knows the corresponding
-    TEXT[!MUST]:    header field name's definition permits the field to be sent in
-    TEXT[!MUST]:    trailers.
+    TEXT[implementation]:    Many fields cannot be processed outside the header section because
+    TEXT[implementation]:    their evaluation is necessary prior to receiving the content, such as
+    TEXT[implementation]:    those that describe message framing, routing, authentication, request
+    TEXT[implementation]:    modifiers, response controls, or content format.
+    TEXT[!MUST,implementation,test]: A sender MUST NOT
+    TEXT[!MUST,implementation,test]:    generate a trailer field unless the sender knows the corresponding
+    TEXT[!MUST,implementation,test]:    header field name's definition permits the field to be sent in
+    TEXT[!MUST,implementation,test]:    trailers.
     TEXT[!MUST]: A recipient MUST NOT merge a trailer field into a header
     TEXT[!MUST]:    section unless the recipient understands the corresponding header
     TEXT[!MUST]:    field definition and that definition explicitly permits and defines
@@ -536,6 +540,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
 
   SECTION: [Host and :authority](#section-7.2)
     TEXT[implementation]:      Host = uri-host [ ":" port ] ; Section 4
+    TEXT[implementation,test]:    The target URI's authority information is critical for handling a
+    TEXT[implementation,test]:    request.
     TEXT[!MUST,exception]: A user agent MUST generate a Host header field in a request
     TEXT[!MUST,exception]:    unless it sends that information as an ":authority" pseudo-header
     TEXT[!MUST,exception]:    field.
@@ -987,6 +993,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,implementation]:    status code.
     TEXT[!MAY]:    An origin server MAY accept a CONNECT request, but most origin
     TEXT[!MAY]:    servers do not implement CONNECT.
+    TEXT[implementation,test]:    Any 2xx (Successful) response indicates that the sender (and all
+    TEXT[implementation,test]:    inbound proxies) will switch to tunnel mode immediately after the
+    TEXT[implementation,test]:    response header section; data received after that header section is
+    TEXT[implementation,test]:    from the server identified by the request target.
     TEXT[!MUST,exception]:    A tunnel is closed when a tunnel intermediary detects that either
     TEXT[!MUST,exception]:    side has closed its connection: the intermediary MUST attempt to send
     TEXT[!MUST,exception]:    any outstanding data that came from the closed side to the other
