@@ -17,9 +17,18 @@ The working tree is never modified.
 
 Usage (from the repository root, inside `nix develop`):
 
-  scripts/mutation-test [PACKAGE-DIR ...]
+  scripts/mutation-test [--only FILE ...] [PACKAGE-DIR ...]
 
-PACKAGE-DIR defaults to every directory with a `mutants` file. To see
+PACKAGE-DIR defaults to every directory with a `mutants` file.
+
+--only FILE runs just the mutants of that source file (given as in the
+`file:` line, or by its name alone), and can be repeated. When only
+some source files have changed and the tests have only been added to,
+the other mutants cannot have changed result, so running the changed
+files' mutants is enough. After changing existing code broadly, or
+removing or weakening tests, run them all.
+
+To see
 how strong one part of the test suite is on its own, pass options to
 the test runner through MUTATION_TEST_OPTIONS, for example
 MUTATION_TEST_OPTIONS='-p Exhaustive'.
@@ -37,8 +46,10 @@ printed when a mutant survives. Each `-` line is the original code and
 must be followed by a `+` line with its replacement.
 """
 
+import argparse
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -93,11 +104,32 @@ def run(cmd, cwd):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
 
 
+def selected(m, only):
+    return not only or any(m.file == f or m.file.endswith("/" + f) for f in only)
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Check that the test suite catches deliberate bugs.")
+    parser.add_argument("--only", action="append", default=[], metavar="FILE",
+                        help="only run the mutants of this source file (repeatable)")
+    parser.add_argument("packages", nargs="*", metavar="PACKAGE-DIR")
+    args = parser.parse_args()
+
+    # turn SIGTERM into an exception, so that the temporary copy is
+    # removed and a running build or test is killed on the way out
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit("terminated"))
+
     root = Path(__file__).resolve().parent.parent
-    packages = [Path(p) for p in sys.argv[1:]] or sorted(p.parent.relative_to(root) for p in root.glob("*/mutants"))
+    packages = [Path(p) for p in args.packages] or sorted(p.parent.relative_to(root) for p in root.glob("*/mutants"))
     if not packages:
         sys.exit("no mutants files found")
+
+    mutants = [ (pkg, m) for pkg in packages for m in parse_mutants(root / pkg / "mutants")
+                if selected(m, args.only) ]
+    if not mutants:
+        files = sorted({ m.file for pkg in packages for m in parse_mutants(root / pkg / "mutants") })
+        sys.exit("no mutants for " + ", ".join(args.only) + "; files with mutants:\n  " + "\n  ".join(files))
+    print(f"{len(mutants)} mutants to run", flush=True)
 
     with tempfile.TemporaryDirectory(prefix="mutation-test-") as tmp:
         work = Path(tmp) / "repo"
@@ -115,28 +147,27 @@ def main():
             sys.exit("the unmodified project does not pass its tests; fix that first")
 
         results = []
-        for pkg in packages:
-            for m in parse_mutants(root / pkg / "mutants"):
-                target = work / pkg / m.file
-                original = target.read_text()
-                where = f"{pkg}/mutants:{m.line} {pkg}/{m.file}"
-                count = original.count(m.old)
-                if count != 1:
-                    results.append(("STALE", where, m, f"original code found {count} times"))
-                    print(f"STALE     {where}", flush=True)
-                    continue
-                target.write_text(original.replace(m.old, m.new))
-                try:
-                    build = run(CABAL + ["build", "all"], work)
-                    if build.returncode != 0:
-                        status = "INVALID"
-                    else:
-                        test = run(test_command(), work)
-                        status = "CAUGHT" if test.returncode != 0 else "SURVIVED"
-                finally:
-                    target.write_text(original)
-                results.append((status, where, m, ""))
-                print(f"{status:9} {where}", flush=True)
+        for pkg, m in mutants:
+            target = work / pkg / m.file
+            original = target.read_text()
+            where = f"{pkg}/mutants:{m.line} {pkg}/{m.file}"
+            count = original.count(m.old)
+            if count != 1:
+                results.append(("STALE", where, m, f"original code found {count} times"))
+                print(f"STALE     {where}", flush=True)
+                continue
+            target.write_text(original.replace(m.old, m.new))
+            try:
+                build = run(CABAL + ["build", "all"], work)
+                if build.returncode != 0:
+                    status = "INVALID"
+                else:
+                    test = run(test_command(), work)
+                    status = "CAUGHT" if test.returncode != 0 else "SURVIVED"
+            finally:
+                target.write_text(original)
+            results.append((status, where, m, ""))
+            print(f"{status:9} {where}", flush=True)
 
     bad = [r for r in results if r[0] != "CAUGHT"]
     print(f"\n{len(results) - len(bad)} of {len(results)} mutants caught")

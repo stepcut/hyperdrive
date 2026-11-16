@@ -26,6 +26,7 @@ Checks
 
     nix flake check                      # build, run the test suites, check requirement coverage
     nix develop -c scripts/mutation-test # check that the tests catch deliberate bugs
+    nix develop -c scripts/mutation-test --only Message.hs   # just one file's mutants
 
 `nix flake check` fails if a citation does not match its RFC, or if
 requirement coverage changes without `.duvet/snapshot.txt` being
@@ -35,6 +36,9 @@ Each package's `mutants` file lists deliberate bugs that its test
 suite must catch. `scripts/mutation-test` applies each one in turn to
 a temporary copy of the project and fails if any of them survives. It
 takes several minutes, so CI runs it weekly rather than on every push.
+When only some source files have changed and tests have only been
+added, running those files' mutants with `--only` is enough: no other
+mutant can have changed result.
 
 Requirements that do not apply to hyperdrive, such as those for
 clients, proxies, caches and IANA registrations, are recorded as duvet
