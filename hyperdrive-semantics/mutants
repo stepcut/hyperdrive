@@ -134,6 +134,26 @@ why: the default port for https is 443
 - effectivePort HTTPS Nothing  = Just 443
 + effectivePort HTTPS Nothing  = Nothing
 
+why: a DNS label is at most 63 characters
+- && B.length l <= 63
++ && B.length l <= 64
+
+why: a DNS name is at most 253 characters of text
+- && B.length name <= 253
++ && B.length name <= 254
+
+why: a DNS label cannot start with a hyphen
+- && B.head l /= 0x2D
++ && True
+
+why: no host name has a numeric top-level label
+- && not (isNumericLookalike rn)
++ && True
+
+why: a DNS host name has only letters, digits and hyphens, so no percent-encoding
+- && B.all (\w -> isALPHA w || isDIGIT w || w == 0x2D) l
++ && B.all (\w -> isALPHA w || isDIGIT w || w == 0x2D || w == 0x25) l
+
 file: src/Hyperdrive/Semantics/Target.hs
 
 why: the asterisk form may only be used with OPTIONS

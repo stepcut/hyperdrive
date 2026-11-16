@@ -5,10 +5,10 @@
 -- library; see docs/design-notes.md.
 module SecurityTests (securityTests) where
 
-import Control.Monad (replicateM)
+import Control.Monad (replicateM, void)
 import Data.Bits ((.|.))
 import qualified Data.ByteString.Char8 as C
-import Data.Char (isDigit, isHexDigit, isOctDigit)
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isHexDigit, isOctDigit)
 import Data.Word (Word32, Word64)
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.FieldSyntax
@@ -16,6 +16,7 @@ import Hyperdrive.Semantics.URI
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
+import Text.ParserCombinators.ReadP
 
 securityTests :: TestTree
 securityTests = testGroup "Security"
@@ -35,6 +36,11 @@ securityTests = testGroup "Security"
     [ testProperty "anything inet_aton reads as an address is IPv4 or flagged (exhaustive)"
         prop_inetAtonCovered
     , testProperty "real host names are not flagged"        prop_realNamesNotFlagged
+    ]
+  , testGroup "DNS host names"
+    [ testProperty "isDnsHostName agrees with the RFC 1035 grammar (exhaustive)" prop_dnsHostNameExhaustive
+    , testProperty "examples"                                prop_dnsHostNameExamples
+    , testProperty "length limits"                           prop_dnsHostNameLengths
     ]
   ]
 
@@ -173,3 +179,67 @@ prop_realNamesNotFlagged = conjoin
     flagged n = case host n of
       HostRegName r -> isNumericLookalike r
       _             -> True
+
+-- | The preferred name syntax of RFC 1035 Section 2.3.1, with the first
+-- character relaxed to a letter or digit by RFC 1123 Section 2.1, as a
+-- ReadP grammar: labels of letters, digits and hyphens that start and
+-- end with a letter or digit, separated by dots, with an optional
+-- trailing dot. Length limits are checked separately.
+dnsNameO :: String -> Bool
+dnsNameO s = not (null [ () | ((), "") <- readP_to_S (name <* eof) s ])
+  where
+    name  = ldhLabel >> many (char '.' >> ldhLabel) >> optional (char '.')
+    ldhLabel = letDig >> optional (many letDigHyp >> letDig)
+    letDig    = void (satisfy (\c -> isAsciiLower c || isAsciiUpper c || isDigit c))
+    letDigHyp = letDig +++ void (char '-')
+
+-- | Every registered name up to length 7 over an alphabet that can spell
+-- labels, hyphens, empty labels, numeric labels, percent-encodings and
+-- underscores: isDnsHostName holds exactly when the grammar matches and
+-- the name is not a numeric look-alike.
+prop_dnsHostNameExhaustive :: Property
+prop_dnsHostNameExhaustive = once $
+  let names = [ r | s <- concatMap (`replicateM` "a1-.%_x") [1 .. 7]
+                  , Right (Authority (HostRegName r) Nothing) <- [parseAuthority (C.pack s)] ]
+      expected r = dnsNameO (C.unpack (regNameBytes r)) && not (isNumericLookalike r)
+      failures = [ r | r <- names, isDnsHostName r /= expected r ]
+      valid = length (filter expected names)
+  in counterexample ("disagrees on: " ++ show (take 10 failures)) (null failures)
+     .&&. counterexample "vacuous" (valid > 1000 && valid < length names)
+
+regName :: C.ByteString -> RegName
+regName bs = case host bs of
+  HostRegName r -> r
+  h             -> error ("not a registered name: " ++ show h)
+
+prop_dnsHostNameExamples :: Property
+prop_dnsHostNameExamples = conjoin
+  [ counterexample (show n) (isDnsHostName (regName n) === ok)
+  | (n, ok) <-
+      [ ("example.com", True), ("example.com.", True), ("localhost", True)
+      , ("xn--bcher-kva.example", True), ("1password.com", True), ("a-b.c", True)
+      , ("EXAMPLE.com", True), ("a", True), ("3com.com", True)
+      -- percent-encoding, including encoded delimiters and controls
+      , ("ho%00st", False), ("ho%40st", False), ("ho%2Fst", False), ("a%C2%ADb", False)
+      -- other characters RFC 3986 allows in a reg-name
+      , ("a_b.com", False), ("a!b", False), ("a~b", False), ("a=b", False)
+      -- hyphens and empty labels
+      , ("-a.com", False), ("a-.com", False), ("a..b", False), (".", False)
+      , (".a", False), ("example.com..", False)
+      -- numeric look-alikes
+      , ("127.1", False), ("0x7f.0.0.1", False), ("2130706433", False), ("1.2.3.4.", False)
+      ] ]
+
+prop_dnsHostNameLengths :: Property
+prop_dnsHostNameLengths = conjoin
+  [ isDnsHostName (regName (labelOf 63))              === True
+  , isDnsHostName (regName (labelOf 64))              === False
+  , isDnsHostName (regName (name 253))                === True
+  , isDnsHostName (regName (name 253 <> "."))         === True
+  , isDnsHostName (regName (name 254))                === False
+  ]
+  where
+    labelOf n = C.replicate n 'a' <> ".com"
+    -- labels of 63 joined by dots, cut to exactly n characters, ending in
+    -- a letter
+    name n = C.take n (C.intercalate "." (replicate 5 (C.replicate 63 'a')))

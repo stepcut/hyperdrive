@@ -28,6 +28,7 @@ module Hyperdrive.Semantics.URI
   , effectivePort
   , authorityKey
   , isNumericLookalike
+  , isDnsHostName
     -- * Path
   , Path
   , mkPath
@@ -522,6 +523,49 @@ isNumericLookalike (RegName r) =
   in not (B.null label)
      && (  B.all isDIGIT label
         || (B.take 2 label == "0x" && B.all isHEXDIG (B.drop 2 label)))
+
+-- The following are not checked by duvet, which cannot parse the
+-- section headings of these RFCs.
+--
+-- RFC 1035, Section 2.3.1: "They must start with a letter, end with a
+-- letter or digit, and have as interior characters only letters,
+-- digits, and hyphen. There are also some restrictions on the length.
+-- Labels must be 63 characters or less."
+--
+-- RFC 1123, Section 2.1: "the restriction on the first character is
+-- relaxed to allow either a letter or a digit."
+--
+-- RFC 1035, Section 2.3.4: "names 255 octets or less", counting the
+-- length octet before each label and the empty root label, which is 253
+-- characters of text without a trailing dot.
+
+-- | Is this registered name a host name as DNS defines it: labels of
+-- 1 to 63 letters, digits and hyphens that start and end with a letter
+-- or digit, at most 253 characters in all, with an optional single
+-- trailing dot, and not numeric in its last label ('isNumericLookalike')?
+--
+-- Browsers only ever send such names: internationalized names are sent
+-- in their ASCII (punycode) form. Anything else that RFC 3986 allows in
+-- a registered name, such as percent-encoding (@ho%00st@, @ho%40st@),
+-- sub-delims or underscores, is not a name a client will legitimately
+-- ask for, and can be dangerous to anything that decodes or
+-- reinterprets it. A server can therefore require this of every @Host@
+-- (docs/design-notes.md, P10).
+isDnsHostName :: RegName -> Bool
+isDnsHostName rn@(RegName r) =
+  let name   = maybe r id (stripTrailingDot r)
+      labels = B.split 0x2E name
+  in not (B.null name)
+     && B.length name <= 253
+     && all validLabel labels
+     && not (isNumericLookalike rn)
+  where
+    validLabel l =
+      not (B.null l)
+      && B.length l <= 63
+      && B.all (\w -> isALPHA w || isDIGIT w || w == 0x2D) l
+      && B.head l /= 0x2D
+      && B.last l /= 0x2D
 
 renderAuthority :: Authority -> ByteString
 renderAuthority (Authority h p) =

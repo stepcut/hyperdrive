@@ -77,7 +77,10 @@ Each item came from a security review of `hyperdrive-semantics`
   for which `isNumericLookalike` holds, by default (RFC 3986 Section
   7.4, RFC 1123 Section 2.1).
 - **P10. Encoded and non-ASCII hosts.** Reject a `Host` or target
-  authority whose registered name contains percent-encoding. RFC 3986
+  authority whose registered name is not a DNS host name
+  (`isDnsHostName`), which rules out percent-encoding among other
+  things. Every host that `isDnsHostName` accepts is one browsers
+  accept as the same name (tested against the web-platform-tests data). RFC 3986
   allows any encoded octet in a registered name, but browsers send only
   ASCII names (with punycode for internationalized ones), and decoded
   hosts are dangerous: `hello%00` is `hello` to a C resolver, `ho%40st`

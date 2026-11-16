@@ -27,6 +27,8 @@ thirdPartyTests = testGroup "Third-party data"
         once (ioProperty prop_wptIPv6)
     , testProperty "every other difference is a reviewed, expected one" $
         once (ioProperty prop_wptDifferences)
+    , testProperty "a host we accept as a DNS host name, browsers accept as the same name" $
+        once (ioProperty prop_wptDnsHostNames)
     ]
   , testProperty "PayloadsAllTheThings SSRF hosts are addresses, flagged, rejected or known names" $
       once (ioProperty prop_ssrfHosts)
@@ -180,6 +182,25 @@ prop_wptDifferences = do
       | C.elem '%' a, take 5 ours == "host "             = "encoded"
       | otherwise                                        = "unexplained"
     notRfc3986 ch = ch >= '\x80' || ch `elem` ("\\ \t\n\r\"`{}|^<>" :: String)
+
+-- | The guarantee behind requiring isDnsHostName of every Host
+-- (docs/design-notes.md, P10): every host it accepts is one that
+-- browsers also accept, as the same name. So none of the differences
+-- in expected-differences.txt can reach a server that does so.
+prop_wptDnsHostNames :: IO Property
+prop_wptDnsHostNames = do
+  cases <- wptCases
+  let accepted = [ (a, r, w) | (a, w) <- cases
+                             , Right (Authority (HostRegName r) _) <- [parseAuthority a]
+                             , isDnsHostName r ]
+      sameName r (WptName h) =
+        either (const False) ((== canonicalHost (HostRegName r)) . canonicalHost . authorityHost)
+               (parseAuthority (C.pack h))
+      sameName _ _ = False
+      failures = [ (a, w) | (a, r, w) <- accepted, not (sameName r w) ]
+  pure $ counterexample ("accepted by isDnsHostName but not the same name to browsers: " ++ show failures)
+           (null failures)
+         .&&. counterexample "vacuous" (length accepted >= 50)
 
 ------------------------------------------------------------------------------
 -- PayloadsAllTheThings
