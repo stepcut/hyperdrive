@@ -1,0 +1,27 @@
+# Deliberate bugs that the test suite must catch. See scripts/mutation-test.
+#
+# Each mutant should be a plausible mistake that changes behaviour. If
+# one survives, either add a test that catches it or, if the change
+# really makes no observable difference, remove it from this file.
+
+file: src/Hyperdrive/ABNF/Types.hs
+
+why: a rule name may not start with a digit or hyphen
+- Just (c, rest) | isAlpha c && C.all isNameChar rest -> Just (RuleName bs)
++ Just (c, rest) | isNameChar c && C.all isNameChar rest -> Just (RuleName bs)
+
+why: hyphens are allowed after the first character
+- isNameChar c = isAlpha c || isDigit c || c == '-'
++ isNameChar c = isAlpha c || isDigit c
+
+why: underscores are not allowed in rule names
+- isNameChar c = isAlpha c || isDigit c || c == '-'
++ isNameChar c = isAlpha c || isDigit c || c == '-' || c == '_'
+
+why: rule names are case-insensitive
+- a == b = foldedName a == foldedName b
++ a == b = ruleNameBytes a == ruleNameBytes b
+
+why: ordering must agree with equality
+- compare a b = compare (foldedName a) (foldedName b)
++ compare a b = compare (ruleNameBytes a) (ruleNameBytes b)

@@ -1,0 +1,39 @@
+cabal-version:      3.0
+name:               hyperdrive-abnf
+version:            0.1.0.0
+synopsis:           ABNF grammars (RFC 5234, RFC 7405) as data
+description:
+  The syntax of ABNF (RFC 5234), with case-sensitive strings
+  (RFC 7405) and the list extension of RFC 9110, as Haskell data.
+  hyperdrive uses it to test its parsers against the grammars
+  published in the RFCs.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Jeremy Shaw
+maintainer:         jeremy@seereason.com
+category:           Web
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  default-language: GHC2021
+  exposed-modules:  Hyperdrive.ABNF.Types
+  build-depends:    base       >= 4.18 && < 5
+                  , bytestring >= 0.11 && < 0.13
+
+test-suite hyperdrive-abnf-tests
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  default-language: GHC2021
+  build-depends:    base
+                  , bytestring
+                  , hyperdrive-abnf
+                  , QuickCheck       >= 2.14 && < 2.18
+                  , tasty            >= 1.4  && < 1.6
+                  , tasty-quickcheck >= 0.10 && < 0.12

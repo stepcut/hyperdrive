@@ -87,6 +87,47 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc3986
     TEXT[implementation,test]:    can become a security concern if an application attempts to filter
     TEXT[implementation,test]:    access to resources based on the IP address in string literal format.
 
+SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5234
+  SECTION: [Rule Naming](#section-2.1)
+    TEXT[test]:    The name of a rule is simply the name itself, that is, a sequence of
+    TEXT[test]:    characters, beginning with an alphabetic character, and followed by a
+    TEXT[test]:    combination of alphabetics, digits, and hyphens (dashes).
+    TEXT[implementation]:       Rule names are case insensitive.
+    TEXT[test]:    The names <rulename>, <Rulename>, <RULENAME>, and <rUlENamE> all
+    TEXT[test]:    refer to the same rule.
+
+  SECTION: [Terminal Values](#section-2.3)
+    TEXT[implementation]: In ABNF, a character is merely a non-negative integer.
+
+  SECTION: [Value Range Alternatives:  %c##-##](#section-3.4)
+    TEXT[implementation]:    Concatenated numeric values and numeric value ranges cannot be
+    TEXT[implementation]:    specified in the same string.
+
+  SECTION: [Variable Repetition:  *Rule](#section-3.6)
+    TEXT[implementation]:    Default values are 0 and infinity
+
+  SECTION: [Specific Repetition:  nRule](#section-3.7)
+    TEXT[implementation]:    That is, exactly <n> occurrences of <element>.
+
+  SECTION: [ABNF Definition of ABNF](#section-4)
+    TEXT[implementation]:          rulelist       =  1*( rule / (*c-wsp c-nl) )
+    TEXT[implementation]:          rule           =  rulename defined-as elements c-nl
+    TEXT[implementation,test]:          rulename       =  ALPHA *(ALPHA / DIGIT / "-")
+    TEXT[implementation]:          defined-as     =  *c-wsp ("=" / "=/") *c-wsp
+    TEXT[implementation]:                                 ; basic rules definition and
+    TEXT[implementation]:                                 ;  incremental alternatives
+    TEXT[implementation]:          alternation    =  concatenation
+    TEXT[implementation]:                            *(*c-wsp "/" *c-wsp concatenation)
+    TEXT[implementation]:          concatenation  =  repetition *(1*c-wsp repetition)
+    TEXT[implementation]:          repetition     =  [repeat] element
+    TEXT[implementation]:          repeat         =  1*DIGIT / (*DIGIT "*" *DIGIT)
+    TEXT[implementation]:          element        =  rulename / group / option /
+    TEXT[implementation]:                            char-val / num-val / prose-val
+    TEXT[implementation]:          group          =  "(" *c-wsp alternation *c-wsp ")"
+    TEXT[implementation]:          option         =  "[" *c-wsp alternation *c-wsp "]"
+    TEXT[implementation]:          num-val        =  "%" (bin-val / dec-val / hex-val)
+    TEXT[implementation]:          prose-val      =  "<" *(%x20-3D / %x3F-7E) ">"
+
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5952
   SECTION: [A Recommendation for IPv6 Text Representation](#section-4)
     TEXT[!MUST]: The recommendation
@@ -140,6 +181,20 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5952
     TEXT[!MUST]: For
     TEXT[!MUST]:    URIs containing IPv6 address literals, [RFC3986] MUST be followed, as
     TEXT[!MUST]:    well as the rules defined in this document.
+
+SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7405
+  SECTION: [Terminal Values - Literal Text Strings](#section-2.1)
+    TEXT[implementation]:    To be consistent with prior implementations of ABNF, having no prefix
+    TEXT[implementation]:    means that the string is case insensitive and is equivalent to having
+    TEXT[implementation]:    the "%i" prefix.
+
+  SECTION: [ABNF Definition of ABNF - char-val](#section-2.2)
+    TEXT[implementation]:          char-val       =  case-insensitive-string /
+    TEXT[implementation]:                            case-sensitive-string
+    TEXT[implementation]:          case-insensitive-string =
+    TEXT[implementation]:                            [ "%i" ] quoted-string
+    TEXT[implementation]:          case-sensitive-string =
+    TEXT[implementation]:                            "%s" quoted-string
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Requirements Notation](#section-2.2)
@@ -357,6 +412,13 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[test]:    For example, a textual date and a URI (either of which might contain
     TEXT[test]:    a comma) could be safely carried in list-based field values like
     TEXT[test]:    these:
+
+  SECTION: [Lists (#rule ABNF Extension)](#section-5.6.1)
+    TEXT[implementation]:    A construct "#" is defined, similar to "*", for defining comma-
+    TEXT[implementation]:    delimited lists of elements.  The full form is "<n>#<m>element"
+    TEXT[implementation]:    indicating at least <n> and at most <m> elements, each separated by a
+    TEXT[implementation]:    single comma (",") and optional whitespace (OWS, defined in
+    TEXT[implementation]:    Section 5.6.3).
 
   SECTION: [Sender Requirements](#section-5.6.1.1)
     TEXT[!MUST]:    In any production that uses the list construct, a sender MUST NOT

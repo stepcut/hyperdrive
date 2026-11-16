@@ -10,11 +10,13 @@
 
       haskellPackages = pkgs: pkgs.haskellPackages.extend (final: prev: {
         hyperdrive-semantics = final.callCabal2nix "hyperdrive-semantics" ./hyperdrive-semantics { };
+        hyperdrive-abnf = final.callCabal2nix "hyperdrive-abnf" ./hyperdrive-abnf { };
       });
     in {
       packages = forAllSystems (pkgs: {
         duvet = pkgs.callPackage ./nix/duvet.nix { };
         hyperdrive-semantics = (haskellPackages pkgs).hyperdrive-semantics;
+        hyperdrive-abnf = (haskellPackages pkgs).hyperdrive-abnf;
       });
 
       # `nix flake check` builds the packages (which runs their test
@@ -22,6 +24,7 @@
       # slow for every check; run scripts/mutation-test separately.
       checks = forAllSystems (pkgs: {
         hyperdrive-semantics = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-semantics;
+        hyperdrive-abnf = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-abnf;
 
         # Fails if any citation does not match the text of its RFC, or if
         # requirement coverage differs from the committed snapshot.
@@ -38,7 +41,7 @@
 
       devShells = forAllSystems (pkgs: {
         default = (haskellPackages pkgs).shellFor {
-          packages = p: [ p.hyperdrive-semantics ];
+          packages = p: [ p.hyperdrive-semantics p.hyperdrive-abnf ];
           nativeBuildInputs = [
             pkgs.cabal-install
             pkgs.python3 # for scripts/mutation-test

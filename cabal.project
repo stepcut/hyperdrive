@@ -1,3 +1,4 @@
 packages: hyperdrive-semantics/
+          hyperdrive-abnf/
 
 tests: True
