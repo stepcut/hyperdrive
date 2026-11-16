@@ -1,4 +1,11 @@
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc3986
+  SECTION: [Syntax Notation](#section-1.3)
+    TEXT[test]:    This specification uses the Augmented Backus-Naur Form (ABNF)
+    TEXT[test]:    notation of [RFC2234], including the following core ABNF syntax rules
+    TEXT[test]:    defined by that specification: ALPHA (letters), CR (carriage return),
+    TEXT[test]:    DIGIT (decimal digits), DQUOTE (double quote), HEXDIG (hexadecimal
+    TEXT[test]:    digits), LF (line feed), and SP (space).
+
   SECTION: [Percent-Encoding](#section-2.1)
     TEXT[implementation]:       pct-encoded = "%" HEXDIG HEXDIG
 
@@ -111,9 +118,13 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5234
     TEXT[test]:          mumble      =  foo bar foo
 
   SECTION: [Incremental Alternatives: Rule1 =/ Rule2](#section-3.3)
+    TEXT[implementation]: That is, an initial rule may match one or more
+    TEXT[implementation]:    alternatives, with later rule definitions adding to the set of
+    TEXT[implementation]:    alternatives.
     TEXT[test]:          ruleset     =  alt1 / alt2
     TEXT[test]:          ruleset     =/ alt3
     TEXT[test]:          ruleset     =/ alt4 / alt5
+    TEXT[implementation]:          ruleset     =  alt1 / alt2 / alt3 / alt4 / alt5
 
   SECTION: [Value Range Alternatives:  %c##-##](#section-3.4)
     TEXT[test]:          DIGIT       =  %x30-39
@@ -246,6 +257,14 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7405
     TEXT[implementation,test]:          quoted-string  =  DQUOTE *(%x20-21 / %x23-7E) DQUOTE
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
+  SECTION: [Syntax Notation](#section-2.1)
+    TEXT[test]:    The following core rules are included by reference, as defined in
+    TEXT[test]:    Appendix B.1 of [RFC5234]: ALPHA (letters), CR (carriage return),
+    TEXT[test]:    CRLF (CR LF), CTL (controls), DIGIT (decimal 0-9), DQUOTE (double
+    TEXT[test]:    quote), HEXDIG (hexadecimal 0-9/A-F/a-f), HTAB (horizontal tab), LF
+    TEXT[test]:    (line feed), OCTET (any 8-bit sequence of data), SP (space), and
+    TEXT[test]:    VCHAR (any visible US-ASCII character).
+
   SECTION: [Requirements Notation](#section-2.2)
     TEXT[!MUST]:    A sender MUST NOT generate protocol elements that do not match the
     TEXT[!MUST]:    grammar defined by the corresponding ABNF rules.
@@ -2003,6 +2022,17 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[implementation,test]:    current one
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
+  SECTION: [Syntax Notation](#section-1.2)
+    TEXT[test]:    The following core rules are included by reference, as defined in
+    TEXT[test]:    [RFC5234], Appendix B.1: ALPHA (letters), CR (carriage return), CRLF
+    TEXT[test]:    (CR LF), CTL (controls), DIGIT (decimal 0-9), DQUOTE (double quote),
+    TEXT[test]:    HEXDIG (hexadecimal 0-9/A-F/a-f), HTAB (horizontal tab), LF (line
+    TEXT[test]:    feed), OCTET (any 8-bit sequence of data), SP (space), and VCHAR (any
+    TEXT[test]:    visible [USASCII] character).
+    TEXT[implementation,test]:    The rules below are defined in [HTTP]:
+    TEXT[test]:      obs-text      = <obs-text, see [HTTP], Section 5.6.4>
+    TEXT[implementation,test]:    The rules below are defined in [URI]:
+
   SECTION: [Message Parsing](#section-2.2)
     TEXT[!MUST]:    A recipient MUST parse an HTTP message as a sequence of octets in an
     TEXT[!MUST]:    encoding that is a superset of US-ASCII [USASCII].

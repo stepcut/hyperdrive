@@ -147,3 +147,39 @@ why: the core rules must be exactly those of RFC 5234 Appendix B.1
 why: the core rules must be exactly those of RFC 5234 Appendix B.1
 - HEXDIG         =  DIGIT / "A" / "B" / "C" / "D" / "E" / "F"
 + HEXDIG         =  DIGIT / "A" / "B" / "C" / "D" / "E"
+
+file: src/Hyperdrive/ABNF/Grammar.hs
+
+why: a name may only be defined once with "="
+- | Map.member name m = Left (Redefined name)
++ | False = Left (Redefined name)
+
+why: "=/" adds alternatives after the existing ones
+- Right (Map.insert name (Alternation (a :| as ++ toList more)) m)
++ Right (Map.insert name (Alternation (a :| toList more ++ as)) m)
+
+why: "=/" needs an earlier "=" definition
+- Nothing                   -> Left (IncrementalBeforeDefinition name)
++ Nothing                   -> Right (Map.insert name (Alternation more) m)
+
+why: rules used inside options are references too
+- Option a     -> references a
++ Option _     -> Set.empty
+
+why: defined rules are not undefined references
+- foldMap references m `Set.difference` Map.keysSet m
++ foldMap references m
+
+why: an import cites a section
+- if B.null tag || B.null number then Nothing else Just (Import ruleName' tag number)
++ if B.null tag then Nothing else Just (Import ruleName' tag number)
+
+file: src/Hyperdrive/ABNF/RFC.hs
+
+why: RFC 9110 and 9112 start with a byte order mark
+- stripBOM bs = maybe bs id (B.stripPrefix "\xEF\xBB\xBF" bs)
++ stripBOM bs = bs
+
+why: prose before the rules is not ABNF
+- in not (B.null name) && "=" `B.isPrefixOf` C.dropWhile (== ' ') rest
++ in not (B.null name)

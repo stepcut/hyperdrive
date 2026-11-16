@@ -9,6 +9,7 @@
 module Hyperdrive.ABNF.RFC
   ( unpaginate
   , section
+  , sectionABNF
   , dedent
   , toCRLF
   ) where
@@ -16,6 +17,7 @@ module Hyperdrive.ABNF.RFC
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # This syntax requires a formatting of rules that is relatively
@@ -25,10 +27,12 @@ import qualified Data.ByteString.Char8 as C
 
 -- | Split an RFC into lines, removing each page's footer, the form
 -- feed and the next page's header, and the blank lines around them,
--- so that a rule broken across pages is joined up again.
+-- so that a rule broken across pages is joined up again. A UTF-8
+-- byte order mark at the start is removed too.
 unpaginate :: ByteString -> [ByteString]
-unpaginate = go . map (C.dropWhileEnd (== '\r')) . C.lines
+unpaginate = go . map (C.dropWhileEnd (== '\r')) . C.lines . stripBOM
   where
+    stripBOM bs = maybe bs id (B.stripPrefix "\xEF\xBB\xBF" bs)
     go ls = case break isBreak ls of
       (before, _ : after) ->
         let before' = dropBlankEnd (dropLast before)  -- the footer
@@ -48,6 +52,17 @@ section heading ls =
     _ : rest -> takeWhile (\l -> isBlank l || isIndented l) rest
     []       -> []
   where isIndented l = " " `B.isPrefixOf` l
+
+-- | The ABNF in a section, ready for the parser: the lines from the
+-- first one that starts a rule (a rule name followed by @=@) to the
+-- end of the section, without their indentation, with CRLF line
+-- endings. The prose before the first rule is dropped.
+sectionABNF :: ByteString -> [ByteString] -> ByteString
+sectionABNF heading = toCRLF . dedent . dropWhile (not . startsRule) . section heading
+  where
+    startsRule l =
+      let (name, rest) = C.span (\c -> isAsciiUpper c || isAsciiLower c || isDigit c || c == '-') (C.dropWhile (== ' ') l)
+      in not (B.null name) && "=" `B.isPrefixOf` C.dropWhile (== ' ') rest
 
 -- | Remove the indentation shared by all the lines that are not
 -- blank, and the blank lines at either end.
