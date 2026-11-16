@@ -26,6 +26,15 @@
         hyperdrive-semantics = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-semantics;
         hyperdrive-abnf = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-abnf;
 
+        # hyperdrive-abnf's tests read RFCs from their own copies, which
+        # must be the text duvet checks citations against.
+        abnf-test-data = pkgs.runCommand "abnf-test-data" { } ''
+          for f in ${./hyperdrive-abnf/test/data}/rfc*.txt; do
+            cmp "$f" ${./.duvet/specifications/www.rfc-editor.org/rfc}/"$(basename "$f")"
+          done
+          touch $out
+        '';
+
         # Fails if any citation does not match the text of its RFC, or if
         # requirement coverage differs from the committed snapshot.
         duvet = pkgs.runCommand "duvet-report" {

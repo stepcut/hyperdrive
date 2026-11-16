@@ -11,15 +11,19 @@ import Hyperdrive.ABNF.Types
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
+import ParserTests (parserTests)
 
 main :: IO ()
-main = defaultMain $ testGroup "hyperdrive-abnf"
+main = do
+ parser <- parserTests
+ defaultMain $ testGroup "hyperdrive-abnf"
   [ testGroup "RuleName"
     [ testProperty "mkRuleName accepts exactly rulename" prop_mkRuleName
     , testProperty "examples"                            prop_ruleNameExamples
     , testProperty "names are case-insensitive"          prop_ruleNameCase
     , testProperty "the spelling is kept"                prop_ruleNameSpelling
     ]
+  , parser
   ]
 
 ------------------------------------------------------------------------------

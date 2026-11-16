@@ -25,3 +25,97 @@ why: rule names are case-insensitive
 why: ordering must agree with equality
 - compare a b = compare (foldedName a) (foldedName b)
 + compare a b = compare (ruleNameBytes a) (ruleNameBytes b)
+
+file: src/Hyperdrive/ABNF/Parser.hs
+
+why: RFC 5234 requires CRLF line endings
+- crlf = (byte 0x0D *> byte 0x0A) <?> "CRLF"
++ crlf = (optional (byte 0x0D) *> byte 0x0A) <?> "CRLF"
+
+why: comments are WSP and VCHAR only
+- comment = byte 0x3B *> void (takeWhile0 (\w -> isWSP w || isVChar w)) *> crlf
++ comment = byte 0x3B *> void (takeWhile0 (\w -> w /= 0x0D)) *> crlf
+
+why: the elements of a concatenation are separated by whitespace
+- rs <- many (some cwsp *> repetition)
++ rs <- many (many cwsp *> repetition)
+
+why: a continuation line must start with whitespace
+- cwsp = wsp <|> (cnl *> wsp)
++ cwsp = wsp <|> cnl
+
+why: <n>element means exactly n
+- (Just n, Nothing) -> pure (Repeat Star n (Just n))
++ (Just n, Nothing) -> pure (Repeat Star n Nothing)
+
+why: a missing minimum is 0
+- (_, Just k)       -> Repeat k (fromMaybe 0 lo) <$> optional decimal
++ (_, Just k)       -> Repeat k (fromMaybe 1 lo) <$> optional decimal
+
+why: "#" is a list, not a repetition
+- let operator = (Star <$ byte 0x2A) <|> (Hash <$ byte 0x23)
++ let operator = (Star <$ byte 0x2A) <|> (Star <$ byte 0x23)
+
+why: "%x", "%s" and the other prefixes are case-insensitive strings
+- letter c = void (satisfy (\w -> w == lower || w == lower - 0x20)) <?> show [c]
++ letter c = void (satisfy (== lower)) <?> show [c]
+
+why: HEXDIG is case-insensitive
+- isHexDig w = isDigit w || (w >= 0x41 && w <= 0x46) || (w >= 0x61 && w <= 0x66)
++ isHexDig w = isDigit w || (w >= 0x41 && w <= 0x46)
+
+why: lower case hexadecimal digits have the same values as upper case ones
+- | w >= 0x61 = fromIntegral (w - 0x61 + 10)
++ | w >= 0x61 = fromIntegral (w - 0x61)
+
+why: %s strings are case-sensitive
+- <|> (CharVal CaseSensitive <$> (string "%s" *> quotedString))
++ <|> (CharVal CaseInsensitive <$> (string "%s" *> quotedString))
+
+why: DQUOTE is %x22; the range below it ends at %x21
+- where ok w = (w >= 0x20 && w <= 0x21) || (w >= 0x23 && w <= 0x7E)
++ where ok w = (w >= 0x20 && w <= 0x21) || (w >= 0x23 && w <= 0x7F)
+
+why: ">" ends a prose value
+- where ok w = (w >= 0x20 && w <= 0x3D) || (w >= 0x3F && w <= 0x7E)
++ where ok w = (w >= 0x20 && w <= 0x3D) || (w >= 0x3E && w <= 0x7E)
+
+why: a value can be a range
+- body <- (Range v <$> (byte 0x2D *> digits))
++ body <- (Range v <$> (byte 0x2E *> digits))
+
+why: columns count from 1 after the last line break
+- column = i - maybe 0 (+ 1) (C.elemIndexEnd '\n' before) + 1
++ column = i - maybe 0 id (C.elemIndexEnd '\n' before) + 1
+
+file: src/Hyperdrive/ABNF/Printer.hs
+
+why: =/ adds alternatives; = defines a rule
+- <> (case definedAs of Basic -> " = "; Incremental -> " =/ ")
++ <> (case definedAs of Basic -> " = "; Incremental -> " = ")
+
+why: hexadecimal values are printed with at least two digits
+- Hexadecimal -> ('x', inBase 16 2)
++ Hexadecimal -> ('x', inBase 16 1)
+
+why: n*n is printed as n
+- repeat_ (Repeat Star n (Just m)) | n == m = BB.string7 (show n)
++ repeat_ (Repeat Star n (Just m)) | n == m = BB.string7 (show n ++ "*" ++ show m)
+
+why: a minimum of 0 is not printed
+- (if n == 0 then mempty else BB.string7 (show n))
++ BB.string7 (show n)
+
+file: src/Hyperdrive/ABNF/RFC.hs
+
+why: the page header must be removed
+- after'  = dropWhile isBlank (drop 1 after) -- the header
++ after'  = dropWhile isBlank after -- the header
+
+why: blank lines before a page break would split a rule
+- let before' = dropBlankEnd (dropLast before)  -- the footer
++ let before' = dropLast before  -- the footer
+
+why: indentation is relative to the least indented line
+- indent  = minimum (maxBound : [ B.length (C.takeWhile (== ' ') l)
++ indent  = maximum (0 : [ B.length (C.takeWhile (== ' ') l)
