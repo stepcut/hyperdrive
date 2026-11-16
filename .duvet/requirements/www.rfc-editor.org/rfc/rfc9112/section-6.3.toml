@@ -1,0 +1,258 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-6.3"
+
+# Message Body Length
+#
+#    The length of a message body is determined by one of the following
+#    (in order of precedence):
+# 
+#    1.  Any response to a HEAD request and any response with a 1xx
+#        (Informational), 204 (No Content), or 304 (Not Modified) status
+#        code is always terminated by the first empty line after the
+#        header fields, regardless of the header fields present in the
+#        message, and thus cannot contain a message body or trailer
+#        section.
+# 
+#    2.  Any 2xx (Successful) response to a CONNECT request implies that
+#        the connection will become a tunnel immediately after the empty
+#        line that concludes the header fields.  A client MUST ignore any
+#        Content-Length or Transfer-Encoding header fields received in
+#        such a message.
+# 
+#    3.  If a message is received with both a Transfer-Encoding and a
+#        Content-Length header field, the Transfer-Encoding overrides the
+#        Content-Length.  Such a message might indicate an attempt to
+#        perform request smuggling (Section 11.2) or response splitting
+#        (Section 11.1) and ought to be handled as an error.  An
+#        intermediary that chooses to forward the message MUST first
+#        remove the received Content-Length field and process the
+#        Transfer-Encoding (as described below) prior to forwarding the
+#        message downstream.
+# 
+#    4.  If a Transfer-Encoding header field is present and the chunked
+#        transfer coding (Section 7.1) is the final encoding, the message
+#        body length is determined by reading and decoding the chunked
+#        data until the transfer coding indicates the data is complete.
+# 
+#        If a Transfer-Encoding header field is present in a response and
+#        the chunked transfer coding is not the final encoding, the
+#        message body length is determined by reading the connection until
+#        it is closed by the server.
+# 
+#        If a Transfer-Encoding header field is present in a request and
+#        the chunked transfer coding is not the final encoding, the
+#        message body length cannot be determined reliably; the server
+#        MUST respond with the 400 (Bad Request) status code and then
+#        close the connection.
+# 
+#    5.  If a message is received without Transfer-Encoding and with an
+#        invalid Content-Length header field, then the message framing is
+#        invalid and the recipient MUST treat it as an unrecoverable
+#        error, unless the field value can be successfully parsed as a
+#        comma-separated list (Section 5.6.1 of [HTTP]), all values in the
+#        list are valid, and all values in the list are the same (in which
+#        case, the message is processed with that single value used as the
+#        Content-Length field value).  If the unrecoverable error is in a
+#        request message, the server MUST respond with a 400 (Bad Request)
+#        status code and then close the connection.  If it is in a
+#        response message received by a proxy, the proxy MUST close the
+#        connection to the server, discard the received response, and send
+#        a 502 (Bad Gateway) response to the client.  If it is in a
+#        response message received by a user agent, the user agent MUST
+#        close the connection to the server and discard the received
+#        response.
+# 
+#    6.  If a valid Content-Length header field is present without
+#        Transfer-Encoding, its decimal value defines the expected message
+#        body length in octets.  If the sender closes the connection or
+#        the recipient times out before the indicated number of octets are
+#        received, the recipient MUST consider the message to be
+#        incomplete and close the connection.
+# 
+#    7.  If this is a request message and none of the above are true, then
+#        the message body length is zero (no message body is present).
+# 
+#    8.  Otherwise, this is a response message without a declared message
+#        body length, so the message body length is determined by the
+#        number of octets received prior to the server closing the
+#        connection.
+# 
+#    Since there is no way to distinguish a successfully completed, close-
+#    delimited response message from a partially received message
+#    interrupted by network failure, a server SHOULD generate encoding or
+#    length-delimited messages whenever possible.  The close-delimiting
+#    feature exists primarily for backwards compatibility with HTTP/1.0.
+# 
+#       |  *Note:* Request messages are never close-delimited because they
+#       |  are always explicitly framed by length or transfer coding, with
+#       |  the absence of both implying the request ends immediately after
+#       |  the header section.
+# 
+#    A server MAY reject a request that contains a message body but not a
+#    Content-Length by responding with 411 (Length Required).
+# 
+#    Unless a transfer coding other than chunked has been applied, a
+#    client that sends a request containing a message body SHOULD use a
+#    valid Content-Length header field if the message body length is known
+#    in advance, rather than the chunked transfer coding, since some
+#    existing services respond to chunked with a 411 (Length Required)
+#    status code even though they understand the chunked transfer coding.
+#    This is typically because such services are implemented via a gateway
+#    that requires a content length in advance of being called, and the
+#    server is unable or unwilling to buffer the entire request before
+#    processing.
+# 
+#    A user agent that sends a request that contains a message body MUST
+#    send either a valid Content-Length header field or use the chunked
+#    transfer coding.  A client MUST NOT use the chunked transfer coding
+#    unless it knows the server will handle HTTP/1.1 (or later) requests;
+#    such knowledge can be in the form of specific user configuration or
+#    by remembering the version of a prior received response.
+# 
+#    If the final response to the last request on a connection has been
+#    completely received and there remains additional data to read, a user
+#    agent MAY discard the remaining data or attempt to determine if that
+#    data belongs as part of the prior message body, which might be the
+#    case if the prior message's Content-Length value is incorrect.  A
+#    client MUST NOT process, cache, or forward such extra data as a
+#    separate response, since such behavior would be vulnerable to cache
+#    poisoning.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST ignore any
+Content-Length or Transfer-Encoding header fields received in
+such a message.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An
+intermediary that chooses to forward the message MUST first
+remove the received Content-Length field and process the
+Transfer-Encoding (as described below) prior to forwarding the
+message downstream.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a Transfer-Encoding header field is present in a request and
+the chunked transfer coding is not the final encoding, the
+message body length cannot be determined reliably; the server
+MUST respond with the 400 (Bad Request) status code and then
+close the connection.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a message is received without Transfer-Encoding and with an
+invalid Content-Length header field, then the message framing is
+invalid and the recipient MUST treat it as an unrecoverable
+error, unless the field value can be successfully parsed as a
+comma-separated list (Section 5.6.1 of [HTTP]), all values in the
+list are valid, and all values in the list are the same (in which
+case, the message is processed with that single value used as the
+Content-Length field value).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the unrecoverable error is in a
+request message, the server MUST respond with a 400 (Bad Request)
+status code and then close the connection.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If it is in a
+response message received by a proxy, the proxy MUST close the
+connection to the server, discard the received response, and send
+a 502 (Bad Gateway) response to the client.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If it is in a
+response message received by a user agent, the user agent MUST
+close the connection to the server and discard the received
+response.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the sender closes the connection or
+the recipient times out before the indicated number of octets are
+received, the recipient MUST consider the message to be
+incomplete and close the connection.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Since there is no way to distinguish a successfully completed, close-
+delimited response message from a partially received message
+interrupted by network failure, a server SHOULD generate encoding or
+length-delimited messages whenever possible.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY reject a request that contains a message body but not a
+Content-Length by responding with 411 (Length Required).
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Unless a transfer coding other than chunked has been applied, a
+client that sends a request containing a message body SHOULD use a
+valid Content-Length header field if the message body length is known
+in advance, rather than the chunked transfer coding, since some
+existing services respond to chunked with a 411 (Length Required)
+status code even though they understand the chunked transfer coding.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A user agent that sends a request that contains a message body MUST
+send either a valid Content-Length header field or use the chunked
+transfer coding.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT use the chunked transfer coding
+unless it knows the server will handle HTTP/1.1 (or later) requests;
+such knowledge can be in the form of specific user configuration or
+by remembering the version of a prior received response.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If the final response to the last request on a connection has been
+completely received and there remains additional data to read, a user
+agent MAY discard the remaining data or attempt to determine if that
+data belongs as part of the prior message body, which might be the
+case if the prior message's Content-Length value is incorrect.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+client MUST NOT process, cache, or forward such extra data as a
+separate response, since such behavior would be vulnerable to cache
+poisoning.
+'''
+

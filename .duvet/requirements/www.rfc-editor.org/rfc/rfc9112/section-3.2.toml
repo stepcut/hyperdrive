@@ -1,0 +1,90 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-3.2"
+
+# Request Target
+#
+#    The request-target identifies the target resource upon which to apply
+#    the request.  The client derives a request-target from its desired
+#    target URI.  There are four distinct formats for the request-target,
+#    depending on both the method being requested and whether the request
+#    is to a proxy.
+# 
+#      request-target = origin-form
+#                     / absolute-form
+#                     / authority-form
+#                     / asterisk-form
+# 
+#    No whitespace is allowed in the request-target.  Unfortunately, some
+#    user agents fail to properly encode or exclude whitespace found in
+#    hypertext references, resulting in those disallowed characters being
+#    sent as the request-target in a malformed request-line.
+# 
+#    Recipients of an invalid request-line SHOULD respond with either a
+#    400 (Bad Request) error or a 301 (Moved Permanently) redirect with
+#    the request-target properly encoded.  A recipient SHOULD NOT attempt
+#    to autocorrect and then process the request without a redirect, since
+#    the invalid request-line might be deliberately crafted to bypass
+#    security filters along the request chain.
+# 
+#    A client MUST send a Host header field (Section 7.2 of [HTTP]) in all
+#    HTTP/1.1 request messages.  If the target URI includes an authority
+#    component, then a client MUST send a field value for Host that is
+#    identical to that authority component, excluding any userinfo
+#    subcomponent and its "@" delimiter (Section 4.2 of [HTTP]).  If the
+#    authority component is missing or undefined for the target URI, then
+#    a client MUST send a Host header field with an empty field value.
+# 
+#    A server MUST respond with a 400 (Bad Request) status code to any
+#    HTTP/1.1 request message that lacks a Host header field and to any
+#    request message that contains more than one Host header field line or
+#    a Host header field with an invalid field value.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Recipients of an invalid request-line SHOULD respond with either a
+400 (Bad Request) error or a 301 (Moved Permanently) redirect with
+the request-target properly encoded.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A recipient SHOULD NOT attempt
+to autocorrect and then process the request without a redirect, since
+the invalid request-line might be deliberately crafted to bypass
+security filters along the request chain.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST send a Host header field (Section 7.2 of [HTTP]) in all
+HTTP/1.1 request messages.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the target URI includes an authority
+component, then a client MUST send a field value for Host that is
+identical to that authority component, excluding any userinfo
+subcomponent and its "@" delimiter (Section 4.2 of [HTTP]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the
+authority component is missing or undefined for the target URI, then
+a client MUST send a Host header field with an empty field value.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST respond with a 400 (Bad Request) status code to any
+HTTP/1.1 request message that lacks a Host header field and to any
+request message that contains more than one Host header field line or
+a Host header field with an invalid field value.
+'''
+

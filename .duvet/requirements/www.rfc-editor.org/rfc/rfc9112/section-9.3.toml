@@ -1,0 +1,112 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-9.3"
+
+# Persistence
+#
+#    HTTP/1.1 defaults to the use of "persistent connections", allowing
+#    multiple requests and responses to be carried over a single
+#    connection.  HTTP implementations SHOULD support persistent
+#    connections.
+# 
+#    A recipient determines whether a connection is persistent or not
+#    based on the protocol version and Connection header field
+#    (Section 7.6.1 of [HTTP]) in the most recently received message, if
+#    any:
+# 
+#    *  If the "close" connection option is present (Section 9.6), the
+#       connection will not persist after the current response; else,
+# 
+#    *  If the received protocol is HTTP/1.1 (or later), the connection
+#       will persist after the current response; else,
+# 
+#    *  If the received protocol is HTTP/1.0, the "keep-alive" connection
+#       option is present, either the recipient is not a proxy or the
+#       message is a response, and the recipient wishes to honor the
+#       HTTP/1.0 "keep-alive" mechanism, the connection will persist after
+#       the current response; otherwise,
+# 
+#    *  The connection will close after the current response.
+# 
+#    A client that does not support persistent connections MUST send the
+#    "close" connection option in every request message.
+# 
+#    A server that does not support persistent connections MUST send the
+#    "close" connection option in every response message that does not
+#    have a 1xx (Informational) status code.
+# 
+#    A client MAY send additional requests on a persistent connection
+#    until it sends or receives a "close" connection option or receives an
+#    HTTP/1.0 response without a "keep-alive" connection option.
+# 
+#    In order to remain persistent, all messages on a connection need to
+#    have a self-defined message length (i.e., one not defined by closure
+#    of the connection), as described in Section 6.  A server MUST read
+#    the entire request message body or close the connection after sending
+#    its response; otherwise, the remaining data on a persistent
+#    connection would be misinterpreted as the next request.  Likewise, a
+#    client MUST read the entire response message body if it intends to
+#    reuse the same connection for a subsequent request.
+# 
+#    A proxy server MUST NOT maintain a persistent connection with an
+#    HTTP/1.0 client (see Appendix C.2.2 for information and discussion of
+#    the problems with the Keep-Alive header field implemented by many
+#    HTTP/1.0 clients).
+# 
+#    See Appendix C.2.2 for more information on backwards compatibility
+#    with HTTP/1.0 clients.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+HTTP implementations SHOULD support persistent
+connections.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client that does not support persistent connections MUST send the
+"close" connection option in every request message.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server that does not support persistent connections MUST send the
+"close" connection option in every response message that does not
+have a 1xx (Informational) status code.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client MAY send additional requests on a persistent connection
+until it sends or receives a "close" connection option or receives an
+HTTP/1.0 response without a "keep-alive" connection option.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST read
+the entire request message body or close the connection after sending
+its response; otherwise, the remaining data on a persistent
+connection would be misinterpreted as the next request.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Likewise, a
+client MUST read the entire response message body if it intends to
+reuse the same connection for a subsequent request.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy server MUST NOT maintain a persistent connection with an
+HTTP/1.0 client (see Appendix C.2.2 for information and discussion of
+the problems with the Keep-Alive header field implemented by many
+HTTP/1.0 clients).
+'''
+

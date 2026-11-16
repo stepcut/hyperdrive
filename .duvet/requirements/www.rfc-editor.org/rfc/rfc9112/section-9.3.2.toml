@@ -1,0 +1,108 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-9.3.2"
+
+# Pipelining
+#
+#    A client that supports persistent connections MAY "pipeline" its
+#    requests (i.e., send multiple requests without waiting for each
+#    response).  A server MAY process a sequence of pipelined requests in
+#    parallel if they all have safe methods (Section 9.2.1 of [HTTP]), but
+#    it MUST send the corresponding responses in the same order that the
+#    requests were received.
+# 
+#    A client that pipelines requests SHOULD retry unanswered requests if
+#    the connection closes before it receives all of the corresponding
+#    responses.  When retrying pipelined requests after a failed
+#    connection (a connection not explicitly closed by the server in its
+#    last complete response), a client MUST NOT pipeline immediately after
+#    connection establishment, since the first remaining request in the
+#    prior pipeline might have caused an error response that can be lost
+#    again if multiple requests are sent on a prematurely closed
+#    connection (see the TCP reset problem described in Section 9.6).
+# 
+#    Idempotent methods (Section 9.2.2 of [HTTP]) are significant to
+#    pipelining because they can be automatically retried after a
+#    connection failure.  A user agent SHOULD NOT pipeline requests after
+#    a non-idempotent method, until the final response status code for
+#    that method has been received, unless the user agent has a means to
+#    detect and recover from partial failure conditions involving the
+#    pipelined sequence.
+# 
+#    An intermediary that receives pipelined requests MAY pipeline those
+#    requests when forwarding them inbound, since it can rely on the
+#    outbound user agent(s) to determine what requests can be safely
+#    pipelined.  If the inbound connection fails before receiving a
+#    response, the pipelining intermediary MAY attempt to retry a sequence
+#    of requests that have yet to receive a response if the requests all
+#    have idempotent methods; otherwise, the pipelining intermediary
+#    SHOULD forward any received responses and then close the
+#    corresponding outbound connection(s) so that the outbound user
+#    agent(s) can recover accordingly.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client that supports persistent connections MAY "pipeline" its
+requests (i.e., send multiple requests without waiting for each
+response).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MAY process a sequence of pipelined requests in
+parallel if they all have safe methods (Section 9.2.1 of [HTTP]), but
+it MUST send the corresponding responses in the same order that the
+requests were received.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A client that pipelines requests SHOULD retry unanswered requests if
+the connection closes before it receives all of the corresponding
+responses.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+When retrying pipelined requests after a failed
+connection (a connection not explicitly closed by the server in its
+last complete response), a client MUST NOT pipeline immediately after
+connection establishment, since the first remaining request in the
+prior pipeline might have caused an error response that can be lost
+again if multiple requests are sent on a prematurely closed
+connection (see the TCP reset problem described in Section 9.6).
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A user agent SHOULD NOT pipeline requests after
+a non-idempotent method, until the final response status code for
+that method has been received, unless the user agent has a means to
+detect and recover from partial failure conditions involving the
+pipelined sequence.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An intermediary that receives pipelined requests MAY pipeline those
+requests when forwarding them inbound, since it can rely on the
+outbound user agent(s) to determine what requests can be safely
+pipelined.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If the inbound connection fails before receiving a
+response, the pipelining intermediary MAY attempt to retry a sequence
+of requests that have yet to receive a response if the requests all
+have idempotent methods; otherwise, the pipelining intermediary
+SHOULD forward any received responses and then close the
+corresponding outbound connection(s) so that the outbound user
+agent(s) can recover accordingly.
+'''
+

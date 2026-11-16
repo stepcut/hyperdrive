@@ -1,0 +1,50 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-3.2.4"
+
+# asterisk-form
+#
+#    The "asterisk-form" of request-target is only used for a server-wide
+#    OPTIONS request (Section 9.3.7 of [HTTP]).
+# 
+#      asterisk-form  = "*"
+# 
+#    When a client wishes to request OPTIONS for the server as a whole, as
+#    opposed to a specific named resource of that server, the client MUST
+#    send only "*" (%x2A) as the request-target.  For example,
+# 
+#    OPTIONS * HTTP/1.1
+# 
+#    If a proxy receives an OPTIONS request with an absolute-form of
+#    request-target in which the URI has an empty path and no query
+#    component, then the last proxy on the request chain MUST send a
+#    request-target of "*" when it forwards the request to the indicated
+#    origin server.
+# 
+#    For example, the request
+# 
+#    OPTIONS http://www.example.org:8001 HTTP/1.1
+# 
+#    would be forwarded by the final proxy as
+# 
+#    OPTIONS * HTTP/1.1
+#    Host: www.example.org:8001
+# 
+#    after connecting to port 8001 of host "www.example.org".
+
+[[spec]]
+level = "MUST"
+quote = '''
+When a client wishes to request OPTIONS for the server as a whole, as
+opposed to a specific named resource of that server, the client MUST
+send only "*" (%x2A) as the request-target.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a proxy receives an OPTIONS request with an absolute-form of
+request-target in which the URI has an empty path and no query
+component, then the last proxy on the request chain MUST send a
+request-target of "*" when it forwards the request to the indicated
+origin server.
+'''
+

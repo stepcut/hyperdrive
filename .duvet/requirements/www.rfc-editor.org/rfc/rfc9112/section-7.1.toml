@@ -1,0 +1,75 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-7.1"
+
+# Chunked Transfer Coding
+#
+#    The chunked transfer coding wraps content in order to transfer it as
+#    a series of chunks, each with its own size indicator, followed by an
+#    OPTIONAL trailer section containing trailer fields.  Chunked enables
+#    content streams of unknown size to be transferred as a sequence of
+#    length-delimited buffers, which enables the sender to retain
+#    connection persistence and the recipient to know when it has received
+#    the entire message.
+# 
+#      chunked-body   = *chunk
+#                       last-chunk
+#                       trailer-section
+#                       CRLF
+# 
+#      chunk          = chunk-size [ chunk-ext ] CRLF
+#                       chunk-data CRLF
+#      chunk-size     = 1*HEXDIG
+#      last-chunk     = 1*("0") [ chunk-ext ] CRLF
+# 
+#      chunk-data     = 1*OCTET ; a sequence of chunk-size octets
+# 
+#    The chunk-size field is a string of hex digits indicating the size of
+#    the chunk-data in octets.  The chunked transfer coding is complete
+#    when a chunk with a chunk-size of zero is received, possibly followed
+#    by a trailer section, and finally terminated by an empty line.
+# 
+#    A recipient MUST be able to parse and decode the chunked transfer
+#    coding.
+# 
+#    HTTP/1.1 does not define any means to limit the size of a chunked
+#    response such that an intermediary can be assured of buffering the
+#    entire response.  Additionally, very large chunk sizes may cause
+#    overflows or loss of precision if their values are not represented
+#    accurately in a receiving implementation.  Therefore, recipients MUST
+#    anticipate potentially large hexadecimal numerals and prevent parsing
+#    errors due to integer conversion overflows or precision loss due to
+#    integer representation.
+# 
+#    The chunked coding does not define any parameters.  Their presence
+#    SHOULD be treated as an error.
+
+[[spec]]
+level = "MAY"
+quote = '''
+The chunked transfer coding wraps content in order to transfer it as
+a series of chunks, each with its own size indicator, followed by an
+OPTIONAL trailer section containing trailer fields.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient MUST be able to parse and decode the chunked transfer
+coding.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Therefore, recipients MUST
+anticipate potentially large hexadecimal numerals and prevent parsing
+errors due to integer conversion overflows or precision loss due to
+integer representation.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Their presence
+SHOULD be treated as an error.
+'''
+

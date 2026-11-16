@@ -1,0 +1,28 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-7.2"
+
+# Transfer Codings for Compression
+#
+#    The following transfer coding names for compression are defined by
+#    the same algorithm as their corresponding content coding:
+# 
+#    compress (and x-compress)
+#       See Section 8.4.1.1 of [HTTP].
+# 
+#    deflate
+#       See Section 8.4.1.2 of [HTTP].
+# 
+#    gzip (and x-gzip)
+#       See Section 8.4.1.3 of [HTTP].
+# 
+#    The compression codings do not define any parameters.  The presence
+#    of parameters with any of these compression codings SHOULD be treated
+#    as an error.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The presence
+of parameters with any of these compression codings SHOULD be treated
+as an error.
+'''
+

@@ -1,0 +1,37 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-7.1.1"
+
+# Chunk Extensions
+#
+#    The chunked coding allows each chunk to include zero or more chunk
+#    extensions, immediately following the chunk-size, for the sake of
+#    supplying per-chunk metadata (such as a signature or hash), mid-
+#    message control information, or randomization of message body size.
+# 
+#      chunk-ext      = *( BWS ";" BWS chunk-ext-name
+#                          [ BWS "=" BWS chunk-ext-val ] )
+# 
+#      chunk-ext-name = token
+#      chunk-ext-val  = token / quoted-string
+# 
+#    The chunked coding is specific to each connection and is likely to be
+#    removed or recoded by each recipient (including intermediaries)
+#    before any higher-level application would have a chance to inspect
+#    the extensions.  Hence, the use of chunk extensions is generally
+#    limited to specialized HTTP services such as "long polling" (where
+#    client and server can have shared expectations regarding the use of
+#    chunk extensions) or for padding within an end-to-end secured
+#    connection.
+# 
+#    A recipient MUST ignore unrecognized chunk extensions.  A server
+#    ought to limit the total length of chunk extensions received in a
+#    request to an amount reasonable for the services provided, in the
+#    same way that it applies length limitations and timeouts for other
+#    parts of a message, and generate an appropriate 4xx (Client Error)
+#    response if that amount is exceeded.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient MUST ignore unrecognized chunk extensions.
+'''
+

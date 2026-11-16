@@ -1,0 +1,77 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-2.3"
+
+# HTTP Version
+#
+#    HTTP uses a "<major>.<minor>" numbering scheme to indicate versions
+#    of the protocol.  This specification defines version "1.1".
+#    Section 2.5 of [HTTP] specifies the semantics of HTTP version
+#    numbers.
+# 
+#    The version of an HTTP/1.x message is indicated by an HTTP-version
+#    field in the start-line.  HTTP-version is case-sensitive.
+# 
+#      HTTP-version  = HTTP-name "/" DIGIT "." DIGIT
+#      HTTP-name     = %s"HTTP"
+# 
+#    When an HTTP/1.1 message is sent to an HTTP/1.0 recipient [HTTP/1.0]
+#    or a recipient whose version is unknown, the HTTP/1.1 message is
+#    constructed such that it can be interpreted as a valid HTTP/1.0
+#    message if all of the newer features are ignored.  This specification
+#    places recipient-version requirements on some new features so that a
+#    conformant sender will only use compatible features until it has
+#    determined, through configuration or the receipt of a message, that
+#    the recipient supports HTTP/1.1.
+# 
+#    Intermediaries that process HTTP messages (i.e., all intermediaries
+#    other than those acting as tunnels) MUST send their own HTTP-version
+#    in forwarded messages, unless it is purposefully downgraded as a
+#    workaround for an upstream issue.  In other words, an intermediary is
+#    not allowed to blindly forward the start-line without ensuring that
+#    the protocol version in that message matches a version to which that
+#    intermediary is conformant for both the receiving and sending of
+#    messages.  Forwarding an HTTP message without rewriting the HTTP-
+#    version might result in communication errors when downstream
+#    recipients use the message sender's version to determine what
+#    features are safe to use for later communication with that sender.
+# 
+#    A server MAY send an HTTP/1.0 response to an HTTP/1.1 request if it
+#    is known or suspected that the client incorrectly implements the HTTP
+#    specification and is incapable of correctly processing later version
+#    responses, such as when a client fails to parse the version number
+#    correctly or when an intermediary is known to blindly forward the
+#    HTTP-version even when it doesn't conform to the given minor version
+#    of the protocol.  Such protocol downgrades SHOULD NOT be performed
+#    unless triggered by specific client attributes, such as when one or
+#    more of the request header fields (e.g., User-Agent) uniquely match
+#    the values sent by a client known to be in error.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Intermediaries that process HTTP messages (i.e., all intermediaries
+other than those acting as tunnels) MUST send their own HTTP-version
+in forwarded messages, unless it is purposefully downgraded as a
+workaround for an upstream issue.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY send an HTTP/1.0 response to an HTTP/1.1 request if it
+is known or suspected that the client incorrectly implements the HTTP
+specification and is incapable of correctly processing later version
+responses, such as when a client fails to parse the version number
+correctly or when an intermediary is known to blindly forward the
+HTTP-version even when it doesn't conform to the given minor version
+of the protocol.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Such protocol downgrades SHOULD NOT be performed
+unless triggered by specific client attributes, such as when one or
+more of the request header fields (e.g., User-Agent) uniquely match
+the values sent by a client known to be in error.
+'''
+

@@ -32,6 +32,7 @@ REASONS = {
     "intermediary": "Applies to proxies, gateways and tunnels; hyperdrive is an origin server.",
     "cache":        "Applies to caches; hyperdrive does not cache responses.",
     "registration": "Applies to IANA registrations or to the authors of new specifications, not to implementations.",
+    "media-type":   "Applies to processing the message/http media type, which hyperdrive does not do.",
 }
 
 # subject patterns, in priority order
@@ -64,6 +65,23 @@ OVERRIDES = {
         # Section 16 is IANA registrations
         **{(s, ""): "registration" for s in ["16.1.1", "16.2.1", "16.3.1", "16.3.2.1",
                                               "16.4.1", "16.5.1", "16.6.1", "16.7"]},
+    },
+    "rfc9112": {
+        # the subject mentions a server or proxy, but the requirement is
+        # on the client
+        ("3.2.1",  "When making a request directly to an origin server"): "client",
+        ("3.2.2",  "When making a request to a proxy"): "client",
+        ("3.2.3",  "When making a CONNECT request"): "client",
+        ("3.2.4",  "When a client wishes to request OPTIONS"): "client",
+        ("4",      "Although the status-line grammar rule"): "client",
+        ("6.1",    "If any transfer coding other than chunked is applied to a request's"): "client",
+        ("7.4",    "Since the TE header field only applies"): "client",
+        ("9.3.2",  "When retrying pipelined requests"): "client",
+        ("9.5",    "If the client sees a response"): "client",
+        ("9.3",    "A proxy server MUST NOT maintain"): "intermediary",
+        # Section 7.3 is the IANA transfer coding registry
+        ("7.3", ""): "registration",
+        ("10.1",   "A recipient of \"message/http\" data"): "media-type",
     },
 }
 

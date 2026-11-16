@@ -1,0 +1,47 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-3.2.1"
+
+# origin-form
+#
+#    The most common form of request-target is the "origin-form".
+# 
+#      origin-form    = absolute-path [ "?" query ]
+# 
+#    When making a request directly to an origin server, other than a
+#    CONNECT or server-wide OPTIONS request (as detailed below), a client
+#    MUST send only the absolute path and query components of the target
+#    URI as the request-target.  If the target URI's path component is
+#    empty, the client MUST send "/" as the path within the origin-form of
+#    request-target.  A Host header field is also sent, as defined in
+#    Section 7.2 of [HTTP].
+# 
+#    For example, a client wishing to retrieve a representation of the
+#    resource identified as
+# 
+#      http://www.example.org/where?q=now
+# 
+#    directly from the origin server would open (or reuse) a TCP
+#    connection to port 80 of the host "www.example.org" and send the
+#    lines:
+# 
+#    GET /where?q=now HTTP/1.1
+#    Host: www.example.org
+# 
+#    followed by the remainder of the request message.
+
+[[spec]]
+level = "MUST"
+quote = '''
+When making a request directly to an origin server, other than a
+CONNECT or server-wide OPTIONS request (as detailed below), a client
+MUST send only the absolute path and query components of the target
+URI as the request-target.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the target URI's path component is
+empty, the client MUST send "/" as the path within the origin-form of
+request-target.
+'''
+

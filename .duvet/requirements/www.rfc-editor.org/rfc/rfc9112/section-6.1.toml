@@ -1,0 +1,227 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-6.1"
+
+# Transfer-Encoding
+#
+#    The Transfer-Encoding header field lists the transfer coding names
+#    corresponding to the sequence of transfer codings that have been (or
+#    will be) applied to the content in order to form the message body.
+#    Transfer codings are defined in Section 7.
+# 
+#      Transfer-Encoding = #transfer-coding
+#                           ; defined in [HTTP], Section 10.1.4
+# 
+#    Transfer-Encoding is analogous to the Content-Transfer-Encoding field
+#    of MIME, which was designed to enable safe transport of binary data
+#    over a 7-bit transport service ([RFC2045], Section 6).  However, safe
+#    transport has a different focus for an 8bit-clean transfer protocol.
+#    In HTTP's case, Transfer-Encoding is primarily intended to accurately
+#    delimit dynamically generated content.  It also serves to distinguish
+#    encodings that are only applied in transit from the encodings that
+#    are a characteristic of the selected representation.
+# 
+#    A recipient MUST be able to parse the chunked transfer coding
+#    (Section 7.1) because it plays a crucial role in framing messages
+#    when the content size is not known in advance.  A sender MUST NOT
+#    apply the chunked transfer coding more than once to a message body
+#    (i.e., chunking an already chunked message is not allowed).  If any
+#    transfer coding other than chunked is applied to a request's content,
+#    the sender MUST apply chunked as the final transfer coding to ensure
+#    that the message is properly framed.  If any transfer coding other
+#    than chunked is applied to a response's content, the sender MUST
+#    either apply chunked as the final transfer coding or terminate the
+#    message by closing the connection.
+# 
+#    For example,
+# 
+#    Transfer-Encoding: gzip, chunked
+# 
+#    indicates that the content has been compressed using the gzip coding
+#    and then chunked using the chunked coding while forming the message
+#    body.
+# 
+#    Unlike Content-Encoding (Section 8.4.1 of [HTTP]), Transfer-Encoding
+#    is a property of the message, not of the representation.  Any
+#    recipient along the request/response chain MAY decode the received
+#    transfer coding(s) or apply additional transfer coding(s) to the
+#    message body, assuming that corresponding changes are made to the
+#    Transfer-Encoding field value.  Additional information about the
+#    encoding parameters can be provided by other header fields not
+#    defined by this specification.
+# 
+#    Transfer-Encoding MAY be sent in a response to a HEAD request or in a
+#    304 (Not Modified) response (Section 15.4.5 of [HTTP]) to a GET
+#    request, neither of which includes a message body, to indicate that
+#    the origin server would have applied a transfer coding to the message
+#    body if the request had been an unconditional GET.  This indication
+#    is not required, however, because any recipient on the response chain
+#    (including the origin server) can remove transfer codings when they
+#    are not needed.
+# 
+#    A server MUST NOT send a Transfer-Encoding header field in any
+#    response with a status code of 1xx (Informational) or 204 (No
+#    Content).  A server MUST NOT send a Transfer-Encoding header field in
+#    any 2xx (Successful) response to a CONNECT request (Section 9.3.6 of
+#    [HTTP]).
+# 
+#    A server that receives a request message with a transfer coding it
+#    does not understand SHOULD respond with 501 (Not Implemented).
+# 
+#    Transfer-Encoding was added in HTTP/1.1.  It is generally assumed
+#    that implementations advertising only HTTP/1.0 support will not
+#    understand how to process transfer-encoded content, and that an
+#    HTTP/1.0 message received with a Transfer-Encoding is likely to have
+#    been forwarded without proper handling of the chunked transfer coding
+#    in transit.
+# 
+#    A client MUST NOT send a request containing Transfer-Encoding unless
+#    it knows the server will handle HTTP/1.1 requests (or later minor
+#    revisions); such knowledge might be in the form of specific user
+#    configuration or by remembering the version of a prior received
+#    response.  A server MUST NOT send a response containing Transfer-
+#    Encoding unless the corresponding request indicates HTTP/1.1 (or
+#    later minor revisions).
+# 
+#    Early implementations of Transfer-Encoding would occasionally send
+#    both a chunked transfer coding for message framing and an estimated
+#    Content-Length header field for use by progress bars.  This is why
+#    Transfer-Encoding is defined as overriding Content-Length, as opposed
+#    to them being mutually incompatible.  Unfortunately, forwarding such
+#    a message can lead to vulnerabilities regarding request smuggling
+#    (Section 11.2) or response splitting (Section 11.1) attacks if any
+#    downstream recipient fails to parse the message according to this
+#    specification, particularly when a downstream recipient only
+#    implements HTTP/1.0.
+# 
+#    A server MAY reject a request that contains both Content-Length and
+#    Transfer-Encoding or process such a request in accordance with the
+#    Transfer-Encoding alone.  Regardless, the server MUST close the
+#    connection after responding to such a request to avoid the potential
+#    attacks.
+# 
+#    A server or client that receives an HTTP/1.0 message containing a
+#    Transfer-Encoding header field MUST treat the message as if the
+#    framing is faulty, even if a Content-Length is present, and close the
+#    connection after processing the message.  The message sender might
+#    have retained a portion of the message, in buffer, that could be
+#    misinterpreted by further use of the connection.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A recipient MUST be able to parse the chunked transfer coding
+(Section 7.1) because it plays a crucial role in framing messages
+when the content size is not known in advance.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST NOT
+apply the chunked transfer coding more than once to a message body
+(i.e., chunking an already chunked message is not allowed).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If any
+transfer coding other than chunked is applied to a request's content,
+the sender MUST apply chunked as the final transfer coding to ensure
+that the message is properly framed.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If any transfer coding other
+than chunked is applied to a response's content, the sender MUST
+either apply chunked as the final transfer coding or terminate the
+message by closing the connection.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Any
+recipient along the request/response chain MAY decode the received
+transfer coding(s) or apply additional transfer coding(s) to the
+message body, assuming that corresponding changes are made to the
+Transfer-Encoding field value.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Transfer-Encoding MAY be sent in a response to a HEAD request or in a
+304 (Not Modified) response (Section 15.4.5 of [HTTP]) to a GET
+request, neither of which includes a message body, to indicate that
+the origin server would have applied a transfer coding to the message
+body if the request had been an unconditional GET.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT send a Transfer-Encoding header field in any
+response with a status code of 1xx (Informational) or 204 (No
+Content).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT send a Transfer-Encoding header field in
+any 2xx (Successful) response to a CONNECT request (Section 9.3.6 of
+[HTTP]).
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A server that receives a request message with a transfer coding it
+does not understand SHOULD respond with 501 (Not Implemented).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT send a request containing Transfer-Encoding unless
+it knows the server will handle HTTP/1.1 requests (or later minor
+revisions); such knowledge might be in the form of specific user
+configuration or by remembering the version of a prior received
+response.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST NOT send a response containing Transfer-
+Encoding unless the corresponding request indicates HTTP/1.1 (or
+later minor revisions).
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A server MAY reject a request that contains both Content-Length and
+Transfer-Encoding or process such a request in accordance with the
+Transfer-Encoding alone.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Regardless, the server MUST close the
+connection after responding to such a request to avoid the potential
+attacks.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server or client that receives an HTTP/1.0 message containing a
+Transfer-Encoding header field MUST treat the message as if the
+framing is faulty, even if a Content-Length is present, and close the
+connection after processing the message.
+'''
+

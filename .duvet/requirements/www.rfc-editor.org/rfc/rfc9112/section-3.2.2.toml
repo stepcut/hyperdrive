@@ -1,0 +1,92 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-3.2.2"
+
+# absolute-form
+#
+#    When making a request to a proxy, other than a CONNECT or server-wide
+#    OPTIONS request (as detailed below), a client MUST send the target
+#    URI in "absolute-form" as the request-target.
+# 
+#      absolute-form  = absolute-URI
+# 
+#    The proxy is requested to either service that request from a valid
+#    cache, if possible, or make the same request on the client's behalf
+#    either to the next inbound proxy server or directly to the origin
+#    server indicated by the request-target.  Requirements on such
+#    "forwarding" of messages are defined in Section 7.6 of [HTTP].
+# 
+#    An example absolute-form of request-line would be:
+# 
+#    GET http://www.example.org/pub/WWW/TheProject.html HTTP/1.1
+# 
+#    A client MUST send a Host header field in an HTTP/1.1 request even if
+#    the request-target is in the absolute-form, since this allows the
+#    Host information to be forwarded through ancient HTTP/1.0 proxies
+#    that might not have implemented Host.
+# 
+#    When a proxy receives a request with an absolute-form of request-
+#    target, the proxy MUST ignore the received Host header field (if any)
+#    and instead replace it with the host information of the request-
+#    target.  A proxy that forwards such a request MUST generate a new
+#    Host field value based on the received request-target rather than
+#    forward the received Host field value.
+# 
+#    When an origin server receives a request with an absolute-form of
+#    request-target, the origin server MUST ignore the received Host
+#    header field (if any) and instead use the host information of the
+#    request-target.  Note that if the request-target does not have an
+#    authority component, an empty Host header field will be sent in this
+#    case.
+# 
+#    A server MUST accept the absolute-form in requests even though most
+#    HTTP/1.1 clients will only send the absolute-form to a proxy.
+
+[[spec]]
+level = "MUST"
+quote = '''
+When making a request to a proxy, other than a CONNECT or server-wide
+OPTIONS request (as detailed below), a client MUST send the target
+URI in "absolute-form" as the request-target.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST send a Host header field in an HTTP/1.1 request even if
+the request-target is in the absolute-form, since this allows the
+Host information to be forwarded through ancient HTTP/1.0 proxies
+that might not have implemented Host.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+When a proxy receives a request with an absolute-form of request-
+target, the proxy MUST ignore the received Host header field (if any)
+and instead replace it with the host information of the request-
+target.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A proxy that forwards such a request MUST generate a new
+Host field value based on the received request-target rather than
+forward the received Host field value.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+When an origin server receives a request with an absolute-form of
+request-target, the origin server MUST ignore the received Host
+header field (if any) and instead use the host information of the
+request-target.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A server MUST accept the absolute-form in requests even though most
+HTTP/1.1 clients will only send the absolute-form to a proxy.
+'''
+

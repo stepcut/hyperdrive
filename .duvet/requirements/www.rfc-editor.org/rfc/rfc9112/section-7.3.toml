@@ -1,0 +1,65 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-7.3"
+
+# Transfer Coding Registry
+#
+#    The "HTTP Transfer Coding Registry" defines the namespace for
+#    transfer coding names.  It is maintained at
+#    <https://www.iana.org/assignments/http-parameters>.
+# 
+#    Registrations MUST include the following fields:
+# 
+#    *  Name
+# 
+#    *  Description
+# 
+#    *  Pointer to specification text
+# 
+#    Names of transfer codings MUST NOT overlap with names of content
+#    codings (Section 8.4.1 of [HTTP]) unless the encoding transformation
+#    is identical, as is the case for the compression codings defined in
+#    Section 7.2.
+# 
+#    The TE header field (Section 10.1.4 of [HTTP]) uses a pseudo-
+#    parameter named "q" as the rank value when multiple transfer codings
+#    are acceptable.  Future registrations of transfer codings SHOULD NOT
+#    define parameters called "q" (case-insensitively) in order to avoid
+#    ambiguities.
+# 
+#    Values to be added to this namespace require IETF Review (see
+#    Section 4.8 of [RFC8126]) and MUST conform to the purpose of transfer
+#    coding defined in this specification.
+# 
+#    Use of program names for the identification of encoding formats is
+#    not desirable and is discouraged for future encodings.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Registrations MUST include the following fields:
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Names of transfer codings MUST NOT overlap with names of content
+codings (Section 8.4.1 of [HTTP]) unless the encoding transformation
+is identical, as is the case for the compression codings defined in
+Section 7.2.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Future registrations of transfer codings SHOULD NOT
+define parameters called "q" (case-insensitively) in order to avoid
+ambiguities.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Values to be added to this namespace require IETF Review (see
+Section 4.8 of [RFC8126]) and MUST conform to the purpose of transfer
+coding defined in this specification.
+'''
+

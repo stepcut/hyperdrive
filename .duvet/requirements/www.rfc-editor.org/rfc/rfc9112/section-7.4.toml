@@ -1,0 +1,64 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-7.4"
+
+# Negotiating Transfer Codings
+#
+#    The TE field (Section 10.1.4 of [HTTP]) is used in HTTP/1.1 to
+#    indicate what transfer codings, besides chunked, the client is
+#    willing to accept in the response and whether the client is willing
+#    to preserve trailer fields in a chunked transfer coding.
+# 
+#    A client MUST NOT send the chunked transfer coding name in TE;
+#    chunked is always acceptable for HTTP/1.1 recipients.
+# 
+#    Three examples of TE use are below.
+# 
+#    TE: deflate
+#    TE:
+#    TE: trailers, deflate;q=0.5
+# 
+#    When multiple transfer codings are acceptable, the client MAY rank
+#    the codings by preference using a case-insensitive "q" parameter
+#    (similar to the qvalues used in content negotiation fields; see
+#    Section 12.4.2 of [HTTP]).  The rank value is a real number in the
+#    range 0 through 1, where 0.001 is the least preferred and 1 is the
+#    most preferred; a value of 0 means "not acceptable".
+# 
+#    If the TE field value is empty or if no TE field is present, the only
+#    acceptable transfer coding is chunked.  A message with no transfer
+#    coding is always acceptable.
+# 
+#    The keyword "trailers" indicates that the sender will not discard
+#    trailer fields, as described in Section 6.5 of [HTTP].
+# 
+#    Since the TE header field only applies to the immediate connection, a
+#    sender of TE MUST also send a "TE" connection option within the
+#    Connection header field (Section 7.6.1 of [HTTP]) in order to prevent
+#    the TE header field from being forwarded by intermediaries that do
+#    not support its semantics.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A client MUST NOT send the chunked transfer coding name in TE;
+chunked is always acceptable for HTTP/1.1 recipients.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+When multiple transfer codings are acceptable, the client MAY rank
+the codings by preference using a case-insensitive "q" parameter
+(similar to the qvalues used in content negotiation fields; see
+Section 12.4.2 of [HTTP]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Since the TE header field only applies to the immediate connection, a
+sender of TE MUST also send a "TE" connection option within the
+Connection header field (Section 7.6.1 of [HTTP]) in order to prevent
+the TE header field from being forwarded by intermediaries that do
+not support its semantics.
+'''
+

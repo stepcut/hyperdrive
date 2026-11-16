@@ -1,0 +1,49 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-7.1.2"
+
+# Chunked Trailer Section
+#
+#    A trailer section allows the sender to include additional fields at
+#    the end of a chunked message in order to supply metadata that might
+#    be dynamically generated while the content is sent, such as a message
+#    integrity check, digital signature, or post-processing status.  The
+#    proper use and limitations of trailer fields are defined in
+#    Section 6.5 of [HTTP].
+# 
+#      trailer-section   = *( field-line CRLF )
+# 
+#    A recipient that removes the chunked coding from a message MAY
+#    selectively retain or discard the received trailer fields.  A
+#    recipient that retains a received trailer field MUST either store/
+#    forward the trailer field separately from the received header fields
+#    or merge the received trailer field into the header section.  A
+#    recipient MUST NOT merge a received trailer field into the header
+#    section unless its corresponding header field definition explicitly
+#    permits and instructs how the trailer field value can be safely
+#    merged.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A recipient that removes the chunked coding from a message MAY
+selectively retain or discard the received trailer fields.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+recipient that retains a received trailer field MUST either store/
+forward the trailer field separately from the received header fields
+or merge the received trailer field into the header section.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+recipient MUST NOT merge a received trailer field into the header
+section unless its corresponding header field definition explicitly
+permits and instructs how the trailer field value can be safely
+merged.
+'''
+

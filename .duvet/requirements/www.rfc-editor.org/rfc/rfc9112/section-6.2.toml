@@ -1,0 +1,28 @@
+target = "https://www.rfc-editor.org/rfc/rfc9112#section-6.2"
+
+# Content-Length
+#
+#    When a message does not have a Transfer-Encoding header field, a
+#    Content-Length header field (Section 8.6 of [HTTP]) can provide the
+#    anticipated size, as a decimal number of octets, for potential
+#    content.  For messages that do include content, the Content-Length
+#    field value provides the framing information necessary for
+#    determining where the data (and message) ends.  For messages that do
+#    not include content, the Content-Length indicates the size of the
+#    selected representation (Section 8.6 of [HTTP]).
+# 
+#    A sender MUST NOT send a Content-Length header field in any message
+#    that contains a Transfer-Encoding header field.
+# 
+#       |  *Note:* HTTP's use of Content-Length for message framing
+#       |  differs significantly from the same field's use in MIME, where
+#       |  it is an optional field used only within the "message/external-
+#       |  body" media-type.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST NOT send a Content-Length header field in any message
+that contains a Transfer-Encoding header field.
+'''
+
