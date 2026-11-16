@@ -12,6 +12,15 @@ author:             Jeremy Shaw
 maintainer:         jeremy@seereason.com
 category:           Web
 build-type:         Simple
+extra-source-files: test/data/README.md
+                    test/data/wpt/*.json
+                    test/data/wpt/*.md
+                    test/data/wpt/*.txt
+                    test/data/seclists/*.txt
+                    test/data/seclists/LICENSE
+                    test/data/payloadsallthethings/*.txt
+                    test/data/payloadsallthethings/*.py
+                    test/data/payloadsallthethings/LICENSE
 
 common warnings
   ghc-options: -Wall
@@ -44,11 +53,14 @@ test-suite hyperdrive-semantics-tests
                     IndependentTests
                     SafePathTests
                     SecurityTests
+                    ThirdPartyTests
                     URIOracle
                     URITests
   default-language: GHC2021
   build-depends:    base
+                  , aeson            >= 2.0  && < 2.3
                   , bytestring
+                  , text
                   , hyperdrive-semantics
                   , QuickCheck       >= 2.14 && < 2.18
                   , tasty            >= 1.4  && < 1.6

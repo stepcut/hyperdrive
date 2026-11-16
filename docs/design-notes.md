@@ -76,6 +76,17 @@ Each item came from a security review of `hyperdrive-semantics`
 - **P8. Numeric look-alike hosts.** Reject a `Host` or target authority
   for which `isNumericLookalike` holds, by default (RFC 3986 Section
   7.4, RFC 1123 Section 2.1).
+- **P10. Encoded and non-ASCII hosts.** Reject a `Host` or target
+  authority whose registered name contains percent-encoding. RFC 3986
+  allows any encoded octet in a registered name, but browsers send only
+  ASCII names (with punycode for internationalized ones), and decoded
+  hosts are dangerous: `hello%00` is `hello` to a C resolver, `ho%40st`
+  and `ho%2Fst` change meaning when put back into a URL, and `%0D%0A`
+  injects into logs. Names that IDNA maps to something else, such as
+  `a%C2%ADb` (`ab`, the soft hyphen is dropped) or fullwidth digits
+  (ASCII digits, possibly an IPv4 address), are rejected by the same
+  rule. Found by the web-platform-tests URL data; see
+  `hyperdrive-semantics/test/data/wpt/expected-differences.txt`.
 - **P9. Query characters.** Decide whether to accept the characters
   that some clients send unencoded in queries (`|`, `{`, `}`, `^`, `` ` ``),
   for example by percent-encoding them on the way in, or to reject
