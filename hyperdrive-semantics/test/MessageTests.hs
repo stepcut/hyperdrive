@@ -1,0 +1,162 @@
+{-# LANGUAGE OverloadedStrings, PatternSynonyms #-}
+module MessageTests (messageTests) where
+
+import qualified Data.ByteString.Char8 as C
+import Data.Either (isLeft, isRight)
+import Hyperdrive.Semantics.Field
+import Hyperdrive.Semantics.Message
+import Hyperdrive.Semantics.Method
+import Hyperdrive.Semantics.Status
+import Hyperdrive.Semantics.Target
+import Hyperdrive.Semantics.URI
+import Test.QuickCheck
+import Test.QuickCheck.Monadic (assert, monadicIO, run)
+import Test.Tasty
+import Test.Tasty.QuickCheck (testProperty)
+
+messageTests :: TestTree
+messageTests = testGroup "Message"
+  [ testGroup "Requests"
+    [ testProperty "the target form must suit the method"      prop_requestTargetForms
+    , testProperty "an empty path is normalized"               prop_requestEmptyPath
+    , testProperty "protocol fields are rejected"              prop_requestProtocolFields
+    , testProperty "bytesBody reads its bytes, then the end"   prop_bytesBody
+    ]
+  , testGroup "Responses"
+    [ testProperty "content rules for every status (exhaustive)" prop_responseContent
+    , testProperty "protocol fields are rejected"              prop_responseProtocolFields
+    , testProperty "Set-Cookie field lines stay separate"      prop_setCookie
+    ]
+  ]
+
+field :: C.ByteString -> FieldName
+field = maybe (error "invalid field name") id . mkFieldName
+
+value :: C.ByteString -> FieldValue
+value = either (error "invalid field value") id . mkFieldValue
+
+fields :: [(C.ByteString, C.ByteString)] -> Fields
+fields ls = fieldsFromList [ (field n, value v) | (n, v) <- ls ]
+
+uriTarget :: C.ByteString -> Target
+uriTarget p = TargetURI HTTP (either (error "authority") id (parseAuthority "example.com"))
+                             (maybe (error "path") id (mkPath p)) Nothing
+
+connect :: Target
+connect = maybe (error "connect") id (connectTarget (either (error "authority") id (parseAuthority "example.com:443")))
+
+request :: Method -> Target -> Fields -> IO (Either RequestError Request)
+request m t fs = mkRequest HTTP_1_1 m t fs <$> bytesBody ""
+
+standardMethods :: [Method]
+standardMethods = [GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH]
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-7.1
+-- # These forms MUST
+-- # NOT be used with other methods.
+prop_requestTargetForms :: Property
+prop_requestTargetForms = once $ monadicIO $ do
+  results <- run $ sequence
+    [ (\r -> (m, t, isRight r)) <$> request m target emptyFields
+    | m <- standardMethods
+    , (t, target) <- [("uri", uriTarget "/"), ("connect", connect), ("asterisk", TargetAsterisk)] ]
+  assert (and [ ok == expected m t | (m, t, ok) <- results ])
+  where
+    expected :: Method -> String -> Bool
+    expected m "connect"  = m == CONNECT
+    expected m "asterisk" = m == OPTIONS
+    expected _ _          = True
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-4.2.3
+-- # When not being used as the target of an OPTIONS request, an empty
+-- # path component is equivalent to an absolute path of "/"
+prop_requestEmptyPath :: Property
+prop_requestEmptyPath = once $ monadicIO $ do
+  get     <- run (request GET     (uriTarget "") emptyFields)
+  options <- run (request OPTIONS (uriTarget "") emptyFields)
+  assert (fmap requestTarget get == Right (uriTarget "/"))
+  assert (fmap requestTarget options == Right (uriTarget ""))
+
+protocolFieldNames :: [C.ByteString]
+protocolFieldNames =
+  [ "Connection", "Keep-Alive", "Proxy-Connection", "TE", "Transfer-Encoding"
+  , "Upgrade", "Content-Length", "CONTENT-LENGTH", "transfer-encoding" ]
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-7.6.1
+-- # Note that some versions of HTTP prohibit the use of fields for such
+-- # information, and therefore do not allow the Connection field.
+prop_requestProtocolFields :: Property
+prop_requestProtocolFields = once $ monadicIO $ do
+  rejected <- run $ mapM (\n -> request GET (uriTarget "/") (fields [("Host", "x"), (n, "1")])) protocolFieldNames
+  accepted <- run $ request GET (uriTarget "/") (fields [("Host", "x"), ("Content-Type", "text/plain"), ("Trailer", "x")])
+  assert (all isLeft rejected)
+  assert (isRight accepted)
+  assert (map isProtocolField [field "Host", field "Content-Type", field "Trailer"] == [False, False, False])
+
+prop_bytesBody :: Property
+prop_bytesBody = once $ monadicIO $ do
+  body <- run (bytesBody "hello")
+  chunks <- run (sequence [readChunk body, readChunk body, readChunk body])
+  trailers <- run (readTrailers body)
+  body' <- run (bytesBody "unread")
+  trailers' <- run (readTrailers body')
+  afterTrailers <- run (readChunk body')
+  assert (bodyLength body == Just 5)
+  assert (chunks == ["hello", "", ""])
+  assert (fieldsToList trailers == [] && fieldsToList trailers' == [] && afterTrailers == "")
+
+data ContentKind = None | Empty | Bytes | File | Stream
+  deriving (Eq, Show, Enum, Bounded)
+
+content :: ContentKind -> Content
+content None   = ContentNone
+content Empty  = ContentBytes ""
+content Bytes  = ContentBytes "hello"
+content File   = ContentFile "/dev/null" Nothing
+content Stream = ContentStream Nothing (\write _ -> write "hi" >> pure emptyFields)
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-6.4.1
+-- # All 1xx (Informational), 204 (No Content), and 304 (Not Modified)
+-- # responses do not include content.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-6.4.1
+-- # All other responses do include content, although that content might
+-- # be of zero length.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6
+-- # Since the 205 status code implies that no additional content will be
+-- # provided, a server MUST NOT generate content in a 205 response.
+
+-- | Every status from 100 to 599 with every kind of content.
+prop_responseContent :: Property
+prop_responseContent = once $ conjoin
+  [ counterexample (show (code, kind)) (result === expected code kind)
+  | code <- [100 .. 599]
+  , Just status <- [mkStatus code]
+  , kind <- [minBound .. maxBound]
+  , let result = either Left (const (Right ())) (mkResponse status emptyFields (content kind)) ]
+  where
+    expected :: Int -> ContentKind -> Either ResponseError ()
+    expected code kind
+      | code < 200                      = Left InterimStatus
+      | code `elem` [204, 205, 304]     = if kind == None then Right () else Left ContentNotAllowed
+      | kind == None                    = Left ContentRequired
+      | otherwise                       = Right ()
+
+prop_responseProtocolFields :: Property
+prop_responseProtocolFields = conjoin
+  [ counterexample (show n) $
+      either Just (const Nothing) (mkResponse OK (fields [("Content-Type", "text/plain"), (n, "1")]) (content Bytes))
+        === Just (ResponseProtocolField (field n))
+  | n <- protocolFieldNames ]
+  .&&. isRight (mkResponse OK (fields [("Content-Type", "text/plain"), ("Cache-Control", "no-store")]) (content Bytes))
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-5.3
+-- # Since it cannot be combined into a single field value,
+-- # |  recipients ought to handle "Set-Cookie" as a special case while
+-- # |  processing fields.
+prop_setCookie :: Property
+prop_setCookie =
+  case mkResponse OK (fields [("Set-Cookie", "a=1; Path=/"), ("X", "y"), ("Set-Cookie", "b=2, c")]) (content Empty) of
+    Left e  -> counterexample (show e) False
+    Right r -> map fieldValueBytes (lookupAll hSetCookie (responseHeaders r)) === ["a=1; Path=/", "b=2, c"]

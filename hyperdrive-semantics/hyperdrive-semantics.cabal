@@ -34,6 +34,7 @@ library
   exposed-modules:  Hyperdrive.Semantics.Field
                     Hyperdrive.Semantics.FieldSyntax
                     Hyperdrive.Semantics.Internal
+                    Hyperdrive.Semantics.Message
                     Hyperdrive.Semantics.Method
                     Hyperdrive.Semantics.SafePath
                     Hyperdrive.Semantics.Status
@@ -53,6 +54,7 @@ test-suite hyperdrive-semantics-tests
                     ExhaustiveTests
                     FieldSyntaxTests
                     IndependentTests
+                    MessageTests
                     SafePathTests
                     SecurityTests
                     ThirdPartyTests

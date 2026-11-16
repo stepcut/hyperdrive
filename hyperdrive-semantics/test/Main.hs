@@ -18,6 +18,7 @@ import ComplexityTests (complexityTests)
 import ExhaustiveTests (exhaustiveTests)
 import FieldSyntaxTests (fieldSyntaxTests)
 import IndependentTests (independentTests)
+import MessageTests (messageTests)
 import SafePathTests (safePathTests)
 import SecurityTests (securityTests)
 import ThirdPartyTests (thirdPartyTests)
@@ -54,6 +55,7 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
   , safePathTests
   , fieldSyntaxTests
   , securityTests
+  , messageTests
   , thirdPartyTests
   , testGroup "Independent re-derivation"
       [ testProperty d (once b) | (d, b) <- independentTests ]

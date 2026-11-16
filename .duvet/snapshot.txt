@@ -171,6 +171,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    Unless noted otherwise, a recipient MAY attempt to recover a usable
     TEXT[!MAY]:    protocol element from an invalid construct.
 
+  SECTION: [Protocol Version](#section-2.5)
+    TEXT[implementation]:    HTTP's version number consists of two decimal digits separated by a
+    TEXT[implementation]:    "." (period or decimal point).
+
   SECTION: [Connections, Clients, and Servers](#section-3.3)
     TEXT[!MUST]:    As a result, a server MUST NOT assume that two requests on the same
     TEXT[!MUST]:    connection are from the same user agent unless the connection is
@@ -302,6 +306,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    be recombined as a comma-separated list (i.e., at least one
     TEXT[!MUST]:    alternative of the field's definition allows a comma-separated list,
     TEXT[!MUST]:    such as an ABNF rule of #(values) defined in Section 5.6.1).
+    TEXT[test]: Since it cannot be combined into a single field value,
+    TEXT[test]:       |  recipients ought to handle "Set-Cookie" as a special case while
+    TEXT[test]:       |  processing fields.
     TEXT[!MUST]:    A server MUST NOT apply a request to the target resource until it
     TEXT[!MUST]:    receives the entire request header section, since later header field
     TEXT[!MUST]:    lines might include conditionals, authentication credentials, or
@@ -463,6 +470,12 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    minor version within that major version to which the recipient is
     TEXT[!SHOULD]:    conformant.
 
+  SECTION: [Content Semantics](#section-6.4.1)
+    TEXT[test]:    All 1xx (Informational), 204 (No Content), and 304 (Not Modified)
+    TEXT[test]:    responses do not include content.
+    TEXT[implementation,test]:    All other responses do include content, although that content might
+    TEXT[implementation,test]:    be of zero length.
+
   SECTION: [Limitations on Use of Trailers](#section-6.5.1)
     TEXT[!MUST]: A sender MUST NOT
     TEXT[!MUST]:    generate a trailer field unless the sender knows the corresponding
@@ -555,16 +568,18 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    When a field aside from Connection is used to supply control
     TEXT[!MUST]:    information for or about the current connection, the sender MUST list
     TEXT[!MUST]:    the corresponding field name within the Connection header field.
+    TEXT[implementation,test]:    Note that some versions of HTTP prohibit the use of fields for such
+    TEXT[implementation,test]:    information, and therefore do not allow the Connection field.
     TEXT[!MUST,exception]:    Intermediaries MUST parse a received Connection header field before a
     TEXT[!MUST,exception]:    message is forwarded and, for each connection-option in this field,
     TEXT[!MUST,exception]:    remove any header or trailer field(s) from the message with the same
     TEXT[!MUST,exception]:    name as the connection-option, and then remove the Connection header
     TEXT[!MUST,exception]:    field itself (or replace it with the intermediary's own control
     TEXT[!MUST,exception]:    options for the forwarded message).
-    TEXT[!SHOULD,exception]:    Furthermore, intermediaries SHOULD remove or replace fields that are
-    TEXT[!SHOULD,exception]:    known to require removal before forwarding, whether or not they
-    TEXT[!SHOULD,exception]:    appear as a connection-option, after applying those fields'
-    TEXT[!SHOULD,exception]:    semantics.
+    TEXT[!SHOULD,implementation,exception]:    Furthermore, intermediaries SHOULD remove or replace fields that are
+    TEXT[!SHOULD,implementation,exception]:    known to require removal before forwarding, whether or not they
+    TEXT[!SHOULD,implementation,exception]:    appear as a connection-option, after applying those fields'
+    TEXT[!SHOULD,implementation,exception]:    semantics.
     TEXT[!MUST]:    A sender MUST NOT send a connection option corresponding to a field
     TEXT[!MUST]:    that is intended for all recipients of the content.
 
@@ -1505,6 +1520,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Informational 1xx](#section-15.2)
     TEXT[!MUST]: Since HTTP/1.0 did not define any 1xx status codes, a
     TEXT[!MUST]:    server MUST NOT send a 1xx response to an HTTP/1.0 client.
+    TEXT[implementation]:    A 1xx response is terminated by the end of the header section; it
+    TEXT[implementation]:    cannot contain content or trailers.
     TEXT[!MUST,exception]:    A client MUST be able to parse one or more 1xx responses received
     TEXT[!MUST,exception]:    prior to a final response, even if the client does not expect one.
     TEXT[!MAY,exception]:    user agent MAY ignore unexpected 1xx responses.
@@ -1522,9 +1539,13 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    representation, with both a strong entity tag and a Last-Modified
     TEXT[!SHOULD]:    date being preferred.
 
+  SECTION: [204 No Content](#section-15.3.5)
+    TEXT[implementation]:    A 204 response is terminated by the end of the header section; it
+    TEXT[implementation]:    cannot contain content or trailers.
+
   SECTION: [205 Reset Content](#section-15.3.6)
-    TEXT[!MUST]:    Since the 205 status code implies that no additional content will be
-    TEXT[!MUST]:    provided, a server MUST NOT generate content in a 205 response.
+    TEXT[!MUST,implementation,test]:    Since the 205 status code implies that no additional content will be
+    TEXT[!MUST,implementation,test]:    provided, a server MUST NOT generate content in a 205 response.
 
   SECTION: [206 Partial Content](#section-15.3.7)
     TEXT[!MUST,exception]:    A client MUST inspect a 206 response's Content-Type and Content-Range
@@ -1669,6 +1690,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,exception]:    with an outbound client, such as a user agent with its own cache
     TEXT[!SHOULD,exception]:    sending a conditional GET to a shared proxy, then the proxy SHOULD
     TEXT[!SHOULD,exception]:    forward the 304 response to that client.
+    TEXT[implementation]:    A 304 response is terminated by the end of the header section; it
+    TEXT[implementation]:    cannot contain content or trailers.
 
   SECTION: [307 Temporary Redirect](#section-15.4.8)
     TEXT[!MUST,exception]:    The 307 (Temporary Redirect) status code indicates that the target

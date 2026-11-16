@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, PatternSynonyms #-}
 -- | Checks that functions scale linearly with the size of their input.
 --
 -- Every function here can be fed attacker-controlled input, so
@@ -16,7 +16,9 @@ import Data.Int (Int64)
 import Data.Maybe (fromMaybe)
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.FieldSyntax
+import Hyperdrive.Semantics.Message
 import Hyperdrive.Semantics.Method
+import Hyperdrive.Semantics.Status (pattern OK)
 import Hyperdrive.Semantics.SafePath
 import Hyperdrive.Semantics.URI
 import System.Mem (getAllocationCounter)
@@ -74,6 +76,9 @@ complexityTests = testGroup "Complexity (allocation is linear in input size)"
   , linear "lookupParameter" 10000 $ \n ->
       either (const 0) (maybe 0 B.length)
         (lookupParameter "q" (("q", "1") : replicate n ("a", "b")))
+  , linear "mkResponse" 1000 $ \n ->
+      either (const 0) (length . fieldsToList . responseHeaders)
+        (mkResponse OK (fieldsFromList (replicate n (hContentType, fv "a"))) (ContentBytes ""))
   , linear "parseQuotedString" 10000 $ \n ->
       either (const 0) (B.length . fst) (parseQuotedString ("\"" <> mconcat (replicate n "a\\\"") <> "\""))
   , linear "quoteString" 10000 $ \n ->

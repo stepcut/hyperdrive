@@ -34,6 +34,16 @@ So:
   names, and it guarantees only that they cannot escape a directory.
 - Host names are kept in RFC 3986 normal form. `canonicalHost` and
   `authorityKey` give the form to compare hosts with.
+- `Request` and `Response` are version-independent. Fields about framing
+  or the connection (`Connection`, `Keep-Alive`, `Proxy-Connection`,
+  `TE`, `Transfer-Encoding`, `Upgrade`, `Content-Length`) are never part
+  of them: the protocol layer interprets them on the way in and
+  generates them on the way out from the structure of the message, so
+  an application cannot send framing that disagrees with its content.
+- Response content distinguishes no content (204, 205, 304) from empty
+  content, and is bytes, a file (for `sendfile`) or a stream that writes
+  through callbacks and returns its trailers. Request bodies are read
+  with `readChunk` and `readTrailers`. No streaming library is involved.
 
 ## Requirements for other layers
 
@@ -95,12 +105,43 @@ Each item came from a security review of `hyperdrive-semantics`
   for example by percent-encoding them on the way in, or to reject
   them. `Query` itself stays strict.
 
-### The `Response` type (next in `hyperdrive-semantics`)
+### Messages: what the protocol layers owe `Request` and `Response`
 
-- **R1.** Response fields can only be built from `FieldName` and
-  `FieldValue`, so decoded request data containing CR or LF (which
-  `pathSegments` allows) cannot be reflected into a header.
-- **R2.** `Set-Cookie` field lines are never combined.
+- **M1. Protocol fields on receipt.** Interpret and remove the fields
+  that `isProtocolField` identifies before building a `Request`
+  (`mkRequest` rejects them): framing becomes the body and its
+  `bodyLength`, and `Connection` options are acted on.
+- **M2. Framing on sending.** Generate `Content-Length` or the version's
+  framing from the `Content`: the length of the bytes, of the file or
+  range, or the length a stream declared. Abort the response if a stream
+  writes more or fewer bytes than it declared. Never send
+  `Content-Length` with a 1xx or 204 response, or a 2xx response to
+  CONNECT (RFC 9110 Section 8.6).
+- **M3. HEAD.** Send the fields that describe the content, such as its
+  length, and never the content itself. Applications build the same
+  `Response` as for GET.
+- **M4. Date.** An origin server with a clock must send `Date` in 2xx,
+  3xx and 4xx responses (RFC 9110 Section 6.6.1).
+- **M5. Interim responses.** 1xx responses are not `Response`s; they
+  need their own API (`100 Continue` when the application starts
+  reading a body sent with `Expect: 100-continue`, `103 Early Hints`),
+  and must never be sent to an HTTP/1.0 client (RFC 9110 Section 15.2).
+- **M6. Trailers.** Only send trailer fields whose definitions allow it
+  (RFC 9110 Section 6.5.1); at least drop protocol fields from the
+  trailers a stream returns. In HTTP/1.1, trailers need chunked framing.
+- **M7. Upgrade.** `Upgrade` is a protocol field. Present an HTTP/1.1
+  upgrade (WebSocket) to applications the way HTTP/2 and HTTP/3 present
+  it: as an extended CONNECT (RFC 8441, RFC 9220).
+- **M8. Connection context.** The peer address and whether the
+  connection is secured are not part of a `Request`; they travel
+  alongside it, and are needed for P3's https check.
+- **M9. Set-Cookie.** Serialize each `Set-Cookie` field line separately;
+  they can never be combined (RFC 9110 Section 5.3). `Fields` keeps them
+  separate.
+
+`Response` fields can only be built from `FieldName` and `FieldValue`,
+so decoded request data containing CR or LF (which `pathSegments`
+allows) cannot be reflected into a header.
 
 ### File serving
 
