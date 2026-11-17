@@ -24,7 +24,9 @@ library
   hs-source-dirs:   src
   default-language: GHC2021
   exposed-modules:  Hyperdrive.ABNF.Core
+                    Hyperdrive.ABNF.Generate
                     Hyperdrive.ABNF.Grammar
+                    Hyperdrive.ABNF.Library
                     Hyperdrive.ABNF.Parser
                     Hyperdrive.ABNF.Printer
                     Hyperdrive.ABNF.QQ
@@ -34,6 +36,7 @@ library
   build-depends:    base             >= 4.18 && < 5
                   , bytestring       >= 0.11.2 && < 0.13
                   , containers       >= 0.6  && < 0.9
+                  , QuickCheck       >= 2.14 && < 2.18
                   , template-haskell >= 2.20 && < 2.24
 
 test-suite hyperdrive-abnf-tests
@@ -41,7 +44,8 @@ test-suite hyperdrive-abnf-tests
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Generators
+  other-modules:    GenerateTests
+                    Generators
                     ParserTests
                     QQTests
                     RecognizeTests

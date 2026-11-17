@@ -15,6 +15,7 @@ import ParserTests (parserTests)
 import QQTests (qqTests)
 import RFCTests (rfcTests)
 import RecognizeTests (recognizeTests)
+import GenerateTests (generateTests)
 
 main :: IO ()
 main = do
@@ -22,7 +23,10 @@ main = do
  qq <- qqTests
  rfc <- rfcTests
  recognize <- recognizeTests
- defaultMain $ testGroup "hyperdrive-abnf"
+ generator <- generateTests
+ -- a test that hangs fails, rather than stopping the suite (and
+ -- mutation testing) for good
+ defaultMain $ localOption (mkTimeout (120 * 1000000)) $ testGroup "hyperdrive-abnf"
   [ testGroup "RuleName"
     [ testProperty "mkRuleName accepts exactly rulename" prop_mkRuleName
     , testProperty "examples"                            prop_ruleNameExamples
@@ -33,6 +37,7 @@ main = do
   , qq
   , rfc
   , recognize
+  , generator
   ]
 
 ------------------------------------------------------------------------------

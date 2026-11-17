@@ -15,6 +15,7 @@ import Hyperdrive.ABNF.QQ
 import Hyperdrive.ABNF.Recognize
 import Hyperdrive.ABNF.Types
 import Numeric.Natural (Natural)
+import Generators (genGrammar, shortInputs)
 import RFCTests (Spec(..), loadSpecs)
 import Test.QuickCheck
 import Test.Tasty
@@ -308,45 +309,13 @@ expand lo hi e = Alternation (Concatenation
 one :: Element -> Alternation
 one e = Alternation (Concatenation (Repetition Nothing e :| []) :| [])
 
--- | Random grammars whose rules only refer to rules defined before
--- them, over a small alphabet.
-genGrammar :: Gen [Rule]
-genGrammar = do
-  n <- choose (1, 4)
-  mapM (\i -> Rule (ruleN i) Basic <$> genAlt i (3 :: Int)) [0 .. n - 1]
-  where
-    ruleN i = name (C.pack ("r" ++ show (i :: Int)))
-    genAlt i d = Alternation <$> nonEmpty (Concatenation <$> nonEmpty (genRep i d))
-    nonEmpty g = do { k <- choose (0, 2); (:|) <$> g <*> vectorOf k g }
-    genRep i d = do
-      e <- genEl i d
-      frequency
-        [ (4, pure (Repetition Nothing e))
-        , (2, do lo <- elements [0, 1, 2]; hi <- elements [Nothing, Just 0, Just 1, Just 2, Just 3]
-                 pure (Repetition (Just (Repeat Star lo hi)) e))
-        , (2, do lo <- elements [0, 1, 2]; hi <- elements [Nothing, Just 2, Just 3]
-                 pure (Repetition (Just (Repeat Hash lo (max lo <$> hi))) e)) ]
-    genEl i d = frequency $
-      [ (3, CharVal <$> elements [CaseSensitive, CaseInsensitive] <*> elements ["a", "b", "ab", "A", ""])
-      , (2, NumVal Hexadecimal <$> elements [Values (0x61 :| []), Values (0x61 :| [0x62]), Range 0x61 0x62, Range 0x20 0x2C])
-      ] ++
-      [ (2, RuleRef . ruleN <$> choose (0, i - 1)) | i > 0 ] ++
-      [ (1, Group <$> genAlt i (d - 1)) | d > 0 ] ++
-      [ (1, Option <$> genAlt i (d - 1)) | d > 0 ]
-
--- | every string of up to four characters over the alphabet the
--- random grammars use
-shortInputs :: [ByteString]
-shortInputs = concatMap strings [0 .. 4]
-  where strings k = map C.pack (sequence (replicate k "aAb, "))
-
 genInput :: Gen ByteString
 genInput = C.pack <$> (choose (5, 9) >>= \k -> vectorOf k (elements "aAb, \t"))
 
 -- | The recognizer and the naive matcher find the same ends for every
 -- short input and some longer ones.
 prop_naive :: Property
-prop_naive = withMaxSuccess 300 $
+prop_naive = checkCoverage $ withMaxSuccess 300 $
   forAll genGrammar $ \rules ->
   forAll (elements [Sender, Recipient]) $ \form ->
   forAll (vectorOf 20 genInput) $ \longer ->
@@ -356,8 +325,7 @@ prop_naive = withMaxSuccess 300 $
         inputs = shortInputs ++ longer
         full = [ i | i <- inputs, B.length i `elem` expected i ]
         usesList = any (\r -> "Hash" `B.isInfixOf` C.pack (show r)) rules
-    in checkCoverage $
-       cover 50 (length full > 1) "more than one input matches" $
+    in cover 50 (length full > 1) "more than one input matches" $
        cover 20 (usesList && any (B.elem 0x2C) full) "a list with a comma matches" $
        counterexample (C.unpack (B.concat [ C.pack (show r) <> "\n" | r <- rules ])) $
        counterexample (show form) $
@@ -371,11 +339,11 @@ prop_naive = withMaxSuccess 300 $
 
 prop_errors :: Property
 prop_errors = once $ conjoin
-  [ matches Recipient lib "missing" (name "a") "" === Left (UnknownGrammar "missing")
-  , m "undefined" === Left (UndefinedRule (Tagged "T") (name "nowhere"))
+  [ matches Recipient lib "missing" (name "a") "" === Left (Lookup (UnknownGrammar "missing"))
+  , m "undefined" === Left (Lookup (UndefinedRule (Tagged "T") (name "nowhere")))
   , m "left" === Left (LeftRecursion (Tagged "T") (name "left"))
   , m "prose" === Left (ProseValue (Tagged "T") (name "prose") "some prose")
-  , m "imported" === Left (UnresolvedImport (Tagged "T") (name "imported") (Import (name "x") "ELSEWHERE" "1"))
+  , m "imported" === Left (Lookup (UnresolvedImport (Tagged "T") (name "imported") (Import (name "x") "ELSEWHERE" "1")))
     -- zero repetitions never look at the element
   , m "zero" === Right True
     -- core rules are available, and local definitions come first
@@ -383,6 +351,11 @@ prop_errors = once $ conjoin
   , matches Recipient lib "T" (name "DIGIT") "x" === Right True
     -- right recursion is fine
   , matches Recipient lib "T" (name "right") "xxx" === Right True
+    -- the same text means different things in different grammars: here
+    -- *x is first matched in A, then in B at the same position
+  , matches Recipient twoGrammars "A" (name "a") "2" === Right True
+  , matches Recipient twoGrammars "A" (name "a") "1122" === Right True
+  , matches Recipient twoGrammars "A" (name "a") "21" === Right False
   ]
   where
     lib = library [("T", grammar [abnf|
@@ -396,6 +369,16 @@ prop_errors = once $ conjoin
       right     = "x" right / "x"
       |])]
     m n = matches Recipient lib "T" (name n) ""
+    twoGrammars = library
+      [ ("A", grammar [abnf|
+          a = *x b
+          x = "1"
+          b = <b, see [B], Section 1>
+          |])
+      , ("B", grammar [abnf|
+          b = *x
+          x = "2"
+          |]) ]
 
 ------------------------------------------------------------------------------
 -- the RFCs' own grammars
@@ -436,7 +419,7 @@ prop_http lib = once $ conjoin
   , check lib "HTTP" "quoted-string" [("\"a\\\"b\"", True), ("\"a\"b\"", False), ("\"\x80\"", True)]
   , check lib "HTTP" "IMF-fixdate" [("Sun, 06 Nov 1994 08:49:37 GMT", True), ("Sun, 06 Nov 1994 08:49:37 gmt", False)]
   , matches Recipient lib "HTTP" (name "From") "a@b" === Left
-      (UnresolvedImport (Tagged "HTTP") (name "mailbox") (Import (name "mailbox") "RFC5322" "3.4"))
+      (Lookup (UnresolvedImport (Tagged "HTTP") (name "mailbox") (Import (name "mailbox") "RFC5322" "3.4")))
   ]
 
 prop_http1 :: Library -> Property

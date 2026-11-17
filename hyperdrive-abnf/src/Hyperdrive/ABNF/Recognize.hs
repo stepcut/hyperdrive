@@ -16,6 +16,7 @@ module Hyperdrive.ABNF.Recognize
     Library
   , library
   , Namespace(..)
+  , LookupError(..)
     -- * Recognizing
   , ListForm(..)
   , matches
@@ -31,24 +32,9 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Word (Word8)
-import Hyperdrive.ABNF.Core (coreRules)
-import Hyperdrive.ABNF.Grammar
+import Hyperdrive.ABNF.Library
 import Hyperdrive.ABNF.Types
 import Numeric.Natural (Natural)
-
--- | Grammars by the tag other grammars cite them with: a rule
--- @uri-host = \<host, see [URI], Section 3.2.2\>@ is looked up as
--- @host@ in the grammar tagged @URI@.
-newtype Library = Library (Map ByteString Grammar)
-
-library :: [(ByteString, Grammar)] -> Library
-library = Library . Map.fromList
-
--- | Where a rule is defined.
-data Namespace
-  = Core               -- ^ the core rules of RFC 5234, Appendix B.1
-  | Tagged ByteString  -- ^ a grammar in the 'Library'
-  deriving (Eq, Ord, Show)
 
 -- | Which expansion of @#@ lists to use (RFC 9110, Section 5.6.1):
 -- senders must not generate empty list elements (5.6.1.1), and
@@ -61,12 +47,8 @@ data ListForm
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 data RecognizeError
-  = UnknownGrammar ByteString
-    -- ^ no grammar in the library has this tag
-  | UndefinedRule Namespace RuleName
-    -- ^ a rule is used but defined neither in its grammar nor as a core rule
-  | UnresolvedImport Namespace RuleName Import
-    -- ^ an import cites a grammar that is not in the library
+  = Lookup LookupError
+    -- ^ a rule could not be found
   | ProseValue Namespace RuleName ByteString
     -- ^ a prose value had to be matched, which cannot be done
   | LeftRecursion Namespace RuleName
@@ -82,10 +64,10 @@ matches form lib tag name input =
 -- | Every position at which a match of the rule, starting at the
 -- beginning of the input, can end.
 matchEnds :: ListForm -> Library -> ByteString -> RuleName -> ByteString -> Either RecognizeError (Set Int)
-matchEnds form lib@(Library grammars) tag name input
-  | Map.member tag grammars =
-      fst <$> run (rule (Tagged tag) name 0) (Env form lib input) Map.empty
-  | otherwise = Left (UnknownGrammar tag)
+matchEnds form lib tag name input
+  | libraryHas lib tag =
+      fst <$> run (rule (Tagged tag) name 0) (Env form lib input) (Memo Map.empty Map.empty)
+  | otherwise = Left (Lookup (UnknownGrammar tag))
 
 ------------------------------------------------------------------------------
 -- the recognizer monad: the environment, a memo table, and errors
@@ -99,7 +81,14 @@ data Env = Env
 
 data Entry = InProgress | Done (Set Int)
 
-type Memo = Map (Namespace, RuleName, Int) Entry
+-- | Results for rules, and for repetitions, which would otherwise be
+-- recomputed from every position an enclosing repetition reaches:
+-- nested repetitions would cost the input length to the power of the
+-- nesting depth.
+data Memo = Memo
+  { memoRules       :: Map (Namespace, RuleName, Int) Entry
+  , memoRepetitions :: Map (Namespace, Repetition, Int) (Set Int)
+  }
 
 newtype R a = R { run :: Env -> Memo -> Either RecognizeError (a, Memo) }
 
@@ -131,39 +120,20 @@ putMemo m = R $ \_ _ -> Right ((), m)
 -- rules and names
 ------------------------------------------------------------------------------
 
--- | Where a rule name used in a namespace is defined, following
--- imports.
-resolve :: Namespace -> RuleName -> R (Namespace, Alternation)
-resolve ns name = do
-  Library grammars <- envLibrary <$> env
-  let local = case ns of
-        Core       -> lookupRule name coreGrammar
-        Tagged tag -> Map.lookup tag grammars >>= lookupRule name
-  case local of
-    Just alt -> case importOf alt of
-      Nothing -> pure (ns, alt)
-      Just i | Map.member (importFrom i) grammars -> resolve (Tagged (importFrom i)) (importName i)
-             | otherwise -> failWith (UnresolvedImport ns name i)
-    Nothing -> case lookupRule name coreGrammar of
-      Just alt -> pure (Core, alt)
-      Nothing  -> failWith (UndefinedRule ns name)
-
-coreGrammar :: Grammar
-coreGrammar = either (error . show) id (mkGrammar coreRules)
-
 rule :: Namespace -> RuleName -> Int -> R (Set Int)
 rule ns name pos = do
-  (ns', alt) <- resolve ns name
-  let key = (ns', name, pos)
+  lib <- envLibrary <$> env
+  (ns', name', alt) <- either (failWith . Lookup) pure (resolve lib ns name)
+  let key = (ns', name', pos)
   memo <- getMemo
-  case Map.lookup key memo of
+  case Map.lookup key (memoRules memo) of
     Just (Done ends) -> pure ends
-    Just InProgress  -> failWith (LeftRecursion ns' name)
+    Just InProgress  -> failWith (LeftRecursion ns' name')
     Nothing -> do
-      putMemo (Map.insert key InProgress memo)
-      ends <- alternation (ns', name) alt pos
+      putMemo memo { memoRules = Map.insert key InProgress (memoRules memo) }
+      ends <- alternation (ns', name') alt pos
       memo' <- getMemo
-      putMemo (Map.insert key (Done ends) memo')
+      putMemo memo' { memoRules = Map.insert key (Done ends) (memoRules memo') }
       pure ends
 
 ------------------------------------------------------------------------------
@@ -192,10 +162,19 @@ fromEach starts f = Set.unions <$> mapM f (Set.toList starts)
 
 repetition :: Context -> Repetition -> Int -> R (Set Int)
 repetition ctx (Repetition Nothing e) pos = element ctx e pos
-repetition ctx (Repetition (Just (Repeat Star lo hi)) e) pos = repeated lo hi (element ctx e) pos
-repetition ctx (Repetition (Just (Repeat Hash lo hi)) e) pos = do
-  form <- envForm <$> env
-  list form lo hi (element ctx e) pos
+repetition ctx@(ns, _) r@(Repetition (Just (Repeat kind lo hi)) e) pos = do
+  memo <- getMemo
+  let key = (ns, r, pos)
+  case Map.lookup key (memoRepetitions memo) of
+    Just ends -> pure ends
+    Nothing -> do
+      form <- envForm <$> env
+      ends <- case kind of
+        Star -> repeated lo hi (element ctx e) pos
+        Hash -> list form lo hi (element ctx e) pos
+      memo' <- getMemo
+      putMemo memo' { memoRepetitions = Map.insert key ends (memoRepetitions memo') }
+      pure ends
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-3.6
 -- # <a>*<b>element

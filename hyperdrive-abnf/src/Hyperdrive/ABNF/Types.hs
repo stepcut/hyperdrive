@@ -51,7 +51,7 @@ data Rule = Rule
   { ruleName      :: RuleName
   , ruleDefinedAs :: DefinedAs
   , ruleElements  :: Alternation
-  } deriving (Eq, Show, Lift)
+  } deriving (Eq, Ord, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # defined-as     =  *c-wsp ("=" / "=/") *c-wsp
@@ -101,17 +101,17 @@ ruleNameBytes (RuleName bs) = bs
 -- # alternation    =  concatenation
 -- # *(*c-wsp "/" *c-wsp concatenation)
 newtype Alternation = Alternation (NonEmpty Concatenation)
-  deriving (Eq, Show, Lift)
+  deriving (Eq, Ord, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # concatenation  =  repetition *(1*c-wsp repetition)
 newtype Concatenation = Concatenation (NonEmpty Repetition)
-  deriving (Eq, Show, Lift)
+  deriving (Eq, Ord, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # repetition     =  [repeat] element
 data Repetition = Repetition (Maybe Repeat) Element
-  deriving (Eq, Show, Lift)
+  deriving (Eq, Ord, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-4
 -- # repeat         =  1*DIGIT / (*DIGIT "*" *DIGIT)
@@ -125,7 +125,7 @@ data Repeat = Repeat
   { repeatKind :: RepeatKind
   , repeatMin  :: Natural
   , repeatMax  :: Maybe Natural
-  } deriving (Eq, Show, Lift)
+  } deriving (Eq, Ord, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc5234#section-3.7
 -- # That is, exactly <n> occurrences of <element>.
@@ -165,7 +165,7 @@ data Element
   | NumVal Base NumValBody
     -- | Invariant: the bytes are in @%x20-3D / %x3F-7E@.
   | ProseVal ByteString
-  deriving (Eq, Show, Lift)
+  deriving (Eq, Ord, Show, Lift)
 
 -- = https://www.rfc-editor.org/rfc/rfc7405#section-2.2
 -- # char-val       =  case-insensitive-string /
@@ -202,4 +202,4 @@ data Base = Binary | Decimal | Hexadecimal
 data NumValBody
   = Values (NonEmpty Natural)  -- ^ @%x0D.0A@: a sequence of characters
   | Range Natural Natural      -- ^ @%x30-39@: one character in a range
-  deriving (Eq, Show, Lift)
+  deriving (Eq, Ord, Show, Lift)

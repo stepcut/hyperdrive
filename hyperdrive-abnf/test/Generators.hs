@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- | QuickCheck generators for ABNF syntax trees. Every tree they
 -- generate satisfies the invariants documented in
 -- "Hyperdrive.ABNF.Types".
@@ -6,8 +7,11 @@ module Generators
   , genRule
   , genRuleName
   , genAlternation
+  , genGrammar
+  , shortInputs
   ) where
 
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Data.List.NonEmpty (NonEmpty(..))
@@ -79,3 +83,36 @@ nonEmpty :: Int -> Gen a -> Gen (NonEmpty a)
 nonEmpty n g = do
   k <- choose (0, min 3 n)
   (:|) <$> g <*> vectorOf k g
+
+-- | Random grammars whose rules only refer to rules defined before
+-- them, over a small alphabet.
+genGrammar :: Gen [Rule]
+genGrammar = do
+  n <- choose (1, 4)
+  mapM (\i -> Rule (ruleN i) Basic <$> genAlt i (3 :: Int)) [0 .. n - 1]
+  where
+    ruleN i = fromJust (mkRuleName (C.pack ("r" ++ show (i :: Int))))
+    genAlt i d = Alternation <$> some' (Concatenation <$> some' (genRep i d))
+    some' g = do { k <- choose (0, 2); (:|) <$> g <*> vectorOf k g }
+    genRep i d = do
+      e <- genEl i d
+      frequency
+        [ (4, pure (Repetition Nothing e))
+        , (2, do lo <- elements [0, 1, 2]; hi <- elements [Nothing, Just 0, Just 1, Just 2, Just 3]
+                 pure (Repetition (Just (Repeat Star lo hi)) e))
+        , (2, do lo <- elements [0, 1, 2]; hi <- elements [Nothing, Just 2, Just 3]
+                 pure (Repetition (Just (Repeat Hash lo (max lo <$> hi))) e)) ]
+    genEl i d = frequency $
+      [ (3, CharVal <$> elements [CaseSensitive, CaseInsensitive] <*> elements ["a", "b", "ab", "A", ""])
+      , (2, NumVal Hexadecimal <$> elements [Values (0x61 :| []), Values (0x61 :| [0x62]), Range 0x61 0x62, Range 0x20 0x2C])
+      ] ++
+      [ (2, RuleRef . ruleN <$> choose (0, i - 1)) | i > 0 ] ++
+      [ (1, Group <$> genAlt i (d - 1)) | d > 0 ] ++
+      [ (1, Option <$> genAlt i (d - 1)) | d > 0 ]
+
+-- | every string of up to four characters over the alphabet the
+-- random grammars use
+shortInputs :: [ByteString]
+shortInputs = concatMap strings [0 .. 4]
+  where strings k = map C.pack (sequence (replicate k "aAb, "))
+

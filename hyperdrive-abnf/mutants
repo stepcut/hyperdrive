@@ -231,9 +231,57 @@ why: ranges include their maximum
 + Just w | fromIntegral w >= lo && fromIntegral w < hi -> Set.singleton (pos + 1)
 
 why: re-entering a rule at the same position must not be mistaken for no match
-- Just InProgress  -> failWith (LeftRecursion ns' name)
+- Just InProgress  -> failWith (LeftRecursion ns' name')
 + Just InProgress  -> pure Set.empty
+
+why: nested repetitions are memoised under their own grammar
+- let key = (ns, r, pos)
++ let key = (Core, r, pos)
+
+file: src/Hyperdrive/ABNF/Library.hs
 
 why: a grammar's own definitions come before the core rules
 - Just alt -> case importOf alt of
 + Just alt | False -> case importOf alt of
+
+why: an unknown tag is not the same as an undefined rule
+- | Tagged tag <- ns, not (Map.member tag grammars) = Left (UnknownGrammar tag)
++ | Tagged tag <- ns, False = Left (UnknownGrammar tag)
+
+why: imports are followed into the grammar they cite
+- Just i | Map.member (importFrom i) grammars -> resolve lib (Tagged (importFrom i)) (importName i)
++ Just i | Map.member (importFrom i) grammars -> resolve lib ns (importName i)
+
+file: src/Hyperdrive/ABNF/Generate.hs
+
+why: a repetition with a minimum of zero can always be generated, as nothing
+- | lo == 0               -> Just 0
++ | lo == 0               -> elHeight lib hs ns e
+
+why: an option can always be generated, as nothing
+- Option _  -> Just 0
++ Option a  -> altHeight lib hs ns a
+
+why: never more repetitions than the maximum
+- pure (fromIntegral (maybe n (min n) hi))
++ pure (fromIntegral n)
+
+why: case-insensitive strings come in every mixture of case
+- | w >= 0x41 && w <= 0x5A = elements [w, w + 0x20]
++ | w >= 0x41 && w <= 0x5A = elements [w]
+
+why: values above 255 are not bytes
+- NumVal _ (Range lo hi) -> BB.word8 . fromIntegral <$> chooseNatural lo (min hi 255)
++ NumVal _ (Range lo hi) -> BB.word8 . fromIntegral <$> chooseNatural lo hi
+
+why: recipients' lists have empty elements too
+- empties = frequency [(4, pure []), (1, flip replicate mempty <$> choose (1, 2))]
++ empties = pure []
+
+why: lists have whitespace around their commas
+- ows = mconcat <$> (choose (0, 2 :: Int) >>= \n -> replicateM n (elements [BB.char7 ' ', BB.char7 '\t']))
++ ows = pure mempty
+
+why: a near miss is edited
+- n <- choose (1, 3)
++ n <- choose (0, 0)
