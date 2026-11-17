@@ -12,21 +12,51 @@ module Hyperdrive.ABNF.HTTP
   , rfc9110
   , rfc9112
   , rfc3986
+    -- * Errata
+  , rfc9110Errata
+  , rfc9112Errata
+  , withErrata
   ) where
 
 import Hyperdrive.ABNF.Grammar (mkGrammar)
 import Hyperdrive.ABNF.Library (Library, library)
 import Hyperdrive.ABNF.QQ (abnf)
-import Hyperdrive.ABNF.Types (RuleList)
+import Hyperdrive.ABNF.Types (Rule(..), RuleList)
 
--- | The three grammars, tagged as the RFCs cite each other: @HTTP@ for
--- RFC 9110, @HTTP/1.1@ for RFC 9112 and @URI@ for RFC 3986. Rules that
--- RFC 9110 imports from RFC 4647, 5646 and 5322 (@language-range@,
--- @language-tag@ and @mailbox@) cannot be resolved.
+-- | The three grammars, with their verified errata applied, tagged as
+-- the RFCs cite each other: @HTTP@ for RFC 9110, @HTTP/1.1@ for RFC 9112
+-- and @URI@ for RFC 3986. Rules that RFC 9110 imports from RFC 4647,
+-- 5646 and 5322 (@language-range@, @language-tag@ and @mailbox@) cannot
+-- be resolved.
 httpLibrary :: Library
 httpLibrary = library
-  [ ("HTTP", grammar rfc9110), ("HTTP/1.1", grammar rfc9112), ("URI", grammar rfc3986) ]
+  [ ("HTTP",     grammar (withErrata rfc9110Errata rfc9110))
+  , ("HTTP/1.1", grammar (withErrata rfc9112Errata rfc9112))
+  , ("URI",      grammar rfc3986) ]
   where grammar = either (error . ("Hyperdrive.ABNF.HTTP: " ++) . show) id . mkGrammar
+
+-- | Replace the rules that the errata correct.
+withErrata :: RuleList -> RuleList -> RuleList
+withErrata errata rules =
+  [ maybe r id (lookup (ruleName r) [ (ruleName e, e) | e <- errata ]) | r <- rules ]
+
+-- | Verified errata to RFC 9110's collected ABNF.
+--
+-- Erratum 7306 (Section 14.1.1): whitespace is allowed after the "=",
+-- as in the RFC's own example @bytes= 0-999, 4500-5499, -1000@.
+rfc9110Errata :: RuleList
+rfc9110Errata = [abnf|
+  ranges-specifier = range-unit "=" OWS range-set
+  |]
+
+-- | Verified errata to RFC 9112's collected ABNF.
+--
+-- Erratum 7744 (Section 1.2 and Appendix A): obs-text is defined in
+-- Section 5.5 of RFC 9110, not 5.6.4.
+rfc9112Errata :: RuleList
+rfc9112Errata = [abnf|
+  obs-text = <obs-text, see [HTTP], Section 5.5>
+  |]
 
 -- | The collected ABNF of RFC 9110 (HTTP Semantics), Appendix A.
 rfc9110 :: RuleList

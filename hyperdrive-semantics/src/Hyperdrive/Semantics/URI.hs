@@ -378,6 +378,13 @@ renderIPv4 a =
 -- # for the leading hexadecimal part (i.e., ::ffff:192.0.2.1 instead of
 -- # 0:0:0:0:0:ffff:192.0.2.1).
 
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-4.2.1
+-- # The use of the symbol "::" MUST be used to its maximum capability.
+
+-- Read literally, 4.2.1 would also shorten a single 0 field, which
+-- 4.2.2 forbids. Erratum 6272 (held for document update) limits 4.2.1
+-- to runs of two or more, which is what this does.
+
 -- = https://www.rfc-editor.org/rfc/rfc5952#section-4.2.2
 -- # The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
 

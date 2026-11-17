@@ -11,7 +11,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import Hyperdrive.ABNF.Core
 import Hyperdrive.ABNF.Grammar
-import Hyperdrive.ABNF.HTTP (rfc3986, rfc9110, rfc9112)
+import Hyperdrive.ABNF.HTTP (httpLibrary, rfc3986, rfc9110, rfc9110Errata, rfc9112, rfc9112Errata, withErrata)
 import Hyperdrive.ABNF.Lists (senderForm)
 import Hyperdrive.ABNF.Recognize (ListForm(..), library, matches)
 import Generators (genGrammar, shortInputs)
@@ -79,6 +79,8 @@ rfcTests = do
               , ["example-list", "example-list-elmt"], [] )
             , (http1, [], ["HTTP-name", "last-chunk"], [], [])
             , (uri, [], [], ["result"], []) ] ]
+    , testProperty "the errata replace rules that exist" prop_errataReplace
+    , testProperty "RFC 9110's Range examples need erratum 7306" prop_rangeErratum
     , testProperty "senderForm follows RFC 9110's expansions" prop_senderForm
     , testProperty "canonical does not change what a rule matches" prop_canonical
     , testProperty "Grammar merges =/ and rejects redefinition" prop_mkGrammar
@@ -406,3 +408,27 @@ prop_canonical = withMaxSuccess 300 $ forAll genGrammar $ \rules ->
       canonical' = m canon
   in conjoin [ counterexample (show i) (original i === canonical' i) | i <- shortInputs ]
 
+prop_errataReplace :: Property
+prop_errataReplace = once $ conjoin
+  [ counterexample (C.unpack (ruleNameBytes (ruleName e))) $
+      (ruleName e `elem` map ruleName rules) .&&. (e `notElem` rules)
+      .&&. map ruleName (withErrata fixes rules) === map ruleName rules
+  | (fixes, rules) <- [(rfc9110Errata, rfc9110), (rfc9112Errata, rfc9112)], e <- fixes ]
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-14.1.2
+-- # bytes= 0-999, 4500-5499, -1000
+
+-- | The examples of Section 14.1.2, one of which only the corrected rule
+-- allows.
+prop_rangeErratum :: Property
+prop_rangeErratum = once $ conjoin
+  [ counterexample (C.unpack e) $
+      (corrected e === Right True)
+      .&&. (published e === Right (e /= "bytes= 0-999, 4500-5499, -1000"))
+  | e <- examples ]
+  where
+    examples = [ "bytes=0-499", "bytes=500-999", "bytes=-500", "bytes=9500-", "bytes=0-0,-1"
+               , "bytes= 0-999, 4500-5499, -1000", "bytes=500-600,601-999", "bytes=500-700,601-999" ]
+    range = fromJust (mkRuleName "Range")
+    corrected = matches Recipient httpLibrary "HTTP" range
+    published = matches Recipient (library [("HTTP", either (error . show) id (mkGrammar rfc9110))]) "HTTP" range

@@ -345,3 +345,11 @@ why: the quoted grammars must be exactly the RFCs' appendices
 why: the quoted grammars must be exactly the RFCs' appendices
 -   status-code = 3DIGIT
 +   status-code = 3HEXDIG
+
+why: erratum 7306 allows whitespace after the "=" of a Range
+-   ranges-specifier = range-unit "=" OWS range-set
++   ranges-specifier = range-unit "=" range-set
+
+why: erratum 7744: obs-text is in Section 5.5 of RFC 9110
+-   obs-text = <obs-text, see [HTTP], Section 5.5>
++   obs-text = <obs-text, see [HTTP], Section 5.6.4>

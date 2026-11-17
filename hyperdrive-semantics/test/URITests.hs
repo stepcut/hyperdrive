@@ -283,6 +283,12 @@ prop_authorityExamples = conjoin
   ]
   where host' = show . authorityHost
 
+-- = https://www.rfc-editor.org/rfc/rfc5952#section-4.2.1
+-- # The use of the symbol "::" MUST be used to its maximum capability.
+-- # For example, 2001:db8:0:0:0:0:2:1 must be shortened to 2001:db8::2:1.
+-- # Likewise, 2001:db8::0:1 is not acceptable, because the symbol "::"
+-- # could have been used to produce a shorter representation 2001:db8::1.
+
 -- = https://www.rfc-editor.org/rfc/rfc5952#section-4.2.2
 -- # The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
 
@@ -303,6 +309,9 @@ prop_renderIPv6 = conjoin
   , r "[2001:0:0:1:0:0:0:1]"     === Right "[2001:0:0:1::1]"
   , r "[0:0:0:0:0:0:0:0]"        === Right "[::]"
   , r "[2001:DB8::0001]"         === Right "[2001:db8::1]"
+    -- the examples of 4.2.1
+  , r "[2001:db8:0:0:0:0:2:1]"   === Right "[2001:db8::2:1]"
+  , r "[2001:db8::0:1]"          === Right "[2001:db8::1]"
   ]
   where r = fmap renderAuthority . parseAuthority
 

@@ -212,7 +212,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc5952
     TEXT[!MUST]:    bit 0000 field MUST be represented as 0.
 
   SECTION: [Shorten as Much as Possible](#section-4.2.1)
-    TEXT[!MUST]:    The use of the symbol "::" MUST be used to its maximum capability.
+    TEXT[!MUST,implementation,test]:    The use of the symbol "::" MUST be used to its maximum capability.
+    TEXT[test]:    For example, 2001:db8:0:0:0:0:2:1 must be shortened to 2001:db8::2:1.
+    TEXT[test]:    Likewise, 2001:db8::0:1 is not acceptable, because the symbol "::"
+    TEXT[test]:    could have been used to produce a shorter representation 2001:db8::1.
 
   SECTION: [Handling One 16-Bit 0 Field](#section-4.2.2)
     TEXT[!MUST,implementation,test]:    The symbol "::" MUST NOT be used to shorten just one 16-bit 0 field.
@@ -1602,6 +1605,7 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    without impacting interoperability.
 
   SECTION: [Byte Ranges](#section-14.1.2)
+    TEXT[test]:            bytes= 0-999, 4500-5499, -1000
     TEXT[!MUST]: Since there is no predefined
     TEXT[!MUST]:    limit to the length of content, recipients MUST anticipate
     TEXT[!MUST]:    potentially large decimal numerals and prevent parsing errors due to
