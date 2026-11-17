@@ -11,6 +11,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import Hyperdrive.ABNF.Core
 import Hyperdrive.ABNF.Grammar
+import Hyperdrive.ABNF.HTTP (rfc3986, rfc9110, rfc9112)
 import Hyperdrive.ABNF.Parser
 import Hyperdrive.ABNF.Printer
 import Hyperdrive.ABNF.QQ
@@ -54,6 +55,8 @@ rfcTests = do
     , testProperty "rules defined as in the RFCs" (prop_definitions http http1 uri)
     , testProperty "only declared core rules are left undefined" (prop_coreRulesUsed http http1 uri)
     , testProperty "imports name rules defined where they say" (prop_imports tags [http, http1])
+    , testProperty "Hyperdrive.ABNF.HTTP quotes the appendices exactly" $ once $ conjoin
+        [ counterexample (specName s) (specRules s === quoted) | (s, quoted) <- zip specs [rfc9110, rfc9112, rfc3986] ]
     , testProperty "Grammar merges =/ and rejects redefinition" prop_mkGrammar
     , testProperty "importOf reads only the import form" prop_importOf
     , testProperty "sectionABNF drops the prose before the rules" prop_sectionABNF

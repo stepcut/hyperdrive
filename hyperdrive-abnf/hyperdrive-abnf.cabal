@@ -26,6 +26,7 @@ library
   exposed-modules:  Hyperdrive.ABNF.Core
                     Hyperdrive.ABNF.Generate
                     Hyperdrive.ABNF.Grammar
+                    Hyperdrive.ABNF.HTTP
                     Hyperdrive.ABNF.Library
                     Hyperdrive.ABNF.Parser
                     Hyperdrive.ABNF.Printer

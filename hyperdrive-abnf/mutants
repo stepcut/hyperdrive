@@ -285,3 +285,13 @@ why: lists have whitespace around their commas
 why: a near miss is edited
 - n <- choose (1, 3)
 + n <- choose (0, 0)
+
+file: src/Hyperdrive/ABNF/HTTP.hs
+
+why: the quoted grammars must be exactly the RFCs' appendices
+-   token = 1*tchar
++   token = *tchar
+
+why: the quoted grammars must be exactly the RFCs' appendices
+-   status-code = 3DIGIT
++   status-code = 3HEXDIG
