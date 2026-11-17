@@ -2,10 +2,13 @@
 -- strings that nearly do.
 --
 -- Valid strings are derived from the grammar. Every rule has a
--- minimum derivation depth, the fewest rule expansions needed to
--- produce any string at all; generation is given a depth budget and
--- only chooses alternatives that fit in it, so recursive rules always
--- terminate. Alternatives that cannot produce anything (prose values,
+-- minimum derivation depth, the fewest expansions of recursive rules
+-- needed to produce any string at all; generation is given a depth
+-- budget and only chooses alternatives that fit in it, so recursive
+-- rules always terminate. Only recursive rules (those that can reach
+-- themselves) count towards the depth: the others cannot nest without
+-- limit anyway, and counting them would rule out every alternative
+-- that goes through another rule once the budget runs low. Alternatives that cannot produce anything (prose values,
 -- values above 255, rules imported from a grammar the library does
 -- not have) are never chosen.
 --
@@ -30,6 +33,8 @@ import qualified Data.List.NonEmpty as NE
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Word (Word8)
 import Hyperdrive.ABNF.Library
 import Hyperdrive.ABNF.Recognize (ListForm(..))
@@ -76,9 +81,10 @@ build = L.toStrict . BB.toLazyByteString
 type Key = (Namespace, RuleName)
 
 data Info = Info
-  { infoLibrary :: Library
-  , infoRules   :: Map Key Alternation  -- ^ every rule reachable from the start
-  , infoHeights :: Map Key Int          -- ^ the rules that can be generated
+  { infoLibrary   :: Library
+  , infoRules     :: Map Key Alternation  -- ^ every rule reachable from the start
+  , infoRecursive :: Set Key              -- ^ the rules that can reach themselves
+  , infoHeights   :: Map Key Int          -- ^ the rules that can be generated
   }
 
 prepare :: Library -> ByteString -> RuleName -> Either GenerateError (Info, Key)
@@ -86,7 +92,8 @@ prepare lib tag name = do
   (ns, name', alt) <- either (Left . GenerateLookup) Right (resolve lib (Tagged tag) name)
   let key = (ns, name')
       rules = reachable lib (Map.singleton key alt) [key]
-      info = Info lib rules (heights lib rules)
+      recursive = recursiveRules lib rules
+      info = Info lib rules recursive (heights lib recursive rules)
   if Map.member key (infoHeights info) then Right (info, key) else Left (uncurry Ungeneratable key)
 
 -- | where a name used in a namespace is defined, if anywhere
@@ -112,14 +119,32 @@ refs (Alternation cs) = concatMap (\(Concatenation rs) -> concatMap rep (NE.toLi
       Option a  -> refs a
       _         -> []
 
+-- | the rules that can reach themselves through other rules
+recursiveRules :: Library -> Map Key Alternation -> Set Key
+recursiveRules lib rules = Set.fromList [ k | k <- Map.keys rules, k `Set.member` closure (direct k) ]
+  where
+    direct (ns, n) = Set.fromList
+      [ k | r <- maybe [] refs (Map.lookup (ns, n) rules), Just (k, _) <- [resolveKey lib ns r] ]
+    closure start = go start (Set.toList start)
+      where
+        go seen [] = seen
+        go seen (k : todo) =
+          let new = Set.toList (direct k `Set.difference` seen)
+          in go (foldr Set.insert seen new) (new ++ todo)
+
 -- | The minimum derivation depth of each rule that can be generated,
--- by iterating to a fixed point from "none can be".
-heights :: Library -> Map Key Alternation -> Map Key Int
-heights lib rules = go Map.empty
+-- counting only recursive rules, by iterating to a fixed point from
+-- "none can be".
+heights :: Library -> Set Key -> Map Key Alternation -> Map Key Int
+heights lib recursive rules = go Map.empty
   where
     go hs =
-      let hs' = Map.mapMaybeWithKey (\(ns, _) alt -> (+ 1) <$> altHeight lib hs ns alt) rules
+      let hs' = Map.mapMaybeWithKey (\k@(ns, _) alt -> (+ cost recursive k) <$> altHeight lib hs ns alt) rules
       in if hs' == hs then hs else go hs'
+
+-- | what expanding a rule costs from the depth budget
+cost :: Set Key -> Key -> Int
+cost recursive k = if Set.member k recursive then 1 else 0
 
 altHeight :: Library -> Map Key Int -> Namespace -> Alternation -> Maybe Int
 altHeight lib hs ns (Alternation cs) = minimumMaybe (mapMaybe (concHeight lib hs ns) (NE.toList cs))
@@ -162,7 +187,7 @@ generateRule form info key = do
     hs  = infoHeights info
 
     -- a rule with depth budget b, where its height is at most b
-    rule k@(ns, _) b = alternation ns (infoRules info Map.! k) (b - 1)
+    rule k@(ns, _) b = alternation ns (infoRules info Map.! k) (b - cost (infoRecursive info) k)
 
     alternation ns (Alternation cs) b =
       case [ c | c <- NE.toList cs, maybe False (<= b) (concHeight lib hs ns c) ] of

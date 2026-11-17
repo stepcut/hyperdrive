@@ -8,8 +8,10 @@ import Data.List (nub, sort)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
+import qualified Data.IntSet as IntSet
 import qualified Data.Set as Set
+import Hyperdrive.ABNF.Generate (validStrings)
 import Hyperdrive.ABNF.Grammar
 import Hyperdrive.ABNF.QQ
 import Hyperdrive.ABNF.Recognize
@@ -33,6 +35,7 @@ recognizeTests = do
     , testProperty "# lists, RFC 9110 examples"      prop_listExamples
     , testProperty "# lists, sender and recipient"   prop_listForms
     , testProperty "agrees with a naive matcher"     prop_naive
+    , testProperty "coverage agrees with a naive enumeration" prop_coverage
     , testProperty "errors"                          prop_errors
     , testProperty "RFC 3986 URIs"                   (prop_uri lib)
     , testProperty "RFC 9110 fields"                 (prop_http lib)
@@ -287,6 +290,76 @@ naive form rules input = \n p -> nub (ruleEnds n p)
       , let c = q + i, B.indexMaybe input c == Just 0x2C
       , j <- [0 .. B.length (B.takeWhile ows (B.drop (c + 1) input))] ]
     ows w = w == 0x20 || w == 0x09
+
+-- | Like 'naive', but each end comes with the alternatives (rule and
+-- position among its top-level alternatives) its derivation used.
+naiveCoverage :: ListForm -> Map.Map RuleName Alternation -> ByteString -> RuleName -> Int
+              -> [(Int, Set.Set (RuleName, Int))]
+naiveCoverage form rules input = ruleEnds
+  where
+    ruleEnds n p = case rules Map.! n of
+      Alternation cs -> nub [ (q, Set.insert (n, k) used)
+                            | (k, c) <- zip [0 ..] (NE.toList cs), (q, used) <- conc c p ]
+    alt (Alternation cs) p = nub (concatMap (\c -> conc c p) (NE.toList cs))
+    conc (Concatenation rs) p = foldl (\ps r -> nub [ (q', u <> u') | (q, u) <- ps, (q', u') <- rep r q ]) [(p, Set.empty)] (NE.toList rs)
+    rep (Repetition Nothing e) p = el e p
+    rep (Repetition (Just (Repeat Star lo hi)) e) p = star lo hi (el e) p
+    rep (Repetition (Just (Repeat Hash lo hi)) e) p = case form of
+      Sender    -> rep (Repetition Nothing (Group (expand lo hi e))) p
+      Recipient -> recipient lo hi (el e) p
+    el e p = case e of
+      RuleRef n -> ruleEnds n p
+      Group a   -> alt a p
+      Option a  -> nub ((p, Set.empty) : alt a p)
+      CharVal CaseSensitive str -> [ (p + B.length str, Set.empty) | str `B.isPrefixOf` B.drop p input ]
+      CharVal CaseInsensitive str ->
+        [ (p + B.length str, Set.empty) | C.map lower str `B.isPrefixOf` C.map lower (B.drop p input) ]
+      NumVal _ (Values vs) ->
+        [ (p + length vs, Set.empty)
+        | map fromIntegral (B.unpack (B.take (length vs) (B.drop p input))) == NE.toList vs ]
+      NumVal _ (Range lo hi) ->
+        [ (p + 1, Set.empty) | Just w <- [B.indexMaybe input p], fromIntegral w >= lo, fromIntegral w <= hi ]
+      ProseVal _ -> error "naiveCoverage: prose"
+    lower c = if c >= 'A' && c <= 'Z' then toEnum (fromEnum c + 32) else c
+    star lo hi f = go 0
+      where
+        go k p = nub $ [ (p, Set.empty) | k >= lo ] ++
+          if Just k == hi then []
+          else [ (r, u <> u') | (q, u) <- nub (f p), q /= p || k < lo, (r, u') <- go (k + 1) q ]
+    recipient lo hi f p =
+      nub [ (q, u) | (q, n, u) <- concatMap more ((p, 0, Set.empty) : [ (q, 1, u) | (q, u) <- f p ])
+                   , n >= lo, maybe True (n <=) hi ]
+      where
+        more (q, n, u) = (q, n, u) : concat
+          [ more (r, n, u) ++ concatMap (\(x, u') -> more (x, n + 1, u <> u')) (f r) | r <- separator q ]
+    separator q =
+      [ c + 1 + j
+      | i <- [0 .. B.length (B.takeWhile ows (B.drop q input))]
+      , let c = q + i, B.indexMaybe input c == Just 0x2C
+      , j <- [0 .. B.length (B.takeWhile ows (B.drop (c + 1) input))] ]
+    ows w = w == 0x20 || w == 0x09
+
+-- | The alternatives 'coverage' reports are those of the derivations a
+-- naive enumeration finds for the inputs that match.
+prop_coverage :: Property
+prop_coverage = checkCoverage $ withMaxSuccess 300 $
+  forAll genGrammar $ \rules ->
+  forAll (elements [Sender, Recipient]) $ \form ->
+  -- strings the rule matches, where it can be generated, and others;
+  -- short, since the naive enumeration is exponential in the length
+  forAll (let top = ruleName (last rules)
+              short g = fromMaybe "" <$> (resize 3 g `suchThatMaybe` ((<= 8) . B.length))
+              valid' = either (const genInput) short (validStrings form (library [("T", grammar rules)]) "T" top)
+          in vectorOf 30 (oneof [valid', valid', elements shortInputs])) $ \inputs ->
+    let top = ruleName (last rules)
+        g = grammar rules
+        expected = Set.unions [ u | i <- inputs, (q, u) <- naiveCoverage form (grammarRules g) i top 0, q == B.length i ]
+        actual = fmap (\m -> Set.fromList [ (n, k) | ((_, n), (_, ks)) <- Map.toList m, k <- IntSet.toList ks ])
+                      (coverage form (library [("T", g)]) "T" top inputs)
+    in cover 40 (Set.size expected >= 2) "two or more alternatives covered" $
+       counterexample (unlines (map show rules)) $
+       counterexample (show form) $
+         actual === Right expected
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-5.6.1.1
 -- # and for n >= 1 and m > 1:

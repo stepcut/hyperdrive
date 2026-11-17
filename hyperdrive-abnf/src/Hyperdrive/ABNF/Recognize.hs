@@ -27,10 +27,13 @@ module Hyperdrive.ABNF.Recognize
   , matches
   , matchEnds
   , RecognizeError(..)
+    -- * Coverage
+  , coverage
   ) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import Control.Monad (forM_, unless, when)
 import Data.Foldable (foldlM, toList)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
@@ -81,9 +84,36 @@ matchEnds form lib tag name =
 matchEnds' :: ListForm -> Library -> ByteString -> RuleName -> ByteString -> Either RecognizeError IntSet
 matchEnds' form lib tag name
   | libraryHas lib tag =
-      let program = compile lib (Tagged tag) name
+      let program = compile True lib (Tagged tag) name
       in \input -> fst <$> run (node (programStart program) 0) (Env form program input) emptyMemo
   | otherwise = const (Left (Lookup (UnknownGrammar tag)))
+
+-- | For every rule reachable from the given one, how many alternatives
+-- it has (at the top level) and which of them take part in some way of
+-- matching one of the inputs in full. Inputs the rule does not match
+-- are ignored. This tells which parts of a grammar a set of test inputs
+-- exercises.
+coverage :: ListForm -> Library -> ByteString -> RuleName -> [ByteString]
+         -> Either RecognizeError (Map (Namespace, RuleName) (Int, IntSet))
+coverage form lib tag name inputs
+  | not (libraryHas lib tag) = Left (Lookup (UnknownGrammar tag))
+  | otherwise = do
+      used <- foldlM one IntMap.empty inputs
+      pure $ Map.fromList
+        [ ((ns, n), (alternatives body, IntMap.findWithDefault IntSet.empty i used))
+        | (i, (ns, n, body)) <- IntMap.toList (programRules program) ]
+  where
+    -- without byte classes, so that every rule keeps its alternatives
+    program = compile False lib (Tagged tag) name
+    alternatives (NAlt as) = length as
+    alternatives _         = 1
+    one used input = do
+      let end = B.length input
+          go = do
+            ends <- node (programStart program) 0
+            when (IntSet.member end ends) (mark (programStart program) 0 end)
+      (_, memo) <- run go (Env form program input) emptyMemo
+      pure (IntMap.unionWith IntSet.union used (memoUsed memo))
 
 ------------------------------------------------------------------------------
 -- compiling
@@ -111,11 +141,12 @@ data Program = Program
 -- | Compile the rule and every rule reachable from it. Names that
 -- cannot be resolved and prose values become errors where they are
 -- used, so that they only fail a match that reaches them.
-compile :: Library -> Namespace -> RuleName -> Program
-compile lib ns0 name0 =
+compile :: Bool -> Library -> Namespace -> RuleName -> Program
+compile classes lib ns0 name0 =
   let (start, st) = runC (ref ns0 name0) (CState Map.empty IntMap.empty [] 0)
       st' = drain st
-  in classify (Program (csCompiled st') start)
+      program = Program (csCompiled st') start
+  in if classes then classify program else program
   where
     -- compile the rules found but not yet compiled
     drain st = case csTodo st of
@@ -240,10 +271,14 @@ data Entry = InProgress | Done IntSet
 data Memo = Memo
   { memoRules       :: IntMap (IntMap Entry)
   , memoRepetitions :: IntMap (IntMap IntSet)
+    -- | for 'coverage': the alternatives found to take part in a match
+  , memoUsed        :: IntMap IntSet
+    -- | for 'coverage': the rules already marked, with their spans
+  , memoMarked      :: Set (Int, Int, Int)
   }
 
 emptyMemo :: Memo
-emptyMemo = Memo IntMap.empty IntMap.empty
+emptyMemo = Memo IntMap.empty IntMap.empty IntMap.empty Set.empty
 
 newtype R a = R { run :: Env -> Memo -> Either RecognizeError (a, Memo) }
 
@@ -456,3 +491,114 @@ literal c s pos = do
         CaseInsensitive -> B.map lower candidate == B.map lower s
   pure (if B.length candidate == B.length s && same then IntSet.singleton (pos + B.length s) else IntSet.empty)
   where lower w = if w >= 0x41 && w <= 0x5A then w + 0x20 else w
+
+------------------------------------------------------------------------------
+-- coverage
+------------------------------------------------------------------------------
+
+-- | Mark the alternatives that take part in some way of matching the
+-- node exactly from one position to the other. Only parts that lie on
+-- such a match are visited: for a sequence, the positions between its
+-- items must both be reachable from the start and able to reach the
+-- end, and likewise for repetitions and lists, whose counts are
+-- tracked as in matching.
+mark :: Node -> Int -> Int -> R ()
+mark n s e = case n of
+  NAlt as -> forM_ as $ \a -> do
+    ends <- node a s
+    when (IntSet.member e ends) (mark a s e)
+  NSeq ns -> do
+    -- the positions after each item reachable from the start
+    forward <- scanM (\starts m -> fromEach starts (node m)) (IntSet.singleton s) ns
+    -- of those, the ones from which the rest of the sequence can reach
+    -- the end, working back from the end
+    let back [] acc = pure acc
+        back _ [] = pure []
+        back ((m, before) : rest) acc@(after : _) = do
+          keep <- filterM' (\p -> not . IntSet.null . IntSet.intersection after <$> node m p) before
+          back rest (keep : acc)
+    alive <- back (reverse (zip ns forward)) [IntSet.singleton e `IntSet.intersection` last forward]
+    forM_ (zip3 ns alive (drop 1 alive)) $ \(m, before, after) ->
+      forM_ (IntSet.toList before) $ \p -> do
+        ends <- node m p
+        forM_ (IntSet.toList (ends `IntSet.intersection` after)) (mark m p)
+  NOption m -> do
+    ends <- node m s
+    when (IntSet.member e ends) (mark m s e)
+  NRule i -> do
+    memo <- getMemo
+    unless (Set.member (i, s, e) (memoMarked memo)) $ do
+      putMemo memo { memoMarked = Set.insert (i, s, e) (memoMarked memo) }
+      (_, _, body) <- (IntMap.! i) . programRules . envProgram <$> env
+      case body of
+        NAlt as -> forM_ (zip [0 ..] as) $ \(k, a) -> do
+          ends <- node a s
+          when (IntSet.member e ends) $ do
+            memo' <- getMemo
+            putMemo memo' { memoUsed = IntMap.insertWith IntSet.union i (IntSet.singleton k) (memoUsed memo') }
+            mark a s e
+        _ -> mark body s e
+  NRepeat _ Star lo hi m -> do
+    let cap c = maybe (min c lo) (min c) hi
+        initial = [((s, 0), Nothing)]
+        -- a repetition that matches nothing only counts towards the
+        -- minimum: beyond it, it would make any alternative that can
+        -- match the empty string look covered
+        stepFrom (p, c)
+          | hi == Just c = pure []
+          | otherwise = do
+              ends <- node m p
+              pure [ ((q, cap (c + 1)), Just (p, q)) | q <- IntSet.toList ends, q /= p || c < lo ]
+    spans <- onAcceptedPaths initial stepFrom (\(p, c) -> p == e && c >= lo)
+    forM_ spans (\(p, q) -> mark m p q)
+  NRepeat _ Hash lo hi m -> do
+    form <- envForm <$> env
+    input <- envInput <$> env
+    firsts <- node m s
+    let cap c = maybe (min c lo) (\h -> min c (h + 1)) hi
+        initial = [ ((q, cap 1), Just (s, q)) | q <- IntSet.toList firsts ]
+                  ++ [ ((s, 0), Nothing) | form == Recipient ]
+        stepFrom (p, c) = concat <$> mapM (\q -> do
+          es <- node m q
+          pure ([ ((x, cap (c + 1)), Just (q, x)) | x <- IntSet.toList es ]
+                ++ [ ((q, c), Nothing) | form == Recipient ])) (separator input p)
+    spans <- onAcceptedPaths initial stepFrom (\(p, c) -> p == e && c >= lo && maybe True (c <=) hi)
+    forM_ spans (\(p, q) -> mark m p q)
+  _ -> pure ()
+
+-- | The labels of the edges that lie on a path from the initial edges to
+-- an accepting state, in a finite graph given by its edges out of each
+-- state.
+onAcceptedPaths :: [((Int, Natural), Maybe (Int, Int))]
+                -> ((Int, Natural) -> R [((Int, Natural), Maybe (Int, Int))])
+                -> ((Int, Natural) -> Bool)
+                -> R [(Int, Int)]
+onAcceptedPaths initial stepFrom accepting = do
+  (edges, states) <- explore [ s | (s, _) <- initial ] (Set.fromList [ s | (s, _) <- initial ]) []
+  let allEdges = [ (Nothing, to, l) | (to, l) <- initial ] ++ edges
+      alive = grow (Set.filter accepting states)
+      grow live =
+        let live' = live `Set.union` Set.fromList [ f | (Just f, t, _) <- allEdges, Set.member t live ]
+        in if Set.size live' == Set.size live then live else grow live'
+  pure [ span' | (_, t, Just span') <- allEdges, Set.member t alive ]
+  where
+    explore [] seen acc = pure (acc, seen)
+    explore (x : todo) seen acc = do
+      out <- stepFrom x
+      let new = [ t | (t, _) <- out, not (Set.member t seen) ]
+      explore (new ++ todo) (foldr Set.insert seen new) ([ (Just x, t, l) | (t, l) <- out ] ++ acc)
+
+scanM :: Monad m => (b -> a -> m b) -> b -> [a] -> m [b]
+scanM _ z [] = pure [z]
+scanM f z (x : xs) = do
+  z' <- f z x
+  (z :) <$> scanM f z' xs
+
+filterM' :: Monad m => (Int -> m Bool) -> IntSet -> m IntSet
+filterM' p set = IntSet.fromList <$> filterM'' (IntSet.toList set)
+  where
+    filterM'' [] = pure []
+    filterM'' (x : xs) = do
+      keep <- p x
+      rest <- filterM'' xs
+      pure (if keep then x : rest else rest)

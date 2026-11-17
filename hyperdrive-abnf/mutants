@@ -288,6 +288,26 @@ why: a run of a class starts at the minimum
 - pure (IntSet.fromDistinctAscList [pos + fromIntegral lo .. pos + top])
 + pure (IntSet.fromDistinctAscList [pos .. pos + top])
 
+why: coverage: an empty repetition beyond the minimum is not a use of the element
+- pure [ ((q, cap (c + 1)), Just (p, q)) | q <- IntSet.toList ends, q /= p || c < lo ]
++ pure [ ((q, cap (c + 1)), Just (p, q)) | q <- IntSet.toList ends ]
+
+why: coverage: only positions that can still reach the end lie on a match
+- keep <- filterM' (\p -> not . IntSet.null . IntSet.intersection after <$> node m p) before
++ keep <- pure before
+
+why: coverage: an option's contents can take part in a match
+- NOption m -> do
++ NOption m -> if True then pure () else do
+
+why: coverage: each alternative is recorded under its own position
+- putMemo memo' { memoUsed = IntMap.insertWith IntSet.union i (IntSet.singleton k) (memoUsed memo') }
++ putMemo memo' { memoUsed = IntMap.insertWith IntSet.union i (IntSet.singleton 0) (memoUsed memo') }
+
+why: coverage: a recipient's list can have empty elements
+- ++ [ ((q, c), Nothing) | form == Recipient ])) (separator input p)
++ )) (separator input p)
+
 file: src/Hyperdrive/ABNF/Library.hs
 
 why: a grammar's own definitions come before the core rules
@@ -335,6 +355,10 @@ why: lists have whitespace around their commas
 why: a near miss is edited
 - n <- choose (1, 3)
 + n <- choose (0, 0)
+
+why: only recursive rules count towards the depth budget; counting every rule starves alternatives that go through other rules
+- cost recursive k = if Set.member k recursive then 1 else 0
++ cost _ _ = 1
 
 file: src/Hyperdrive/ABNF/HTTP.hs
 

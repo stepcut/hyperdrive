@@ -12,6 +12,7 @@ import Hyperdrive.ABNF.Generate
 import Hyperdrive.ABNF.Grammar
 import Hyperdrive.ABNF.QQ
 import Hyperdrive.ABNF.Recognize
+import qualified Data.IntSet as IntSet
 import Hyperdrive.ABNF.Types
 import RFCTests (Spec(..), loadSpecs)
 import Test.QuickCheck
@@ -28,6 +29,12 @@ generateTests = do
   pure $ testGroup "Generator"
     [ testProperty "every RFC rule's strings are recognized" (prop_rfcRules lib everyRule)
     , testProperty "the rules that cannot be generated"   (prop_ungeneratable lib everyRule)
+    , testGroup "generated strings use every alternative"
+        [ testProperty (C.unpack tag ++ " " ++ C.unpack r) (prop_everyAlternative lib tag r)
+        | (tag, r) <- [ ("URI", "URI-reference"), ("URI", "IPv6address"), ("HTTP", "Host")
+                      , ("HTTP", "field-value"), ("HTTP", "quoted-string"), ("HTTP", "parameters")
+                      , ("HTTP", "comment"), ("HTTP", "method"), ("HTTP", "IMF-fixdate")
+                      , ("HTTP/1.1", "HTTP-message") ] ]
     , testProperty "random grammars' strings are recognized" prop_randomGrammars
     , testProperty "every string of a finite language"      prop_complete
     , testProperty "list forms"                             prop_listForms
@@ -148,3 +155,16 @@ prop_nearMisses lib tag r =
       in cover 20 (ok == Right False) "rejected" $
          cover 3 (ok == Right True) "accepted" $
          counterexample (show (s, ok)) (either (const False) (const True) ok)
+
+-- | Every alternative of every rule reachable from the rule takes part
+-- in matching some of a few thousand of its generated strings, so the
+-- tests that use them exercise the whole grammar.
+prop_everyAlternative :: Library -> ByteString -> ByteString -> Property
+prop_everyAlternative lib tag r = once $
+  forAll (resize 30 (vectorOf 3000 (either (error . show) id (validStrings Recipient lib tag (name r))))) $ \ss ->
+    case coverage Recipient lib tag (name r) ss of
+      Left err -> counterexample (show err) False
+      Right m ->
+        let missing = [ (C.unpack (ruleNameBytes n), [ k | k <- [0 .. count - 1], not (IntSet.member k used) ])
+                      | ((_, n), (count, used)) <- Map.toList m, IntSet.size used < count ]
+        in counterexample ("alternatives never used: " ++ show missing) (null missing)
