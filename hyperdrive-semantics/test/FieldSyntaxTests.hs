@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module FieldSyntaxTests (fieldSyntaxTests, quotedStringO) where
+module FieldSyntaxTests (fieldSyntaxTests) where
 
 import Control.Monad (replicateM, void)
 import Data.ByteString (ByteString)
@@ -9,6 +9,7 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit, ord, toLower)
 import Data.Either (isRight)
 import Data.List (nub)
 import Data.Maybe (catMaybes)
+import Grammar (rule)
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.FieldSyntax
 import Test.QuickCheck
@@ -18,7 +19,8 @@ import Text.ParserCombinators.ReadP
 
 fieldSyntaxTests :: TestTree
 fieldSyntaxTests = testGroup "FieldSyntax"
-  [ testGroup "Lists"
+  [ testProperty "the ReadP oracles accept what RFC 9110's grammar does" prop_oraclesMatchGrammar
+  , testGroup "Lists"
     [ testProperty "RFC 9110 5.6.1.2 examples"                 prop_rfcListExamples
     , testProperty "RFC 9110 5.5 examples (commas in quotes)"  prop_rfcQuotedListExamples
     , testProperty "splitList agrees with the grammar (exhaustive, no comments)" $
@@ -103,6 +105,21 @@ parametersO = catMaybes <$> many (ows >> char ';' >> ows >> option Nothing (Just
 -- | all complete parses, without duplicates
 parses :: ReadP a -> String -> [a]
 parses p s = [ x | (x, "") <- readP_to_S p s ]
+
+-- | The oracles above return values, which a grammar cannot, so they
+-- stay; but which strings they accept is checked here against the
+-- rules of RFC 9110 as published, rather than trusted as transcriptions.
+prop_oraclesMatchGrammar :: Property
+prop_oraclesMatchGrammar = once $ conjoin
+  [ agree "quoted-string" (void quotedStringO) "\"\\a \t\DEL\128("
+  , agree "comment"       commentO             "()\\a \t\"\128"
+  , agree "parameters"    (void parametersO)   "a;= \"\\A"
+  ]
+  where
+    agree r p alphabet =
+      let failures = [ s | s <- concatMap (`replicateM` alphabet) [0 .. 6]
+                         , not (null (parses p s)) /= rule "HTTP" r s ]
+      in counterexample (r ++ " disagrees for: " ++ show (take 10 failures)) (null failures)
 
 ------------------------------------------------------------------------------
 -- Lists

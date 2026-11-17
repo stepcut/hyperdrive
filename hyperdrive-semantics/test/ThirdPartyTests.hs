@@ -11,7 +11,7 @@ import Data.Char (isDigit)
 import Data.List (nub, sort, (\\))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import FieldSyntaxTests (quotedStringO)
+import Grammar (ruleBytes)
 import Hyperdrive.Semantics.FieldSyntax (parseQuotedString)
 import Hyperdrive.Semantics.SafePath
 import Hyperdrive.Semantics.URI
@@ -19,7 +19,6 @@ import System.Environment (lookupEnv)
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
-import Text.ParserCombinators.ReadP (readP_to_S)
 
 thirdPartyTests :: TestTree
 thirdPartyTests = testGroup "Third-party data"
@@ -297,8 +296,7 @@ prop_lfiPayloads = do
 --
 -- * of the strings RFC 9651 rejects, we accept exactly those that the
 --   RFC 9110 grammar allows (tab, non-ASCII, escapes of characters other
---   than DQUOTE and backslash), as decided by the ReadP transcription of
---   that grammar in FieldSyntaxTests;
+--   than DQUOTE and backslash), as decided by RFC 9110's own grammar;
 --
 -- * and, as a check on the subset relation itself, the RFC 9110 grammar
 --   accepts every string RFC 9651 accepts.
@@ -309,7 +307,7 @@ prop_sfStrings = do
   let ours v = case parseQuotedString v of
         Right (s, rest) | B.null rest -> Just s
         _                             -> Nothing
-      rfc9110 v = not (null [ () | (_, "") <- readP_to_S quotedStringO (C.unpack v) ])
+      rfc9110 = ruleBytes "HTTP" "quoted-string"
       check :: (String, ByteString, Maybe ByteString) -> [(String, String)]
       check (name, v, Just want) =
         [ (name, "accepted by RFC 9651: same value") | ours v /= Just want ]

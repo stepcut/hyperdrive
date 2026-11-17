@@ -24,8 +24,7 @@ import Hyperdrive.Semantics.URI
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
-import Text.ParserCombinators.ReadP
-import qualified URIOracle as O
+import Grammar (rule)
 import URITests (expectedAuthority, ipv6FromPieces)
 
 allOctets :: String
@@ -50,8 +49,8 @@ exhaustiveTests = testGroup "Exhaustive"
         let a = s ++ ".0.0.0"
         in case parseAuthority (C.pack a) of
              Right (Authority (HostIPv4 v) _) ->
-               O.matches O.ipv4address a && v == fromIntegral (read s :: Int) * 2 ^ (24 :: Int)
-             Right (Authority (HostRegName _) _) -> not (O.matches O.ipv4address a)
+               rule "URI" "IPv4address" a && v == fromIntegral (read s :: Int) * 2 ^ (24 :: Int)
+             Right (Authority (HostRegName _) _) -> not (rule "URI" "IPv4address" a)
              _ -> False
     , exhaustive "port value"         "0356"      7 $ \s ->
         case parseAuthority (C.pack ("x:" ++ s)) of
@@ -64,16 +63,16 @@ exhaustiveTests = testGroup "Exhaustive"
     [ agrees "reg-name"             allOctets 1 authorityOK expectedAuthority
     , agrees "IP-literal"           allOctets 1
         (\s -> authorityOK ("[v1." ++ s ++ "]")) (\s -> expectedAuthority ("[v1." ++ s ++ "]"))
-    , agrees "path"                 allOctets 2 (isJust . mkPath . C.pack)  (O.matches O.pathAbempty)
-    , agrees "query"                allOctets 2 (isJust . mkQuery . C.pack) (O.matches O.query)
-    , agrees "scheme"               allOctets 2 (isJust . mkScheme . C.pack) (O.matches O.scheme)
+    , agrees "path"                 allOctets 2 (isJust . mkPath . C.pack)  (rule "URI" "path-abempty")
+    , agrees "query"                allOctets 2 (isJust . mkQuery . C.pack) (rule "URI" "query")
+    , agrees "scheme"               allOctets 2 (isJust . mkScheme . C.pack) (rule "URI" "scheme")
     , agrees "field value"          allOctets 2
-        (isRight . mkFieldValue . C.pack) (fieldValueOracle . stripOWS)
+        (isRight . mkFieldValue . C.pack) (rule "HTTP" "field-value" . stripOWS)
     ]
   , testGroup "Scheme, path and query"
-    [ agrees "scheme"       "a1+-.:"    6 (isJust . mkScheme . C.pack) (O.matches O.scheme)
-    , agrees "path"         "/%aF.?:2 " 6 (isJust . mkPath . C.pack)   (O.matches O.pathAbempty)
-    , agrees "query"        "/%aF?#: "  6 (isJust . mkQuery . C.pack)  (O.matches O.query)
+    [ agrees "scheme"       "a1+-.:"    6 (isJust . mkScheme . C.pack) (rule "URI" "scheme")
+    , agrees "path"         "/%aF.?:2 " 6 (isJust . mkPath . C.pack)   (rule "URI" "path-abempty")
+    , agrees "query"        "/%aF?#: "  6 (isJust . mkQuery . C.pack)  (rule "URI" "query")
     , exhaustive "pathSegments" "/.%20eE"   7 $ \s ->
         case mkPath (C.pack s) of
           Nothing -> True
@@ -81,7 +80,7 @@ exhaustiveTests = testGroup "Exhaustive"
     ]
   , testGroup "Fields and methods"
     [ agrees "field value"  " \t\r\n\0a\DEL\128" 6
-        (isRight . mkFieldValue . C.pack) (fieldValueOracle . stripOWS)
+        (isRight . mkFieldValue . C.pack) (rule "HTTP" "field-value" . stripOWS)
     , exhaustive "field value error" "\r\n\0\1\DEL a" 6 $ \s ->
         case mkFieldValue (C.pack s) of
           Left ContainsCRLFNUL -> any (`elem` "\r\n\0") s
@@ -197,20 +196,6 @@ normalRegName s =
 
 stripOWS :: String -> String
 stripOWS = L.dropWhileEnd (`elem` " \t") . dropWhile (`elem` " \t")
-
--- | RFC 9110, Section 5.5, transcribed into 'ReadP':
---
--- > field-value    = *field-content
--- > field-content  = field-vchar [ 1*( SP / HTAB / field-vchar ) field-vchar ]
--- > field-vchar    = VCHAR / obs-text
-fieldValueOracle :: String -> Bool
-fieldValueOracle s = not (null (readP_to_S (fieldValue <* eof) s))
-  where
-    fieldValue   = many fieldContent
-    fieldContent = do
-      _ <- fieldVChar
-      optional (many1 (fieldVChar +++ char ' ' +++ char '\t') >> fieldVChar)
-    fieldVChar = satisfy (\c -> (ord c >= 0x21 && ord c <= 0x7E) || ord c >= 0x80)
 
 -- | @token = 1*tchar@, using the byte level 'isTChar', which is itself
 -- checked exhaustively against the RFC's alternative definition

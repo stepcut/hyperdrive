@@ -17,6 +17,7 @@ import Test.Tasty.QuickCheck (testProperty)
 import ComplexityTests (complexityTests)
 import ExhaustiveTests (exhaustiveTests)
 import FieldSyntaxTests (fieldSyntaxTests)
+import GrammarTests (grammarTests)
 import IndependentTests (independentTests)
 import MessageTests (messageTests)
 import SafePathTests (safePathTests)
@@ -57,6 +58,7 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
   , securityTests
   , messageTests
   , thirdPartyTests
+  , grammarTests
   , testGroup "Independent re-derivation"
       [ testProperty d (once b) | (d, b) <- independentTests ]
   ]

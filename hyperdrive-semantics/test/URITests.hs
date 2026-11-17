@@ -17,7 +17,7 @@ import Numeric (showHex)
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
-import qualified URIOracle as O
+import Grammar (rule)
 
 uriTests :: TestTree
 uriTests = testGroup "URI"
@@ -181,7 +181,7 @@ unsafeRight = either (error . ("unsafeRight: " ++) . show) id
 -- and minus ports that do not fit in 16 bits.
 expectedAuthority :: String -> Bool
 expectedAuthority s =
-  O.matches O.hostPort s && not (null hostPart) && portFits
+  rule "HTTP" "Host" s && not (null hostPart) && portFits
   where
     -- a ":" can only appear in the host inside "[...]"
     (hostPart, portPart) = case s of
@@ -229,8 +229,8 @@ prop_ipv4FirstMatch = checkCoverage $
     -- first-match-wins applies to the normal form, in which encoded
     -- unreserved characters are decoded (RFC 3986 Section 6.2.2.2)
     in cover 20 isIPv4 "IPv4" $
-       cover 0.5 (O.matches O.ipv4address (decodeUnreserved s) && not (O.matches O.ipv4address s)) "IPv4 once decoded" $
-       isIPv4 === O.matches O.ipv4address (decodeUnreserved s)
+       cover 0.5 (rule "URI" "IPv4address" (decodeUnreserved s) && not (rule "URI" "IPv4address" s)) "IPv4 once decoded" $
+       isIPv4 === rule "URI" "IPv4address" (decodeUnreserved s)
 
 -- | decode percent-encodings of unreserved characters, and nothing else
 decodeUnreserved :: String -> String
@@ -356,7 +356,7 @@ prop_regNameNormalForm = conjoin
 
 prop_schemeGrammar :: Property
 prop_schemeGrammar = checkCoverage $ forAll (mixed (elements ["http", "https", "coap+tcp", "a.b-c"])) $ \s ->
-  let expected = O.matches O.scheme s
+  let expected = rule "URI" "scheme" s
   in cover 30 expected "valid" $ cover 15 (not expected) "invalid" $
      isJust (mkScheme (pack s)) === expected
 
@@ -379,7 +379,7 @@ genPath = mixed (concat <$> listOf (('/' :) <$> genSegment))
 
 prop_pathGrammar :: Property
 prop_pathGrammar = checkCoverage $ forAll genPath $ \s ->
-  let expected = O.matches O.pathAbempty s
+  let expected = rule "URI" "path-abempty" s
   in cover 30 expected "valid" $ cover 15 (not expected) "invalid" $
      isJust (mkPath (pack s)) === expected
 
@@ -433,7 +433,7 @@ prop_pathNUL = once $ conjoin
 
 prop_queryGrammar :: Property
 prop_queryGrammar = checkCoverage $ forAll (mixed (concat <$> listOf (elements ["a=b", "&", "/", "?", "%20", ":@"]))) $ \s ->
-  let expected = O.matches O.query s
+  let expected = rule "URI" "query" s
   in cover 30 expected "valid" $ cover 15 (not expected) "invalid" $
      isJust (mkQuery (pack s)) === expected
 

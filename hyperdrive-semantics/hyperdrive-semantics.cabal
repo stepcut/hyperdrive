@@ -53,18 +53,21 @@ test-suite hyperdrive-semantics-tests
   other-modules:    ComplexityTests
                     ExhaustiveTests
                     FieldSyntaxTests
+                    Grammar
+                    GrammarTests
                     IndependentTests
                     MessageTests
                     SafePathTests
                     SecurityTests
                     ThirdPartyTests
-                    URIOracle
                     URITests
   default-language: GHC2021
   build-depends:    base
                   , aeson            >= 2.0  && < 2.3
                   , bytestring
+                  , containers
                   , text
+                  , hyperdrive-abnf
                   , hyperdrive-semantics
                   , QuickCheck       >= 2.14 && < 2.18
                   , tasty            >= 1.4  && < 1.6
