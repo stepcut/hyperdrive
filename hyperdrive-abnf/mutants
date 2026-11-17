@@ -187,16 +187,16 @@ why: prose before the rules is not ABNF
 file: src/Hyperdrive/ABNF/Recognize.hs
 
 why: an option may match nothing
-- Option alt   -> Set.insert pos <$> alternation ctx alt pos
-+ Option alt   -> alternation ctx alt pos
+- NOption m -> IntSet.insert pos <$> node m pos
++ NOption m -> node m pos
 
 why: a maximum below the minimum allows no repetitions at all
-- | maybe False (< lo) hi = pure Set.empty
-+ | False = pure Set.empty
+- | maybe False (< lo) hi = pure IntSet.empty
++ | False = pure IntSet.empty
 
 why: at most hi repetitions
-- | Set.null frontier || hi == Just k = pure seen
-+ | Set.null frontier || hi == Just (k + 1) = pure seen
+- | IntSet.null frontier || hi == Just k = pure seen
++ | IntSet.null frontier || hi == Just (k + 1) = pure seen
 
 why: a list's count is capped at the minimum only when there is no maximum
 - cap n = maybe (min n lo) (\m -> min n (m + 1)) hi
@@ -207,36 +207,56 @@ why: #element allows the empty list for senders too
 + ))
 
 why: a recipient's list may start with an empty element
-- let start = Set.fromList ([ (e, cap 1) | e <- Set.toList firsts ] ++ [ (pos, 0) | form == Recipient ])
-+ let start = Set.fromList [ (e, cap 1) | e <- Set.toList firsts ]
+- let start = Set.fromList ([ (e, cap 1) | e <- IntSet.toList firsts ] ++ [ (pos, 0) | form == Recipient ])
++ let start = Set.fromList [ (e, cap 1) | e <- IntSet.toList firsts ]
 
 why: a recipient's list may contain empty elements
-- pure (Set.fromList ([ (e, cap (n + 1)) | e <- Set.toList es ] ++ [ (q, n) | form == Recipient ]))
-+ pure (Set.fromList [ (e, cap (n + 1)) | e <- Set.toList es ])
+- pure (Set.fromList ([ (e, cap (n + 1)) | e <- IntSet.toList es ] ++ [ (q, n) | form == Recipient ]))
++ pure (Set.fromList [ (e, cap (n + 1)) | e <- IntSet.toList es ])
 
 why: the OWS after the comma may be shorter than the longest run
-- in if B.indexMaybe input afterOWS == Just 0x2C then [comma .. comma + run] else []
-+ in if B.indexMaybe input afterOWS == Just 0x2C then [comma + run] else []
+- in if B.indexMaybe input afterOWS == Just 0x2C then [comma .. comma + run'] else []
++ in if B.indexMaybe input afterOWS == Just 0x2C then [comma + run'] else []
 
 why: unquoted strings are case-insensitive
 - CaseInsensitive -> B.map lower candidate == B.map lower s
 + CaseInsensitive -> candidate == s
 
 why: a sequence of values must all be present
-- pure $ if and (zipWith (\i v -> fmap fromIntegral (B.indexMaybe input i) == Just v) [pos ..] (toListNE vs))
-+ pure $ if and (zipWith (\i v -> fmap fromIntegral (B.indexMaybe input i) == Just v) [pos ..] (take 1 (toListNE vs)))
+- pure $ if B.pack ws == B.take (length ws) (B.drop pos input)
++ pure $ if B.pack (take 1 ws) == B.take 1 (B.drop pos input)
 
 why: ranges include their maximum
-- Just w | fromIntegral w >= lo && fromIntegral w <= hi -> Set.singleton (pos + 1)
-+ Just w | fromIntegral w >= lo && fromIntegral w < hi -> Set.singleton (pos + 1)
+- | lo <= 255 && lo <= hi -> pure (NClass (setOf [fromIntegral lo .. fromIntegral (min hi 255)]))
++ | lo <= 255 && lo <= hi -> pure (NClass (setOf [fromIntegral lo .. fromIntegral (min hi 254)]))
 
 why: re-entering a rule at the same position must not be mistaken for no match
-- Just InProgress  -> failWith (LeftRecursion ns' name')
-+ Just InProgress  -> pure Set.empty
+- failWith (LeftRecursion ns name)
++ pure IntSet.empty
 
-why: nested repetitions are memoised under their own grammar
-- let key = (ns, r, pos)
-+ let key = (Core, r, pos)
+why: each repetition is memoised under its own number
+- (NRepeat (csRepeats st) kind lo hi n, st { csRepeats = csRepeats st + 1 })
++ (NRepeat (csRepeats st) kind lo hi n, st)
+
+why: each rule is memoised under its own number
+- let i = Map.size (csIds st)
++ let i = 0
+
+why: a one-letter string is a class of both cases
+- NLiteral CaseInsensitive s | B.length s == 1 -> Just (setOf (cases (B.head s)))
++ NLiteral CaseInsensitive s | B.length s == 1 -> Just (setOf [B.head s])
+
+why: a class is the union of its alternatives
+- orSets a b = B.pack (B.zipWith max a b)
++ orSets a b = B.pack (B.zipWith min a b)
+
+why: a run of a class is limited by the maximum
+- top  = maybe run' (min run' . fromIntegral) hi
++ top  = run'
+
+why: a run of a class starts at the minimum
+- pure (IntSet.fromDistinctAscList [pos + fromIntegral lo .. pos + top])
++ pure (IntSet.fromDistinctAscList [pos .. pos + top])
 
 file: src/Hyperdrive/ABNF/Library.hs
 
