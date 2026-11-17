@@ -28,6 +28,7 @@ library
                     Hyperdrive.ABNF.Grammar
                     Hyperdrive.ABNF.HTTP
                     Hyperdrive.ABNF.Library
+                    Hyperdrive.ABNF.Lists
                     Hyperdrive.ABNF.Parser
                     Hyperdrive.ABNF.Printer
                     Hyperdrive.ABNF.QQ

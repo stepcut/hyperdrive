@@ -12,6 +12,12 @@ import qualified Data.Set as Set
 import Hyperdrive.ABNF.Core
 import Hyperdrive.ABNF.Grammar
 import Hyperdrive.ABNF.HTTP (rfc3986, rfc9110, rfc9112)
+import Hyperdrive.ABNF.Lists (senderForm)
+import Hyperdrive.ABNF.Recognize (ListForm(..), library, matches)
+import Generators (genGrammar, shortInputs)
+import Data.List (nub, sortOn)
+import Data.Foldable (toList)
+import Data.List.NonEmpty (NonEmpty(..))
 import Hyperdrive.ABNF.Parser
 import Hyperdrive.ABNF.Printer
 import Hyperdrive.ABNF.QQ
@@ -57,6 +63,24 @@ rfcTests = do
     , testProperty "imports name rules defined where they say" (prop_imports tags [http, http1])
     , testProperty "Hyperdrive.ABNF.HTTP quotes the appendices exactly" $ once $ conjoin
         [ counterexample (specName s) (specRules s === quoted) | (s, quoted) <- zip specs [rfc9110, rfc9112, rfc3986] ]
+    , testGroup "The ABNF in each RFC's sections agrees with its Appendix A"
+        [ testProperty (specName s) (prop_bodyMatchesAppendix s unparsable spelling bodyOnly appendixOnly)
+        | (s, unparsable, spelling, bodyOnly, appendixOnly) <-
+            [ ( http
+              , [ ("3.6", "UA ======================================= O")
+                , ("3.7", "UA =========== A =========== B =========== C =========== O")
+                , ("3.8", "UA =========== A =========== B - - - - - - C - - - - - - O")
+                , ("11.6.1", "type=1, title=\"Login to \\\"apps\\\"\"") ]
+                ++ [ ("14.1.2", e) | e <- [ "bytes=0-499", "bytes=500-999", "bytes=-500", "bytes=9500-"
+                                          , "bytes=0-0,-1", "bytes= 0-999, 4500-5499, -1000"
+                                          , "bytes=500-600,601-999" ] ]
+              , [ "date3", "day-name", "day-name-l", "etagc", "GMT", "http-URI", "https-URI"
+                , "media-range", "month", "qdtext", "qvalue", "weak" ]
+              , ["example-list", "example-list-elmt"], [] )
+            , (http1, [], ["HTTP-name", "last-chunk"], [], [])
+            , (uri, [], [], ["result"], []) ] ]
+    , testProperty "senderForm follows RFC 9110's expansions" prop_senderForm
+    , testProperty "canonical does not change what a rule matches" prop_canonical
     , testProperty "Grammar merges =/ and rejects redefinition" prop_mkGrammar
     , testProperty "importOf reads only the import form" prop_importOf
     , testProperty "sectionABNF drops the prose before the rules" prop_sectionABNF
@@ -278,3 +302,107 @@ prop_sectionABNF = once $
     , "B.  Next"
     , "   f = g" ]))
     === "a = b\r\nc = d /\r\n e\r\n"
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-5.6.1.1
+-- # Appendix A shows the collected ABNF for senders after the list
+-- # constructs have been expanded.
+
+-- | The rules defined in the sections of an RFC (outside its
+-- appendices), with their lists expanded in the sender form, are
+-- exactly the rules of its collected ABNF. Paragraphs that look like
+-- rules but do not parse, and rules in only one of the two places,
+-- are listed.
+prop_bodyMatchesAppendix :: Spec -> [(ByteString, ByteString)] -> [ByteString] -> [ByteString] -> [ByteString] -> Property
+prop_bodyMatchesAppendix s unparsable spelling bodyOnly appendixOnly = once $
+  let blocks = [ (sec, t) | (sec, t) <- abnfBlocks (specLines s), not (isAppendix sec) ]
+      isAppendix sec = maybe False ((\c -> c >= 'A' && c <= 'Z') . fst) (C.uncons sec)
+      parsed = [ (sec, t, parseRuleList t) | (sec, t) <- blocks ]
+      failures = [ (sec, C.takeWhile (/= '\r') t) | (sec, t, Left _) <- parsed ]
+      defs = Map.fromListWith (flip (++))
+               [ (ruleName r, [(sec, r)]) | (sec, _, Right rs) <- parsed, r <- rs ]
+      appendix = grammarRules (specGrammar s)
+      inconsistent = [ (n, map fst ds) | (n, ds) <- Map.toList defs
+                                       , length (nub (map (ruleElements . snd) ds)) > 1 ]
+      incremental = [ (n, sec) | (n, ds) <- Map.toList defs, (sec, r) <- ds, ruleDefinedAs r /= Basic ]
+      compared = [ (sec, n, senderForm (ruleElements r), a)
+                 | (n, (sec, r) : _) <- Map.toList defs, Just a <- [Map.lookup n appendix] ]
+      mismatches = [ (sec, n, printAlternation x, printAlternation a)
+                   | (sec, n, x, a) <- compared, canonical x /= canonical a ]
+      spellings = [ n | (_, n, x, a) <- compared, x /= a, canonical x == canonical a ]
+      names = map (C.unpack . ruleNameBytes)
+  in conjoin
+       [ counterexample "unparsable paragraphs" $ failures === unparsable
+       , counterexample "rules defined differently in two sections" $ inconsistent === []
+       , counterexample "incremental definitions" $ incremental === []
+       , counterexample "rules only in the sections" $
+           names (Map.keys (defs `Map.difference` appendix)) === map C.unpack bodyOnly
+       , counterexample "rules only in Appendix A" $
+           names (Map.keys (appendix `Map.difference` defs)) === map C.unpack appendixOnly
+       , counterexample "rules that differ (section, rule, expanded, appendix)" $
+           sortOn (\(sec, _, _, _) -> sec) mismatches === []
+       , counterexample "rules written differently but equivalent" $
+           names spellings === map C.unpack spelling
+       ]
+
+-- | A form in which differences of spelling disappear. Strings and
+-- sequences of values become one item per character, so that adjacent
+-- strings merge (@"http" "://"@ and @"http://"@); characters other than
+-- case-insensitive letters become values in hexadecimal; @1*1x@ is
+-- @x@; and groups that only wrap one item, or are part of a sequence,
+-- are removed.
+canonical :: Alternation -> Alternation
+canonical (Alternation cs) = Alternation (fmap concatenation cs)
+  where
+    concatenation (Concatenation rs) = Concatenation (fromList' (concatMap repetition (toList rs)))
+    repetition (Repetition r e) = case (once' r, element e) of
+      -- a group that is just one sequence, in a sequence, is part of it
+      (Nothing, Group (Alternation (Concatenation rs :| []))) -> toList rs
+      -- a repeated group of one unrepeated item repeats the item
+      (r', Group (Alternation (Concatenation (Repetition Nothing x :| []) :| []))) -> [Repetition r' x]
+      (r', e') -> [Repetition r' e']
+    once' (Just (Repeat Star 1 (Just 1))) = Nothing
+    once' r = r
+    element e = case e of
+      Group a -> Group (canonical a)
+      Option a -> Option (canonical a)
+      CharVal c str | not (B.null str) -> characters [ char c w | w <- B.unpack str ]
+      NumVal _ (Values vs) -> characters [ NumVal Hexadecimal (Values (v :| [])) | v <- toList vs ]
+      NumVal _ body -> NumVal Hexadecimal body
+      _ -> e
+    char CaseInsensitive w | isLetter w = CharVal CaseInsensitive (B.singleton w)
+    char _ w = NumVal Hexadecimal (Values (fromIntegral w :| []))
+    characters [x] = x
+    characters xs = Group (Alternation (Concatenation (fromList' (map (Repetition Nothing) xs)) :| []))
+    isLetter w = (w >= 0x61 && w <= 0x7A) || (w >= 0x41 && w <= 0x5A)
+    fromList' (x : xs) = x :| xs
+    fromList' []       = error "canonical: empty"
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-5.6.1.1
+-- # <n>#<m>element => element <n-1>*<m-1>( OWS "," OWS element )
+prop_senderForm :: Property
+prop_senderForm = once $ conjoin
+  [ expands "#e"    "[ e *( OWS \",\" OWS e ) ]"
+  , expands "1#e"   "e *( OWS \",\" OWS e )"
+  , expands "2#e"   "e 1*( OWS \",\" OWS e )"
+  , expands "1#2e"  "e *1( OWS \",\" OWS e )"
+  , expands "2#3e"  "e 1*2( OWS \",\" OWS e )"
+  , expands "#3e"   "[ e *2( OWS \",\" OWS e ) ]"
+  , expands "1#1e"  "e"
+  , expands "a #( b c ) d" "a [ ( b c ) *( OWS \",\" OWS ( b c ) ) ] d"
+  , expands "[ 1#e ]" "[ e *( OWS \",\" OWS e ) ]"
+  ]
+  where
+    expands from to = counterexample (C.unpack from) $
+      fmap senderForm (parseAlternation from) === parseAlternation to
+
+-- | the canonical form of a rule matches the same strings as the rule
+prop_canonical :: Property
+prop_canonical = withMaxSuccess 300 $ forAll genGrammar $ \rules ->
+  let canon = [ Rule n d (canonical a) | Rule n d a <- rules ]
+      top = ruleName (last rules)
+      m rs = matches Recipient (library [("T", either (error . show) id (mkGrammar rs))]) "T" top
+      -- each compiled once, for all the inputs
+      original = m rules
+      canonical' = m canon
+  in conjoin [ counterexample (show i) (original i === canonical' i) | i <- shortInputs ]
+

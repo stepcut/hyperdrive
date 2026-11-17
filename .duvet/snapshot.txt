@@ -517,6 +517,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[implementation]:      #element => [ 1#element ]
     TEXT[test]:    and for n >= 1 and m > 1:
     TEXT[implementation,test]:      <n>#<m>element => element <n-1>*<m-1>( OWS "," OWS element )
+    TEXT[test]:    Appendix A shows the collected ABNF for senders after the list
+    TEXT[test]:    constructs have been expanded.
 
   SECTION: [Recipient Requirements](#section-5.6.1.2)
     TEXT[implementation]:    Empty elements do not contribute to the count of elements present.

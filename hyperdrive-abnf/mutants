@@ -184,6 +184,36 @@ why: prose before the rules is not ABNF
 - in not (B.null name) && "=" `B.isPrefixOf` C.dropWhile (== ' ') rest
 + in not (B.null name)
 
+why: a rule that follows prose, where a page break was removed, starts its own paragraph
+- | (first : _) <- reverse cur, startsRule l, not (startsRule first) = flush sec cur (go sec [l] ls)
++ | (first : _) <- reverse cur, False, startsRule l, not (startsRule first) = flush sec cur (go sec [l] ls)
+
+why: prose that follows a rule, where a page break was removed, is not part of it
+- | (first : _) <- reverse cur, indent l < indent first = flush sec cur (go sec [l] ls)
++ | (first : _) <- reverse cur, False, indent l < indent first = flush sec cur (go sec [l] ls)
+
+why: the rules of the appendices are not in a numbered section
+- | Just rest <- B.stripPrefix "Appendix " l = Just (C.takeWhile (/= '.') rest)
++ | Just rest <- B.stripPrefix "Appendix " l = Just (C.takeWhile (/= '.') ("1" <> rest))
+
+file: src/Hyperdrive/ABNF/Lists.hs
+
+why: #element => [ 1#element ]
+- list 0 hi e = Repetition Nothing (Option (Alternation (Concatenation (list 1 hi e) :| []))) :| []
++ list 0 hi e = list 1 hi e
+
+why: the rest of the list has one element fewer than the minimum
+- [ Repetition (Just (Repeat Star (lo - 1) (subtract 1 <$> hi))) $ Group $ Alternation $
++ [ Repetition (Just (Repeat Star lo (subtract 1 <$> hi))) $ Group $ Alternation $
+
+why: the rest of the list has one element fewer than the maximum
+- [ Repetition (Just (Repeat Star (lo - 1) (subtract 1 <$> hi))) $ Group $ Alternation $
++ [ Repetition (Just (Repeat Star (lo - 1) hi)) $ Group $ Alternation $
+
+why: lists inside groups are expanded too
+- element (Group a)  = Group (senderForm a)
++ element (Group a)  = Group a
+
 file: src/Hyperdrive/ABNF/Recognize.hs
 
 why: an option may match nothing
