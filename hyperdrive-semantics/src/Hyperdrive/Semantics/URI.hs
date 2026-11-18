@@ -373,6 +373,13 @@ renderIPv4 a =
 -- # Such prefixes are defined in [RFC4291] and [RFC2765] at the time of
 -- # this writing.
 
+-- Only RFC 4291's IPv4-mapped prefix is used. RFC 2765's IPv4-translated
+-- prefix (::ffff:0:0:0/96) is not: RFC 6145 obsoleted RFC 2765 and moved
+-- the address formats to RFC 6052, which defines 64:ff9b::/96 instead,
+-- and neither RFC 6145 nor RFC 7915 mentions the old format. The
+-- 64:ff9b::/96 prefix is not used either, to agree with common
+-- implementations (Python's ipaddress, for one). See docs/design-notes.md.
+
 -- = https://www.rfc-editor.org/rfc/rfc5952#section-5
 -- # The text representation method noted in Section 4 should be applied
 -- # for the leading hexadecimal part (i.e., ::ffff:192.0.2.1 instead of
@@ -398,15 +405,14 @@ renderIPv4 a =
 
 -- | RFC 5952: lower case hex, no leading zeros, and the longest run of
 -- two or more zero pieces (the first, if there is a tie) replaced by
--- "::". Addresses with the well-known prefixes for embedded IPv4
--- addresses, IPv4-mapped (@::ffff:0:0/96@, RFC 4291) and
--- IPv4-translated (@::ffff:0:0:0/96@, RFC 2765), end in dotted decimal.
--- RFC 4291's deprecated IPv4-compatible prefix (@::/96@) is not
--- included: it covers @::1@, which would otherwise become @::0.0.0.1@.
+-- "::". IPv4-mapped addresses (@::ffff:0:0/96@, RFC 4291) end in dotted
+-- decimal. No other prefix does: not RFC 4291's deprecated
+-- IPv4-compatible prefix (@::/96@), which covers @::1@, nor the
+-- obsolete IPv4-translated prefix of RFC 2765 (@::ffff:0:0:0/96@), nor
+-- RFC 6052's @64:ff9b::/96@.
 renderIPv6 :: IPv6 -> ByteString
 renderIPv6 (IPv6 0 lo)
-  | lo `shiftR` 32 == 0x0000FFFF = "::ffff:"   <> renderIPv4 (fromIntegral lo)
-  | lo `shiftR` 32 == 0xFFFF0000 = "::ffff:0:" <> renderIPv4 (fromIntegral lo)
+  | lo `shiftR` 32 == 0x0000FFFF = "::ffff:" <> renderIPv4 (fromIntegral lo)
 renderIPv6 a =
   case longestZeroRun ps of
     Nothing       -> hexes ps

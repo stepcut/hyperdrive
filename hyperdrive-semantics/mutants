@@ -103,8 +103,8 @@ why: %00 should be rejected (RFC 3986 Section 7.3)
 + Just d | False -> Left SegmentContainsNUL
 
 why: RFC 5952 Section 5 recommends mixed notation for IPv4-mapped addresses
-- | lo `shiftR` 32 == 0x0000FFFF = "::ffff:"   <> renderIPv4 (fromIntegral lo)
-+ | False = "::ffff:"   <> renderIPv4 (fromIntegral lo)
+- | lo `shiftR` 32 == 0x0000FFFF = "::ffff:" <> renderIPv4 (fromIntegral lo)
++ | False = "::ffff:" <> renderIPv4 (fromIntegral lo)
 
 why: RFC 3986 Section 6.2.2.2: encoded unreserved characters are decoded in the normal form
 - | isUnreserved c = toLower c : go rest
@@ -289,3 +289,9 @@ why: authentication fields cannot be trailers
 why: the end of a file range must not overflow
 - | len <= maxBound - off = Just (FileRange off len)
 + | True = Just (FileRange off len)
+
+file: src/Hyperdrive/Semantics/URI.hs
+
+why: only IPv4-mapped addresses use mixed notation; RFC 2765's IPv4-translated prefix is obsolete
+- | lo `shiftR` 32 == 0x0000FFFF = "::ffff:" <> renderIPv4 (fromIntegral lo)
++ | lo `shiftR` 32 == 0x0000FFFF || lo `shiftR` 32 == 0xFFFF0000 = "::ffff:" <> renderIPv4 (fromIntegral lo)

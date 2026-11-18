@@ -34,6 +34,17 @@ So:
   names, and it guarantees only that they cannot escape a directory.
 - Host names are kept in RFC 3986 normal form. `canonicalHost` and
   `authorityKey` give the form to compare hosts with.
+- IPv6 addresses are rendered as RFC 5952 says, with mixed notation
+  (`::ffff:192.0.2.1`) only for IPv4-mapped addresses. RFC 5952 Section 5
+  also names RFC 2765's IPv4-translated prefix, `::ffff:0:0:0/96`, "at
+  the time of this writing", but RFC 6145 obsoleted RFC 2765 and moved
+  the address formats to RFC 6052, and neither RFC 6145 nor RFC 7915
+  mentions that prefix again. RFC 6052's well-known prefix `64:ff9b::/96`
+  meets RFC 5952's condition and RFC 6052 allows dotted decimal for it,
+  but it is rendered in hexadecimal, as Python's `ipaddress` does, since
+  rendering only matters to systems that compare our text with theirs.
+  Parsing and host comparison work on the address value, so none of
+  this affects which requests are accepted or matched.
 - `Request` and `Response` are version-independent. Fields about framing
   or the connection (`Connection`, `Keep-Alive`, `Proxy-Connection`,
   `TE`, `Transfer-Encoding`, `Upgrade`, `Content-Length`) are never part

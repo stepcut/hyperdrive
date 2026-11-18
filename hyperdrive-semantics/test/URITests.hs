@@ -331,8 +331,10 @@ prop_renderIPv6Mixed = conjoin
   [ r "[::FFFF:1.2.3.4]:443"      === Right "[::ffff:1.2.3.4]:443"
   , r "[0:0:0:0:0:ffff:c000:201]" === Right "[::ffff:192.0.2.1]"
   , r "[::ffff:0.0.0.0]"          === Right "[::ffff:0.0.0.0]"
-  -- IPv4-translated, RFC 2765
-  , r "[::ffff:0:c000:201]"       === Right "[::ffff:0:192.0.2.1]"
+  -- RFC 2765's IPv4-translated prefix is obsolete (RFC 6145), and
+  -- RFC 6052's well-known prefix is not used either: see design-notes.md
+  , r "[::ffff:0:192.0.2.1]"      === Right "[::ffff:0:c000:201]"
+  , r "[64:ff9b::192.0.2.33]"     === Right "[64:ff9b::c000:221]"
   -- not a well-known prefix, so no mixed notation
   , r "[::1]"                     === Right "[::1]"
   , r "[::1.2.3.4]"               === Right "[::102:304]"
