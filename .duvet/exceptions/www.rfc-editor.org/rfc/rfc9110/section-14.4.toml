@@ -3,6 +3,17 @@ target = "https://www.rfc-editor.org/rfc/rfc9110#section-14.4"
 
 [[exception]]
 quote = '''
+If a 206 (Partial Content) response contains a Content-Range header
+field with a range unit (Section 14.1) that the recipient does not
+understand, the recipient MUST NOT attempt to recombine it with a
+stored representation.
+'''
+reason = '''
+Applies to recipients of responses (clients, caches and proxies); hyperdrive only receives requests.
+'''
+
+[[exception]]
+quote = '''
 A proxy that receives such a message SHOULD
 forward it downstream.
 '''

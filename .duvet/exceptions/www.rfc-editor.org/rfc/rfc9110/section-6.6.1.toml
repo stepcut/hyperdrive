@@ -3,6 +3,27 @@ target = "https://www.rfc-editor.org/rfc/rfc9110#section-6.6.1"
 
 [[exception]]
 quote = '''
+A recipient with a clock that receives a response message without a
+Date header field MUST record the time it was received and append a
+corresponding Date header field to the message's header section if it
+is cached or forwarded downstream.
+'''
+reason = '''
+Applies to recipients of responses (clients, caches and proxies); hyperdrive only receives requests.
+'''
+
+[[exception]]
+quote = '''
+A recipient with a clock that receives a response with an invalid
+Date header field value MAY replace that value with the time that
+response was received.
+'''
+reason = '''
+Applies to recipients of responses (clients, caches and proxies); hyperdrive only receives requests.
+'''
+
+[[exception]]
+quote = '''
 A user agent MAY send a Date header field in a request, though
 generally will not do so unless it is believed to convey useful
 information to the server.

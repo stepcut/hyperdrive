@@ -20,3 +20,12 @@ semantics do not anticipate such data.
 reason = '''
 Applies to clients and user agents; hyperdrive is a server.
 '''
+
+[[exception]]
+quote = '''
+As a result, a sender MUST NOT forward a message with a Content-
+Length header field value that is known to be incorrect.
+'''
+reason = '''
+Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
+'''

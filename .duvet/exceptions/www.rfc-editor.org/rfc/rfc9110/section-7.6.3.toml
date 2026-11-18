@@ -23,6 +23,33 @@ Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
 
 [[exception]]
 quote = '''
+However, if the real host is considered to be sensitive
+information, a sender MAY replace it with a pseudonym.
+'''
+reason = '''
+Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
+'''
+
+[[exception]]
+quote = '''
+A sender MAY generate comments to identify the software of each
+recipient, analogous to the User-Agent and Server header fields.
+'''
+reason = '''
+Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
+'''
+
+[[exception]]
+quote = '''
+However, comments in Via are optional, and a recipient MAY remove
+them prior to forwarding the message.
+'''
+reason = '''
+Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
+'''
+
+[[exception]]
+quote = '''
 An intermediary used as a portal through a network firewall SHOULD
 NOT forward the names and ports of hosts within the firewall region
 unless it is explicitly enabled to do so.
@@ -46,6 +73,25 @@ quote = '''
 An intermediary MAY combine an ordered subsequence of Via header
 field list members into a single member if the entries have identical
 received-protocol values.
+'''
+reason = '''
+Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
+'''
+
+[[exception]]
+quote = '''
+A sender SHOULD NOT combine multiple list members unless they are all
+under the same organizational control and the hosts have already been
+replaced by pseudonyms.
+'''
+reason = '''
+Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
+'''
+
+[[exception]]
+quote = '''
+A sender MUST NOT combine members that have
+different received-protocol values.
 '''
 reason = '''
 Applies to proxies, gateways and tunnels; hyperdrive is an origin server.

@@ -7,5 +7,5 @@ Any client or server MAY employ a cache, though a cache
 cannot be used while acting as a tunnel.
 '''
 reason = '''
-Applies to caches; hyperdrive does not cache responses.
+A permission hyperdrive does not use: it does not cache responses.
 '''

@@ -14,6 +14,12 @@ recipient or implementation stays in scope. Requirements the heuristic
 gets wrong are listed in OVERRIDES, which records decisions made by
 reading the text.
 
+On 2026-11-17 an independent classification of every requirement in RFC
+9110 and RFC 9112, made from the RFC text alone without seeing these
+exceptions, agreed on all of RFC 9112's and on 399 of RFC 9110's 412.
+The overrides marked as found by it cover the differences where it was
+right; see docs/independent-review/README.md.
+
 Usage (from the repository root):
 
   scripts/duvet-exceptions .duvet/requirements/www.rfc-editor.org/rfc/rfc9110
@@ -33,6 +39,8 @@ REASONS = {
     "cache":        "Applies to caches; hyperdrive does not cache responses.",
     "registration": "Applies to IANA registrations or to the authors of new specifications, not to implementations.",
     "media-type":   "Applies to processing the message/http media type, which hyperdrive does not do.",
+    "response-recipient": "Applies to recipients of responses (clients, caches and proxies); hyperdrive only receives requests.",
+    "unused-permission":  "A permission hyperdrive does not use: it does not cache responses.",
 }
 
 # subject patterns, in priority order
@@ -54,7 +62,21 @@ OVERRIDES = {
         ("12.1",   "In order to improve the server's guess"): "client",
         ("12.5.5", "To inform cache recipients"): "cache",
         ("13.2.1", "A server that is not the origin server"): "intermediary",
-        ("3.8",    "Any client or server MAY employ a cache"): "cache",
+        ("3.8",    "Any client or server MAY employ a cache"): "unused-permission",
+        # the subject is a generic sender or recipient, but the context
+        # shows it is one of a response, of Via, or of forwarding; found
+        # by an independent classification on 2026-11-17
+        ("6.6.1",  "A recipient with a clock that receives a response"): "response-recipient",
+        ("8.7",    "If Content-Location is included in a 2xx"): "response-recipient",
+        ("14.4",   "If a 206 (Partial Content) response contains"): "response-recipient",
+        ("7.6.3",  "However, if the real host is considered to be sensitive"): "intermediary",
+        ("7.6.3",  "A sender MAY generate comments to identify the software"): "intermediary",
+        ("7.6.3",  "However, comments in Via are optional"): "intermediary",
+        ("7.6.3",  "A sender SHOULD NOT combine multiple list members"): "intermediary",
+        ("7.6.3",  "A sender MUST NOT combine members"): "intermediary",
+        ("8.6",    "As a result, a sender MUST NOT forward a message"): "intermediary",
+        # TE is a request field, so only a client sends it
+        ("10.1.4", "A sender of TE MUST also send"): "client",
         ("4.3.4",  "A reference identity of type CN-ID"): "client",
         ("5.5",    "Specifications for newly defined fields"): "registration",
         ("6.5.2",  "Trailer fields that might be generated more than once"): "registration",

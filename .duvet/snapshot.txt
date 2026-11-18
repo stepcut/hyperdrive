@@ -686,13 +686,13 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    responses.
     TEXT[!MUST]:    An origin server without a clock MUST NOT generate a Date header
     TEXT[!MUST]:    field.
-    TEXT[!MUST]:    A recipient with a clock that receives a response message without a
-    TEXT[!MUST]:    Date header field MUST record the time it was received and append a
-    TEXT[!MUST]:    corresponding Date header field to the message's header section if it
-    TEXT[!MUST]:    is cached or forwarded downstream.
-    TEXT[!MAY]:    A recipient with a clock that receives a response with an invalid
-    TEXT[!MAY]:    Date header field value MAY replace that value with the time that
-    TEXT[!MAY]:    response was received.
+    TEXT[!MUST,exception]:    A recipient with a clock that receives a response message without a
+    TEXT[!MUST,exception]:    Date header field MUST record the time it was received and append a
+    TEXT[!MUST,exception]:    corresponding Date header field to the message's header section if it
+    TEXT[!MUST,exception]:    is cached or forwarded downstream.
+    TEXT[!MAY,exception]:    A recipient with a clock that receives a response with an invalid
+    TEXT[!MAY,exception]:    Date header field value MAY replace that value with the time that
+    TEXT[!MAY,exception]:    response was received.
     TEXT[!MAY,exception]:    A user agent MAY send a Date header field in a request, though
     TEXT[!MAY,exception]:    generally will not do so unless it is believed to convey useful
     TEXT[!MAY,exception]:    information to the server.
@@ -785,15 +785,15 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,exception]:    MUST send an appropriate Via header field in each inbound request
     TEXT[!MUST,exception]:    message and MAY send a Via header field in forwarded response
     TEXT[!MUST,exception]:    messages.
-    TEXT[!MAY]: However, if the real host is considered to be sensitive
-    TEXT[!MAY]:    information, a sender MAY replace it with a pseudonym.
+    TEXT[!MAY,exception]: However, if the real host is considered to be sensitive
+    TEXT[!MAY,exception]:    information, a sender MAY replace it with a pseudonym.
     TEXT[!MAY]: If a port is
     TEXT[!MAY]:    not provided, a recipient MAY interpret that as meaning it was
     TEXT[!MAY]:    received on the default port, if any, for the received-protocol.
-    TEXT[!MAY]:    A sender MAY generate comments to identify the software of each
-    TEXT[!MAY]:    recipient, analogous to the User-Agent and Server header fields.
-    TEXT[!MAY]:    However, comments in Via are optional, and a recipient MAY remove
-    TEXT[!MAY]:    them prior to forwarding the message.
+    TEXT[!MAY,exception]:    A sender MAY generate comments to identify the software of each
+    TEXT[!MAY,exception]:    recipient, analogous to the User-Agent and Server header fields.
+    TEXT[!MAY,exception]:    However, comments in Via are optional, and a recipient MAY remove
+    TEXT[!MAY,exception]:    them prior to forwarding the message.
     TEXT[!SHOULD,exception]:    An intermediary used as a portal through a network firewall SHOULD
     TEXT[!SHOULD,exception]:    NOT forward the names and ports of hosts within the firewall region
     TEXT[!SHOULD,exception]:    unless it is explicitly enabled to do so.
@@ -803,11 +803,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY,exception]:    An intermediary MAY combine an ordered subsequence of Via header
     TEXT[!MAY,exception]:    field list members into a single member if the entries have identical
     TEXT[!MAY,exception]:    received-protocol values.
-    TEXT[!SHOULD]:    A sender SHOULD NOT combine multiple list members unless they are all
-    TEXT[!SHOULD]:    under the same organizational control and the hosts have already been
-    TEXT[!SHOULD]:    replaced by pseudonyms.
-    TEXT[!MUST]: A sender MUST NOT combine members that have
-    TEXT[!MUST]:    different received-protocol values.
+    TEXT[!SHOULD,exception]:    A sender SHOULD NOT combine multiple list members unless they are all
+    TEXT[!SHOULD,exception]:    under the same organizational control and the hosts have already been
+    TEXT[!SHOULD,exception]:    replaced by pseudonyms.
+    TEXT[!MUST,exception]: A sender MUST NOT combine members that have
+    TEXT[!MUST,exception]:    different received-protocol values.
 
   SECTION: [Message Transformations](#section-7.7)
     TEXT[!MAY,exception]:    If a proxy receives a target URI with a host name that is not a fully
@@ -952,8 +952,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    a recipient MUST anticipate potentially large decimal numerals and
     TEXT[!MUST]:    prevent parsing errors due to integer conversion overflows or
     TEXT[!MUST]:    precision loss due to integer conversion (Section 17.5).
-    TEXT[!MUST]:    As a result, a sender MUST NOT forward a message with a Content-
-    TEXT[!MUST]:    Length header field value that is known to be incorrect.
+    TEXT[!MUST,exception]:    As a result, a sender MUST NOT forward a message with a Content-
+    TEXT[!MUST,exception]:    Length header field value that is known to be incorrect.
     TEXT[!MUST]:    Likewise, a sender MUST NOT forward a message with a Content-Length
     TEXT[!MUST]:    header field value that does not match the ABNF above, with one
     TEXT[!MUST]:    exception: a recipient of a Content-Length header field value
@@ -964,11 +964,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    generated or combined by an upstream message processor.
 
   SECTION: [Content-Location](#section-8.7)
-    TEXT[!MAY]:    If Content-Location is included in a 2xx (Successful) response
-    TEXT[!MAY]:    message and its value refers (after conversion to absolute form) to a
-    TEXT[!MAY]:    URI that is the same as the target URI, then the recipient MAY
-    TEXT[!MAY]:    consider the content to be a current representation of that resource
-    TEXT[!MAY]:    at the time indicated by the message origination date.
+    TEXT[!MAY,exception]:    If Content-Location is included in a 2xx (Successful) response
+    TEXT[!MAY,exception]:    message and its value refers (after conversion to absolute form) to a
+    TEXT[!MAY,exception]:    URI that is the same as the target URI, then the recipient MAY
+    TEXT[!MAY,exception]:    consider the content to be a current representation of that resource
+    TEXT[!MAY,exception]:    at the time indicated by the message origination date.
     TEXT[!MUST]:    An origin server that receives a Content-Location field in a request
     TEXT[!MUST]:    message MUST treat the information as transitory request context
     TEXT[!MUST]:    rather than as metadata to be saved verbatim as part of the
@@ -1307,9 +1307,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,exception]:    URI.
 
   SECTION: [TE](#section-10.1.4)
-    TEXT[!MUST]:    A sender of TE MUST also send a "TE" connection option within the
-    TEXT[!MUST]:    Connection header field (Section 7.6.1) to inform intermediaries not
-    TEXT[!MUST]:    to forward this field.
+    TEXT[!MUST,exception]:    A sender of TE MUST also send a "TE" connection option within the
+    TEXT[!MUST,exception]:    Connection header field (Section 7.6.1) to inform intermediaries not
+    TEXT[!MUST,exception]:    to forward this field.
 
   SECTION: [User-Agent](#section-10.1.5)
     TEXT[!SHOULD,exception]: A user agent SHOULD send a User-Agent header field in each
@@ -1675,10 +1675,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    have failed in mid-content (before the trailer section is received).
 
   SECTION: [Content-Range](#section-14.4)
-    TEXT[!MUST]:    If a 206 (Partial Content) response contains a Content-Range header
-    TEXT[!MUST]:    field with a range unit (Section 14.1) that the recipient does not
-    TEXT[!MUST]:    understand, the recipient MUST NOT attempt to recombine it with a
-    TEXT[!MUST]:    stored representation.
+    TEXT[!MUST,exception]:    If a 206 (Partial Content) response contains a Content-Range header
+    TEXT[!MUST,exception]:    field with a range unit (Section 14.1) that the recipient does not
+    TEXT[!MUST,exception]:    understand, the recipient MUST NOT attempt to recombine it with a
+    TEXT[!MUST,exception]:    stored representation.
     TEXT[!SHOULD,exception]: A proxy that receives such a message SHOULD
     TEXT[!SHOULD,exception]:    forward it downstream.
     TEXT[!MUST]: A server MUST ignore a
