@@ -711,7 +711,7 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[implementation]:    configuration and incoming connection context.
 
   SECTION: [Host and :authority](#section-7.2)
-    TEXT[implementation]:      Host = uri-host [ ":" port ] ; Section 4
+    TEXT[implementation,test]:      Host = uri-host [ ":" port ] ; Section 4
     TEXT[implementation,test]:    The target URI's authority information is critical for handling a
     TEXT[implementation,test]:    request.
     TEXT[!MUST,exception]: A user agent MUST generate a Host header field in a request
