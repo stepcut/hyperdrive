@@ -162,6 +162,18 @@ fields removed, and the framing, ready for `mkRequest`; and rejects a
 request whose `Host` is missing, repeated or disagrees with an
 absolute-form target (RFC 9112 Section 3.2).
 
+Implemented (`Hyperdrive.HTTP1.Target`) with one change: a `Host` that
+disagrees with an absolute-form target is not rejected, since RFC 9112
+Section 3.2.2 says an origin server "MUST ignore the received Host
+header field" then. It is still required (HTTP/1.1), single and valid,
+as Section 3.2 requires of every request, and is removed from the
+fields, so the application never sees a host that routing did not use.
+An absolute-form `https` target over an unsecured connection, or one
+with any scheme other than `http` and `https`, gets 421 (RFC 9110
+Section 7.4). A request with no `Host` (HTTP/1.0) or an empty one uses
+a configured default authority, or is rejected if there is none (RFC
+9112 Section 3.3).
+
 ## Testing
 
 - The parser of request lines and fields against RFC 9112's grammar,

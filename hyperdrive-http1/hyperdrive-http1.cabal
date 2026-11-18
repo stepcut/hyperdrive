@@ -22,6 +22,7 @@ library
   exposed-modules:  Hyperdrive.HTTP1.Chunked
                     Hyperdrive.HTTP1.Framing
                     Hyperdrive.HTTP1.Head
+                    Hyperdrive.HTTP1.Target
   build-depends:    base                 >= 4.18 && < 5
                   , bytestring           >= 0.11 && < 0.13
                   , hyperdrive-semantics
@@ -34,6 +35,7 @@ test-suite hyperdrive-http1-tests
   other-modules:    ChunkedTests
                     FramingTests
                     HeadTests
+                    TargetTests
   default-language: GHC2021
   build-depends:    base
                   , bytestring

@@ -335,6 +335,7 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    minimum, URIs with lengths of 8000 octets in protocol elements.
 
   SECTION: [http URI Scheme](#section-4.2.1)
+    TEXT[implementation]:      http-URI = "http" "://" authority path-abempty [ "?" query ]
     TEXT[implementation]: If the port
     TEXT[implementation]:    subcomponent is empty or not given, TCP port 80 (the reserved port
     TEXT[implementation]:    for WWW services) is the default.
@@ -344,6 +345,7 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,implementation,test]:    reject it as invalid.
 
   SECTION: [https URI Scheme](#section-4.2.2)
+    TEXT[implementation]:      https-URI = "https" "://" authority path-abempty [ "?" query ]
     TEXT[implementation]: If the port
     TEXT[implementation]:    subcomponent is empty or not given, TCP port 443 (the reserved port
     TEXT[implementation]:    for HTTP over TLS) is the default.
@@ -729,10 +731,13 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    Unless the connection is from a trusted gateway, an origin server
     TEXT[!MUST]:    MUST reject a request if any scheme-specific requirements for the
     TEXT[!MUST]:    target URI are not met.
-    TEXT[!MUST]: In particular, a request for an "https"
-    TEXT[!MUST]:    resource MUST be rejected unless it has been received over a
-    TEXT[!MUST]:    connection that has been secured via a certificate valid for that
-    TEXT[!MUST]:    target URI's origin, as defined by Section 4.2.2.
+    TEXT[!MUST,implementation,test]: In particular, a request for an "https"
+    TEXT[!MUST,implementation,test]:    resource MUST be rejected unless it has been received over a
+    TEXT[!MUST,implementation,test]:    connection that has been secured via a certificate valid for that
+    TEXT[!MUST,implementation,test]:    target URI's origin, as defined by Section 4.2.2.
+    TEXT[implementation]:    The 421 (Misdirected Request) status code in a response indicates
+    TEXT[implementation]:    that the origin server has rejected the request because it appears to
+    TEXT[implementation]:    have been misdirected (Section 15.5.20).
 
   SECTION: [Response Correlation](#section-7.5)
     TEXT[!SHOULD,exception]:    A client that receives a response while it is still sending the
@@ -2175,6 +2180,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!SHOULD,implementation,test]:    support, at a minimum, request-line lengths of 8000 octets.
 
   SECTION: [Request Target](#section-3.2)
+    TEXT[implementation]:      request-target = origin-form
+    TEXT[implementation]:                     / absolute-form
+    TEXT[implementation]:                     / authority-form
+    TEXT[implementation]:                     / asterisk-form
     TEXT[!SHOULD]:    Recipients of an invalid request-line SHOULD respond with either a
     TEXT[!SHOULD]:    400 (Bad Request) error or a 301 (Moved Permanently) redirect with
     TEXT[!SHOULD]:    the request-target properly encoded.
@@ -2191,10 +2200,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]: If the
     TEXT[!MUST,exception]:    authority component is missing or undefined for the target URI, then
     TEXT[!MUST,exception]:    a client MUST send a Host header field with an empty field value.
-    TEXT[!MUST]:    A server MUST respond with a 400 (Bad Request) status code to any
-    TEXT[!MUST]:    HTTP/1.1 request message that lacks a Host header field and to any
-    TEXT[!MUST]:    request message that contains more than one Host header field line or
-    TEXT[!MUST]:    a Host header field with an invalid field value.
+    TEXT[!MUST,implementation,test]:    A server MUST respond with a 400 (Bad Request) status code to any
+    TEXT[!MUST,implementation,test]:    HTTP/1.1 request message that lacks a Host header field and to any
+    TEXT[!MUST,implementation,test]:    request message that contains more than one Host header field line or
+    TEXT[!MUST,implementation,test]:    a Host header field with an invalid field value.
 
   SECTION: [origin-form](#section-3.2.1)
     TEXT[!MUST,exception]:    When making a request directly to an origin server, other than a
@@ -2220,21 +2229,23 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]: A proxy that forwards such a request MUST generate a new
     TEXT[!MUST,exception]:    Host field value based on the received request-target rather than
     TEXT[!MUST,exception]:    forward the received Host field value.
-    TEXT[!MUST]:    When an origin server receives a request with an absolute-form of
-    TEXT[!MUST]:    request-target, the origin server MUST ignore the received Host
-    TEXT[!MUST]:    header field (if any) and instead use the host information of the
-    TEXT[!MUST]:    request-target.
-    TEXT[!MUST]:    A server MUST accept the absolute-form in requests even though most
-    TEXT[!MUST]:    HTTP/1.1 clients will only send the absolute-form to a proxy.
+    TEXT[!MUST,implementation,test]:    When an origin server receives a request with an absolute-form of
+    TEXT[!MUST,implementation,test]:    request-target, the origin server MUST ignore the received Host
+    TEXT[!MUST,implementation,test]:    header field (if any) and instead use the host information of the
+    TEXT[!MUST,implementation,test]:    request-target.
+    TEXT[!MUST,implementation,test]:    A server MUST accept the absolute-form in requests even though most
+    TEXT[!MUST,implementation,test]:    HTTP/1.1 clients will only send the absolute-form to a proxy.
 
   SECTION: [authority-form](#section-3.2.3)
     TEXT[implementation,test]:    The "authority-form" of request-target is only used for CONNECT
     TEXT[implementation,test]:    requests (Section 9.3.6 of [HTTP]).
+    TEXT[implementation]:      authority-form = uri-host ":" port
     TEXT[!MUST,exception]:    When making a CONNECT request to establish a tunnel through one or
     TEXT[!MUST,exception]:    more proxies, a client MUST send only the host and port of the tunnel
     TEXT[!MUST,exception]:    destination as the request-target.
 
   SECTION: [asterisk-form](#section-3.2.4)
+    TEXT[implementation]:      asterisk-form  = "*"
     TEXT[!MUST,exception]:    When a client wishes to request OPTIONS for the server as a whole, as
     TEXT[!MUST,exception]:    opposed to a specific named resource of that server, the client MUST
     TEXT[!MUST,exception]:    send only "*" (%x2A) as the request-target.
@@ -2245,8 +2256,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]:    origin server.
 
   SECTION: [Reconstructing the Target URI](#section-3.3)
-    TEXT[!MAY]:    server that can uniquely identify an authority from the request
-    TEXT[!MAY]:    context MAY use that identity as a default without this risk.
+    TEXT[test]:    Example 1: The following message received over a secure connection
+    TEXT[test]:    Example 2: The following message received over an insecure connection
+    TEXT[!MAY,implementation]:    server that can uniquely identify an authority from the request
+    TEXT[!MAY,implementation]:    context MAY use that identity as a default without this risk.
 
   SECTION: [Status Line](#section-4)
     TEXT[!MAY]:    The first line of a response message is the status-line, consisting

@@ -217,3 +217,77 @@ why: a resumed search may find a CRLF CRLF that started in the earlier input
 why: trailer lines are field lines, with the same strictness as the head
 - fieldLine l = checkLine l >> parseFieldLine l
 + fieldLine l = parseFieldLine l
+
+file: src/Hyperdrive/HTTP1/Target.hs
+
+why: a 421 is for a scheme this connection does not serve; everything else is 400
+- targetErrorStatus MisdirectedScheme{} = MisdirectedRequest
++ targetErrorStatus MisdirectedScheme{} = BadRequest
+
+why: HTTP/1.1 requests must have Host (RFC 9112 Section 3.2)
+- [] | version >= HTTP_1_1 -> Left MissingHost
++ [] | False -> Left MissingHost
+
+why: an empty Host means no authority, not an invalid one
+- [v] | B.null (fieldValueBytes v) -> Right Nothing
++ [v] | False -> Right Nothing
+
+why: more than one Host line is 400 (RFC 9112 Section 3.2)
+- _ -> Left RepeatedHost
++ (v : _) -> Just <$> (either (Left . InvalidHost) Right (parseAuthority (fieldValueBytes v)) >>= servable)
+
+why: a CONNECT target is never origin-form or asterisk-form
+- | raw == "*" || B.take 1 raw == "/" = Left TargetFormNotForMethod
++ | raw == "*" = Left TargetFormNotForMethod
+
+why: a CONNECT target needs a port
+- maybe (Left MissingConnectPort) Right (connectTarget a)
++ Right (TargetConnect (authorityHost a) (maybe 443 id (authorityPort a)))
+
+why: only CONNECT uses the authority-form
+- target <- if method == CONNECT then authorityForm else otherForms host
++ target <- if method == CONNECT || B.elem 0x3A raw && not (B.elem 0x2F raw) then authorityForm else otherForms host
+
+why: the asterisk-form is only for OPTIONS
+- | raw == "*" = if method == OPTIONS then Right TargetAsterisk else Left TargetFormNotForMethod
++ | raw == "*" = Right TargetAsterisk
+
+why: without Host, the default authority is used if there is one
+- authority <- maybe (maybe (Left NoAuthority) Right (contextDefaultAuthority ctx)) Right host
++ authority <- maybe (Left NoAuthority) Right host
+
+why: with the absolute-form, the target's authority is used, not Host's (RFC 9112 Section 3.2.2)
+- | otherwise = absoluteForm
++ | otherwise = (\t -> case (t, host) of (TargetURI s _ p q, Just h) -> TargetURI s h p q; _ -> t) <$> absoluteForm
+
+why: origin-form and asterisk-form targets have the connection's scheme
+- Right (TargetURI (contextScheme ctx) authority path query)
++ Right (TargetURI HTTP authority path query)
+
+why: only http and https are served
+- if scheme /= HTTP && scheme /= HTTPS then Left (MisdirectedScheme scheme) else Right ()
++ if False then Left (MisdirectedScheme scheme) else Right ()
+
+why: an https target needs a secured connection (RFC 9110 Section 7.4)
+- if scheme == HTTPS && contextScheme ctx /= HTTPS then Left (MisdirectedScheme scheme) else Right ()
++ if False then Left (MisdirectedScheme scheme) else Right ()
+
+why: an http(s) URI has an authority: "http:/x" is not one
+- hier <- maybe (Left InvalidTarget) Right (B.stripPrefix "://" rest)
++ hier <- Right (B.dropWhile (== 0x2F) (B.drop 1 rest))
+
+why: the authority ends at the path or the query
+- let (auth, pathQuery) = B.break (\w -> w == 0x2F || w == 0x3F) hier
++ let (auth, pathQuery) = B.break (\w -> w == 0x2F) hier
+
+why: "?" with nothing after it is an empty query, not no query
+- query <- if B.null q then Right Nothing else maybe (Left InvalidTarget) (Right . Just) (mkQuery (B.drop 1 q))
++ query <- if B.length q <= 1 then Right Nothing else maybe (Left InvalidTarget) (Right . Just) (mkQuery (B.drop 1 q))
+
+why: IPvFuture hosts are not served (design notes, P3)
+- HostIPvFuture _ -> Left UnsupportedIPvFuture
++ HostIPvFuture _ -> Right a
+
+why: Host is removed from the fields given to the application
+- Right (target, fieldsFromList [ f | f@(n, _) <- fieldsToList fields, n /= hHost ])
++ Right (target, fields)
