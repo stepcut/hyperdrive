@@ -4,6 +4,8 @@
 Each mutant in a package's `mutants` file replaces one exact piece of
 source code with a buggy version. For each mutant, this script builds
 and tests a temporary copy of the project with that one change applied.
+Only the package the mutant is in is built and tested: a mutant cannot
+change what another package's tests check.
 A mutant is
 
   CAUGHT    if the test suite fails, or if the build fails because a
@@ -62,8 +64,8 @@ CABAL = ["cabal", "--offline"]
 TEST_OPTIONS = os.environ.get("MUTATION_TEST_OPTIONS")
 
 
-def test_command():
-    cmd = CABAL + ["test", "all"]
+def test_command(targets):
+    cmd = CABAL + ["test"] + targets
     if TEST_OPTIONS:
         cmd.append("--test-options=" + TEST_OPTIONS)
     return cmd
@@ -139,7 +141,10 @@ def main():
         shutil.copytree(root, work, ignore=shutil.ignore_patterns("dist-newstyle", ".git", ".duvet"))
 
         print("building and testing the unmodified project ...", flush=True)
-        baseline = run(test_command(), work)
+        # the packages whose mutants are run; a mutant can only affect
+        # the tests of its own package, so only those are run
+        targets = sorted({ str(pkg) for pkg, _ in mutants })
+        baseline = run(test_command(targets), work)
         if baseline.returncode != 0:
             lines = baseline.stdout.splitlines()
             failing = [i for i, l in enumerate(lines) if "FAIL" in l or "error" in l]
@@ -161,14 +166,14 @@ def main():
             target.write_text(original.replace(m.old, m.new))
             note = ""
             try:
-                build = run(CABAL + ["build", "all"], work)
+                build = run(CABAL + ["build", str(pkg)], work)
                 if build.returncode != 0:
                     if "In the quasi-quotation" in build.stdout + build.stderr:
                         status, note = "CAUGHT", "at compile time, by a quasiquoter"
                     else:
                         status = "INVALID"
                 else:
-                    test = run(test_command(), work)
+                    test = run(test_command([str(pkg)]), work)
                     status = "CAUGHT" if test.returncode != 0 else "SURVIVED"
             finally:
                 target.write_text(original)
