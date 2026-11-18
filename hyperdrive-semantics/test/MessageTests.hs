@@ -59,18 +59,25 @@ standardMethods = [GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH]
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-7.1
 -- # These forms MUST
 -- # NOT be used with other methods.
+
+-- = https://www.rfc-editor.org/rfc/rfc9112#section-3.2.3
+-- # The "authority-form" of request-target is only used for CONNECT
+-- # requests (Section 9.3.6 of [HTTP]).
 prop_requestTargetForms :: Property
 prop_requestTargetForms = once $ monadicIO $ do
   results <- run $ sequence
-    [ (\r -> (m, t, isRight r)) <$> request m target emptyFields
-    | m <- standardMethods
+    [ (\r -> (v, m, t, isRight r)) <$> (mkRequest v m target emptyFields <$> bytesBody "")
+    | v <- [HTTP_1_0, HTTP_1_1, HTTP_2, HTTP_3]
+    , m <- standardMethods
     , (t, target) <- [("uri", uriTarget "/"), ("connect", connect), ("asterisk", TargetAsterisk)] ]
-  assert (and [ ok == expected m t | (m, t, ok) <- results ])
+  assert (and [ ok == expected v m t | (v, m, t, ok) <- results ])
   where
-    expected :: Method -> String -> Bool
-    expected m "connect"  = m == CONNECT
-    expected m "asterisk" = m == OPTIONS
-    expected _ _          = True
+    expected :: HttpVersion -> Method -> String -> Bool
+    expected _ m "connect"  = m == CONNECT
+    expected _ m "asterisk" = m == OPTIONS
+    -- an ordinary target with CONNECT is an extended CONNECT, which
+    -- only HTTP/2 and HTTP/3 have
+    expected v m _          = m /= CONNECT || v >= HTTP_2
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-4.2.3
 -- # When not being used as the target of an OPTIONS request, an empty
@@ -118,7 +125,7 @@ content None   = ContentNone
 content Empty  = ContentBytes ""
 content Bytes  = ContentBytes "hello"
 content File   = ContentFile "/dev/null" Nothing
-content Stream = ContentStream Nothing (\write _ -> write "hi" >> pure emptyFields)
+content Stream = ContentStream Nothing [] (\write _ -> write "hi" >> pure emptyFields)
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-6.4.1
 -- # All 1xx (Informational), 204 (No Content), and 304 (Not Modified)
@@ -132,7 +139,13 @@ content Stream = ContentStream Nothing (\write _ -> write "hi" >> pure emptyFiel
 -- # Since the 205 status code implies that no additional content will be
 -- # provided, a server MUST NOT generate content in a 205 response.
 
--- | Every status from 100 to 599 with every kind of content.
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-15.5.22
+-- # The server MUST send an Upgrade header field in a
+-- # 426 response to indicate the required protocol(s) (Section 7.8).
+
+-- | Every status from 100 to 599 with every kind of content. A 205 has
+-- content of zero length (RFC 9112 Section 6.3 does not end it at the
+-- header section), and a 426 cannot be sent without Upgrade.
 prop_responseContent :: Property
 prop_responseContent = once $ conjoin
   [ counterexample (show (code, kind)) (result === expected code kind)
@@ -144,7 +157,12 @@ prop_responseContent = once $ conjoin
     expected :: Int -> ContentKind -> Either ResponseError ()
     expected code kind
       | code < 200                      = Left InterimStatus
-      | code `elem` [204, 205, 304]     = if kind == None then Right () else Left ContentNotAllowed
+      | code == 426                     = Left UpgradeNotSupported
+      | code == 205                     = case kind of
+          Empty -> Right ()
+          None  -> Left ContentRequired
+          _     -> Left ContentNotAllowed
+      | code `elem` [204, 304]          = if kind == None then Right () else Left ContentNotAllowed
       | kind == None                    = Left ContentRequired
       | otherwise                       = Right ()
 
@@ -214,7 +232,8 @@ prop_checkResponseFor = once $ monadicIO $ do
       expected m code
         | m == CONNECT && code < 300 = Left TunnelNotSupported
         | otherwise                  = Right ()
-  assert (length results == length standardMethods * (400 - 3))
+  -- every status but 204, 205, 304 and 426
+  assert (length results == length standardMethods * (400 - 4))
   assert (and [ fmap (const ()) r == expected m code | (m, code, r) <- results ])
   where
     target m | m == CONNECT = connect
@@ -225,17 +244,42 @@ prop_checkResponseFor = once $ monadicIO $ do
 -- # generate a trailer field unless the sender knows the corresponding
 -- # header field name's definition permits the field to be sent in
 -- # trailers.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-5.3
+-- # This means that, aside from the well-known exception noted below, a
+-- # sender MUST NOT generate multiple field lines with the same name in a
+-- # message (whether in the headers or trailers)
 prop_checkTrailers :: Property
 prop_checkTrailers = conjoin $
-  [ counterexample (show n) $ checkTrailers (fields [("Server-Timing", "a"), (n, "1")]) === Left (field n)
+  -- fields that cannot be trailers cannot be declared
+  [ counterexample (show n) $ fmap (const ()) (stream [] [n]) === Left (NotATrailer (field n))
   | n <- [ "Content-Length", "Transfer-Encoding", "Trailer", "Host", "Authorization"
          , "WWW-Authenticate", "Cache-Control", "Location", "Set-Cookie", "Content-Type"
          , "Content-Encoding", "Content-Range", "Range", "Expect", "content-type" ] ]
   ++
-  -- RFC 9110 explicitly allows these in trailers
-  [ counterexample (show n) $ fmap (const ()) (checkTrailers (fields [(n, "1")])) === Right ()
-  | n <- [ "ETag", "Authentication-Info", "Proxy-Authentication-Info", "Accept-Ranges"
-         , "Server-Timing", "Content-Digest", "X-Checksum" ] ]
+  -- RFC 9110 permits ETag and Accept-Ranges, Authentication-Info when the
+  -- scheme does, and others are the application's to know
+  [ counterexample (show n) $ fmap (const ()) (stream [] [n]) === Right ()
+  | n <- [ "ETag", "Authentication-Info", "Accept-Ranges", "Server-Timing", "Content-Digest", "X-Checksum" ] ]
+  ++
+  -- a singleton may not be both a header and a trailer
+  [ fmap (const ()) (stream [("ETag", "\"a\"")] ["ETag"]) === Left (RepeatedSingleton (field "ETag"))
+  , fmap (const ()) (stream [("Server-Timing", "a")] ["Server-Timing"]) === Right ()
+  ]
+  ++
+  -- the trailers sent: only declared fields, singletons once
+  [ check ["ETag", "Server-Timing"] [("ETag", "\"a\""), ("Server-Timing", "b")] === Right ()
+  , check [] [] === Right ()
+  , check ["ETag"] [("Server-Timing", "b")] === Left (UndeclaredTrailer (field "Server-Timing"))
+  , check ["ETag"] [("ETag", "\"a\""), ("ETag", "\"b\"")] === Left (RepeatedTrailer (field "ETag"))
+  , check ["Server-Timing"] [("Server-Timing", "a"), ("Server-Timing", "b")] === Right ()
+  , check ["etag"] [("ETag", "\"a\"")] === Right ()
+  ]
+  where
+    stream hs names = mkResponse OK (fields hs) (ContentStream Nothing (map field names) (\_ _ -> pure emptyFields))
+    check names ts = case stream [] names of
+      Left e  -> error (show e)
+      Right r -> fmap (const ()) (checkTrailers r (fields ts))
 
 prop_fileRange :: Property
 prop_fileRange = conjoin

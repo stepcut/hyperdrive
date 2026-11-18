@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
 module FieldSyntaxTests (fieldSyntaxTests) where
 
 import Control.Monad (replicateM, void)
@@ -10,6 +10,11 @@ import Data.Either (isRight)
 import Data.List (nub)
 import Data.Maybe (catMaybes)
 import Grammar (rule)
+import Hyperdrive.ABNF.Grammar (mkGrammar)
+import Hyperdrive.ABNF.HTTP (rfc3986, rfc9110, rfc9110Errata, withErrata)
+import Hyperdrive.ABNF.QQ (abnf)
+import Hyperdrive.ABNF.Recognize (ListForm(..), library, matches)
+import Hyperdrive.ABNF.Types (mkRuleName)
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.FieldSyntax
 import Test.QuickCheck
@@ -29,6 +34,10 @@ fieldSyntaxTests = testGroup "FieldSyntax"
         once (prop_splitListExhaustive AllowComments)
     , testProperty "split then join is the identity"           prop_splitJoin
     , testProperty "each field line is split separately"        prop_fieldLines
+    ]
+  , testGroup "Entity tags"
+    [ testProperty "splitEntityTags agrees with #entity-tag (exhaustive)" prop_entityTagsExhaustive
+    , testProperty "examples"                                         prop_entityTagExamples
     ]
   , testGroup "Quoted strings"
     [ testProperty "parseQuotedString agrees with the grammar (exhaustive)" prop_quotedExhaustive
@@ -311,4 +320,63 @@ prop_parameterExamples = conjoin
   , parseParameters "a=b"              === Left InvalidParameter
   , parseParameters ";a=b "            === Left InvalidParameter
   , parseParameters ";a=\"b"           === Left UnterminatedQuotedString
+  ]
+
+------------------------------------------------------------------------------
+-- Entity tags
+------------------------------------------------------------------------------
+
+-- | RFC 9110's list of entity tags, in the form recipients accept
+-- (empty elements allowed), with entity-tag taken from RFC 9110 itself.
+entityTagList :: ByteString -> Bool
+entityTagList = either (error . show) id . matches Recipient lib "L" (maybe (error "name") id (mkRuleName "l"))
+  where
+    lib = library
+      [ ("L", grammar [abnf|
+          l = #e
+          e = <entity-tag, see [HTTP], Section 8.8.3>
+          |])
+      , ("HTTP", grammar (withErrata rfc9110Errata rfc9110)), ("URI", grammar rfc3986) ]
+    grammar = either (error . show) id . mkGrammar
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3
+-- # entity-tag = [ weak ] opaque-tag
+-- # weak       = %s"W/"
+-- # opaque-tag = DQUOTE *etagc DQUOTE
+-- # etagc      = %x21 / %x23-7E / obs-text
+-- # ; VCHAR except double quotes, plus obs-text
+
+-- | Every value of up to six characters over an alphabet that exercises
+-- the weak prefix, quotes, backslashes, commas and whitespace: the
+-- splitter accepts exactly what the grammar matches, every tag it
+-- returns is an entity-tag, and the tags joined again split the same.
+prop_entityTagsExhaustive :: Property
+prop_entityTagsExhaustive = once $
+  let inputs = [ v | s <- concatMap (`replicateM` "W/\"\\a, ") [0 .. 6], Right v <- [mkFieldValue (C.pack s)] ]
+      check v = case splitEntityTags v of
+        Right tags -> entityTagList (fieldValueBytes v)
+                      && all (rule "HTTP" "entity-tag" . C.unpack) tags
+                      && (splitEntityTags (value (B.intercalate ", " tags)) == Right tags)
+        Left _     -> not (entityTagList (fieldValueBytes v))
+      failures = [ fieldValueBytes v | v <- inputs, not (check v) ]
+      valid = length [ () | v <- inputs, entityTagList (fieldValueBytes v), not (B.null (fieldValueBytes v)) ]
+  in counterexample ("failed for: " ++ show (take 10 failures)) (null failures)
+     .&&. counterexample "vacuous" (valid > 100)
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3
+-- # |  *Note:* Previously, opaque-tag was defined to be a quoted-
+-- # |  string ([RFC2616], Section 3.11); thus, some recipients might
+-- # |  perform backslash unescaping.  Servers therefore ought to avoid
+-- # |  backslash characters in entity tags.
+prop_entityTagExamples :: Property
+prop_entityTagExamples = conjoin
+  [ splitEntityTags (value "\"a\\\", \"b\"") === Right ["\"a\\\"", "\"b\""]
+  , splitEntityTags (value "W/\"x\", \"y\" , ,W/\"\"") === Right ["W/\"x\"", "\"y\"", "W/\"\""]
+  , splitEntityTags (value "") === Right []
+  , splitEntityTags (value "w/\"x\"") === Left InvalidEntityTag
+  , splitEntityTags (value "*") === Left InvalidEntityTag
+  , splitEntityTags (value "\"a\" \"b\"") === Left InvalidEntityTag
+  , splitEntityTags (value "\"a") === Left InvalidEntityTag
+  , splitEntityTags (value "\"a b\"") === Left InvalidEntityTag
+  , splitEntityTags (value "\"caf\xE9\"") === Right ["\"caf\xE9\""]
   ]

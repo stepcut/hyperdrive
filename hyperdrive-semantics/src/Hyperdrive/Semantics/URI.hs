@@ -354,7 +354,9 @@ ipvFutureBytes :: IPvFuture -> ByteString
 ipvFutureBytes (IPvFuture bs) = bs
 
 -- | Render a host in its normal form. IPv6 addresses are rendered as
--- recommended by RFC 5952.
+-- RFC 5952 Section 4 says, with mixed notation (Section 5) only for
+-- IPv4-mapped addresses: of the other prefixes Section 5 names, RFC
+-- 4291's IPv4-compatible one covers @::1@, and RFC 2765's is obsolete.
 renderHost :: Host -> ByteString
 renderHost (HostRegName r)   = regNameBytes r
 renderHost (HostIPv4 a)      = renderIPv4 a
@@ -449,7 +451,7 @@ longestZeroRun ps =
 --
 -- * an IPv4-mapped IPv6 address (@[::ffff:127.0.0.1]@) becomes the IPv4
 --   address it maps (@127.0.0.1@), which is what a dual-stack socket
---   connects to;
+--   connects to (unless it is set to IPv6 only);
 --
 -- * a single trailing dot is removed from a registered name, so the
 --   fully-qualified @example.com.@ matches @example.com@. If the result
@@ -457,9 +459,14 @@ longestZeroRun ps =
 --   more than one dot has an empty label and is not the same name, so
 --   it is left alone; this also keeps @canonicalHost@ idempotent.
 --
--- This is not a normal form for URIs: @example.com.@ and @example.com@
--- are different URIs, and render differently. Use it for comparisons,
--- not for output.
+-- These mappings go beyond the equivalence of RFC 3986 Section 6 and
+-- RFC 9110 Section 4.2.3, so this is a policy for routing and
+-- allow-lists, not a test of whether two URIs or origins are the same.
+-- By RFC 3986 the trailing dot can be significant (Section 3.2.2), and
+-- for https an IPv4-mapped address is a different authority from the
+-- IPv4 address: a certificate for one does not cover the other (RFC
+-- 9110 Section 4.3.5). Nor is this a normal form for output:
+-- @example.com.@ and @example.com@ render differently.
 --
 -- Numeric names that system resolvers may read as IPv4 addresses
 -- (@2130706433@, @0x7f.1@) are not mapped, since resolvers differ.
@@ -500,9 +507,11 @@ effectivePort _     Nothing  = Nothing
 -- # If the port is equal to the default port for a scheme, the normal
 -- # form is to omit the port subcomponent.
 
--- | A key for comparing the authorities of two targets with the same
--- scheme: @http://example.com:80@ and @http://Example.COM.@ have the
--- same key.
+-- | A key for routing requests by authority, or checking them against
+-- an allow-list, for targets with the same scheme:
+-- @http://example.com:80@ and @http://Example.COM.@ have the same key.
+-- It applies 'canonicalHost', so it is a policy rather than URI or
+-- origin equivalence; see there.
 authorityKey :: Scheme -> Authority -> (Host, Maybe Word16)
 authorityKey s (Authority h p) = (canonicalHost h, effectivePort s p)
 
@@ -525,10 +534,16 @@ authorityKey s (Authority h p) = (canonicalHost h, effectivePort s p)
 --
 -- By the URI grammar these are names rather than IPv4 addresses, but
 -- system resolvers such as @inet_aton@ and @getaddrinfo@ may read them
--- as addresses, in decimal, octal or hexadecimal. No real host name has
--- a numeric top-level label (RFC 1123, Section 2.1), so a server can
--- safely reject such names, and should do so before applying any
--- allow-list or deny-list to them. A single trailing dot is ignored.
+-- as addresses, in decimal, octal or hexadecimal. RFC 1123 Section 2.1
+-- says the top-level label of a host name "will be alphabetic", so no
+-- real host name has a numeric one, and a server can safely reject
+-- such names, and should do so before applying any allow-list or
+-- deny-list to them. A single trailing dot is ignored.
+--
+-- "Alphabetic" is not applied literally: internationalized top-level
+-- domains such as @xn--p1ai@ contain digits and hyphens. What matters
+-- is telling names from addresses, and that is the last label being
+-- numeric.
 isNumericLookalike :: RegName -> Bool
 isNumericLookalike (RegName r) =
   let r'    = maybe r id (stripTrailingDot r)

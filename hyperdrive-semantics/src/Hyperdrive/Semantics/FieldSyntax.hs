@@ -7,6 +7,8 @@ module Hyperdrive.Semantics.FieldSyntax
   , Comments(..)
   , splitList
   , fieldListElements
+    -- * Entity tags
+  , splitEntityTags
     -- * Quoted strings
   , parseQuotedString
   , quoteString
@@ -28,6 +30,7 @@ data FieldSyntaxError
   | UnexpectedCloseParen     -- ^ a ")" with no matching "("
   | InvalidParameter
   | DuplicateParameter ByteString -- ^ the (lower case) name of a parameter given more than once
+  | InvalidEntityTag         -- ^ an element of a list of entity tags that is not one
   deriving (Eq, Show)
 
 ------------------------------------------------------------------------------
@@ -65,6 +68,10 @@ data Comments = NoComments | AllowComments
 --
 -- The elements themselves are not validated beyond their quoting;
 -- that is up to the grammar of the particular field.
+--
+-- Not for lists of entity tags (@If-Match@, @If-None-Match@): a
+-- backslash in an entity tag is an ordinary character, not an escape,
+-- so @\"a\\\", \"b\"@ is two tags. Use 'splitEntityTags'.
 splitList :: Comments -> FieldValue -> Either FieldSyntaxError [ByteString]
 splitList comments fv = go 0 0
   where
@@ -124,6 +131,63 @@ splitList comments fv = go 0 0
 fieldListElements :: Comments -> FieldName -> Fields -> Either FieldSyntaxError [ByteString]
 fieldListElements comments name fields =
   concat <$> traverse (splitList comments) (lookupAll name fields)
+
+------------------------------------------------------------------------------
+-- Entity tags
+------------------------------------------------------------------------------
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3
+-- # entity-tag = [ weak ] opaque-tag
+-- # weak       = %s"W/"
+-- # opaque-tag = DQUOTE *etagc DQUOTE
+-- # etagc      = %x21 / %x23-7E / obs-text
+-- # ; VCHAR except double quotes, plus obs-text
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3
+-- # |  *Note:* Previously, opaque-tag was defined to be a quoted-
+-- # |  string ([RFC2616], Section 3.11); thus, some recipients might
+-- # |  perform backslash unescaping.  Servers therefore ought to avoid
+-- # |  backslash characters in entity tags.
+
+-- | Split a list of entity tags (@#entity-tag@, as in @If-Match@ and
+-- @If-None-Match@) into its tags, each as written, with its @W/@ prefix
+-- and quotes. A backslash is an ordinary character in an entity tag,
+-- not an escape. Empty elements are skipped, as for any list; anything
+-- that is not an entity tag is an error. The value @*@, which those
+-- fields allow instead of a list, is for the caller to check first.
+splitEntityTags :: FieldValue -> Either FieldSyntaxError [ByteString]
+splitEntityTags fv = go 0
+  where
+    bs = fieldValueBytes fv
+    n  = B.length bs
+    at i = if i < n then Just (B.index bs i) else Nothing
+    skipOWS i = if at i == Just 0x20 || at i == Just 0x09 then skipOWS (i + 1) else i
+
+    -- before an element, or an empty one
+    go i0 = let i = skipOWS i0 in case at i of
+      Nothing   -> Right []
+      Just 0x2C -> go (i + 1)
+      _         -> do
+        end <- entityTag i
+        let j = skipOWS end
+        rest <- case at j of
+          Nothing   -> Right []
+          Just 0x2C -> go (j + 1)
+          _         -> Left InvalidEntityTag
+        Right (B.take (end - i) (B.drop i bs) : rest)
+
+    -- the index just after an entity tag that starts at i
+    entityTag i
+      | at i == Just 0x57, at (i + 1) == Just 0x2F = opaque (i + 2)   -- "W/"
+      | otherwise                                  = opaque i
+    opaque i
+      | at i == Just 0x22 = close (i + 1)
+      | otherwise         = Left InvalidEntityTag
+    close i = case at i of
+      Just 0x22 -> Right (i + 1)
+      Just w | isETagC w -> close (i + 1)
+      _ -> Left InvalidEntityTag
+    isETagC w = w == 0x21 || (w >= 0x23 && w <= 0x7E) || isObsText w
 
 ------------------------------------------------------------------------------
 -- Quoted strings
@@ -253,7 +317,8 @@ parseParameters = go
 -- than a choice between its values: as with repeated singleton fields,
 -- different implementations choose differently, and an attacker can
 -- send @charset=utf-8;charset=utf-7@ hoping that a filter checks one
--- and the application uses the other. /O(n)/
+-- and the application uses the other. Only the name asked for is
+-- checked: another parameter given twice does not make this fail. /O(n)/
 lookupParameter :: ByteString -> [(ByteString, ByteString)] -> Either FieldSyntaxError (Maybe ByteString)
 lookupParameter name ps =
   case [ v | (k, v) <- ps, k == lname ] of

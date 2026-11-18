@@ -444,12 +444,14 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,exception]: ; a
     TEXT[!MUST,exception]:    proxy MUST NOT change the order of these field line values when
     TEXT[!MUST,exception]:    forwarding a message.
-    TEXT[!MUST]:    This means that, aside from the well-known exception noted below, a
-    TEXT[!MUST]:    sender MUST NOT generate multiple field lines with the same name in a
-    TEXT[!MUST]:    message (whether in the headers or trailers) or append a field line
-    TEXT[!MUST]:    when a field line of the same name already exists in the message,
-    TEXT[!MUST]:    unless that field's definition allows multiple field line values to
-    TEXT[!MUST]:    be recombined as a comma-separated list (i.e., at least one
+    TEXT[!MUST,implementation,test]:    This means that, aside from the well-known exception noted below, a
+    TEXT[!MUST,implementation,test]:    sender MUST NOT generate multiple field lines with the same name in a
+    TEXT[!MUST,implementation,test]:    message (whether in the headers or trailers)
+    TEXT[!MUST,implementation]:  or append a field line
+    TEXT[!MUST,implementation]:    when a field line of the same name already exists in the message,
+    TEXT[!MUST,implementation]:    unless that field's definition allows multiple field line values to
+    TEXT[!MUST,implementation]:    be recombined as a comma-separated list
+    TEXT[!MUST]:  (i.e., at least one
     TEXT[!MUST]:    alternative of the field's definition allows a comma-separated list,
     TEXT[!MUST]:    such as an ABNF rule of #(values) defined in Section 5.6.1).
     TEXT[test]: Since it cannot be combined into a single field value,
@@ -1005,6 +1007,15 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    resource by some other system (presumably one with a clock).
 
   SECTION: [ETag](#section-8.8.3)
+    TEXT[implementation,test]:      entity-tag = [ weak ] opaque-tag
+    TEXT[implementation,test]:      weak       = %s"W/"
+    TEXT[implementation,test]:      opaque-tag = DQUOTE *etagc DQUOTE
+    TEXT[implementation,test]:      etagc      = %x21 / %x23-7E / obs-text
+    TEXT[implementation,test]:                 ; VCHAR except double quotes, plus obs-text
+    TEXT[implementation,test]:       |  *Note:* Previously, opaque-tag was defined to be a quoted-
+    TEXT[implementation,test]:       |  string ([RFC2616], Section 3.11); thus, some recipients might
+    TEXT[implementation,test]:       |  perform backslash unescaping.  Servers therefore ought to avoid
+    TEXT[implementation,test]:       |  backslash characters in entity tags.
     TEXT[!MUST]: If an origin server provides an entity tag for a
     TEXT[!MUST]:    representation and the generation of that entity tag does not satisfy
     TEXT[!MUST]:    all of the characteristics of a strong validator (Section 8.8.1),
@@ -1978,8 +1989,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,exception]:    A proxy MUST NOT generate a 421 response.
 
   SECTION: [426 Upgrade Required](#section-15.5.22)
-    TEXT[!MUST]: The server MUST send an Upgrade header field in a 426
-    TEXT[!MUST]:    response to indicate the required protocol(s) (Section 7.8).
+    TEXT[!MUST,implementation,test]: The server MUST send an Upgrade header field in a 426
+    TEXT[!MUST,implementation,test]:    response to indicate the required protocol(s) (Section 7.8).
 
   SECTION: [Server Error 5xx](#section-15.6)
     TEXT[!SHOULD]: Except when responding to a HEAD request, the
@@ -2194,6 +2205,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]:    HTTP/1.1 clients will only send the absolute-form to a proxy.
 
   SECTION: [authority-form](#section-3.2.3)
+    TEXT[implementation,test]:    The "authority-form" of request-target is only used for CONNECT
+    TEXT[implementation,test]:    requests (Section 9.3.6 of [HTTP]).
     TEXT[!MUST,exception]:    When making a CONNECT request to establish a tunnel through one or
     TEXT[!MUST,exception]:    more proxies, a client MUST send only the host and port of the tunnel
     TEXT[!MUST,exception]:    destination as the request-target.
