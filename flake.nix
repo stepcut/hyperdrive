@@ -13,12 +13,14 @@
         hyperdrive-semantics = pkgs.haskell.lib.addTestToolDepends
           (final.callCabal2nix "hyperdrive-semantics" ./hyperdrive-semantics { }) [ pkgs.python3 ];
         hyperdrive-abnf = final.callCabal2nix "hyperdrive-abnf" ./hyperdrive-abnf { };
+        hyperdrive-http1 = final.callCabal2nix "hyperdrive-http1" ./hyperdrive-http1 { };
       });
     in {
       packages = forAllSystems (pkgs: {
         duvet = pkgs.callPackage ./nix/duvet.nix { };
         hyperdrive-semantics = (haskellPackages pkgs).hyperdrive-semantics;
         hyperdrive-abnf = (haskellPackages pkgs).hyperdrive-abnf;
+        hyperdrive-http1 = (haskellPackages pkgs).hyperdrive-http1;
       });
 
       # `nix flake check` builds the packages (which runs their test
@@ -27,6 +29,7 @@
       checks = forAllSystems (pkgs: {
         hyperdrive-semantics = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-semantics;
         hyperdrive-abnf = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-abnf;
+        hyperdrive-http1 = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-http1;
 
         # hyperdrive-abnf's tests read RFCs from their own copies, which
         # must be the text duvet checks citations against.
@@ -52,7 +55,7 @@
 
       devShells = forAllSystems (pkgs: {
         default = (haskellPackages pkgs).shellFor {
-          packages = p: [ p.hyperdrive-semantics p.hyperdrive-abnf ];
+          packages = p: [ p.hyperdrive-semantics p.hyperdrive-abnf p.hyperdrive-http1 ];
           nativeBuildInputs = [
             pkgs.cabal-install
             pkgs.python3 # for scripts/mutation-test

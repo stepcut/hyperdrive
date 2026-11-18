@@ -1,0 +1,51 @@
+# Deliberate bugs that the test suite must catch. See scripts/mutation-test.
+#
+# Each mutant should be a plausible mistake that changes behaviour. If
+# one survives, either add a test that catches it or, if the change
+# really makes no observable difference, remove it from this file.
+
+file: src/Hyperdrive/HTTP1/Framing.hs
+
+why: an HTTP/1.0 message with Transfer-Encoding has faulty framing (RFC 9112 Section 6.1)
+- | not (null te), version < HTTP_1_1 = Left TransferEncodingInHTTP10
++ | False = Left TransferEncodingInHTTP10
+
+why: Transfer-Encoding with Content-Length is the request smuggling pattern, rejected
+- | not (null te), not (null cl)      = Left BothLengthAndEncoding
++ | False      = Left BothLengthAndEncoding
+
+why: the chunked coding has no parameters (RFC 9112 Section 7.1)
+- | params                          -> Left ChunkedWithParameters
++ | False                           -> Left ChunkedWithParameters
+
+why: chunked may only be applied once (RFC 9112 Section 6.1)
+- | any ((== "chunked") . fst) earlier -> Left ChunkedTwice
++ | False -> Left ChunkedTwice
+
+why: only chunked is supported; any other coding gets 501
+- | ((c, _) : _) <- reverse earlier  -> Left (UnsupportedTransferCoding c)
++ | ((c, _) : _) <- reverse earlier, c == "gzip"  -> Left (UnsupportedTransferCoding c)
+
+why: transfer coding names are case-insensitive
+- Right (C.map toLower name, not (B.null rest))
++ Right (name, not (B.null rest))
+
+why: whitespace is allowed around the "=" of a transfer-parameter (BWS)
+- Just (0x3D, s3) -> value (B.dropWhile isOWS s3) >>= params
++ Just (0x3D, s3) -> value s3 >>= params
+
+why: a transfer-parameter needs a value
+- in if B.null t then Left InvalidTransferEncoding else Right rest
++ in Right rest
+
+why: a list of lengths is accepted only when every value is the same
+- Just (n : ns) | all (== n) ns -> Right n
++ Just (n : _) -> Right n
+
+why: a length too large for 64 bits is invalid, not wrapped around
+- if n > (maxBound - d) `div` 10 then Nothing else Just (n * 10 + d)
++ Just (n * 10 + d)
+
+why: 501 is for a coding the server does not support; every other framing error is 400
+- framingErrorStatus (UnsupportedTransferCoding _) = NotImplemented
++ framingErrorStatus (UnsupportedTransferCoding _) = BadRequest

@@ -924,6 +924,7 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    limited to textual documents.
 
   SECTION: [Content-Length](#section-8.6)
+    TEXT[implementation,test]:      Content-Length = 1*DIGIT
     TEXT[!SHOULD,exception]:    A user agent SHOULD send Content-Length in a request when the method
     TEXT[!SHOULD,exception]:    defines a meaning for enclosed content and it is not sending
     TEXT[!SHOULD,exception]:    Transfer-Encoding.
@@ -949,9 +950,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    when the content size is known prior to sending the complete header
     TEXT[!SHOULD]:    section.
     TEXT[!MUST]: Since there is no predefined limit to the length of content,
-    TEXT[!MUST]:    a recipient MUST anticipate potentially large decimal numerals and
-    TEXT[!MUST]:    prevent parsing errors due to integer conversion overflows or
-    TEXT[!MUST]:    precision loss due to integer conversion (Section 17.5).
+    TEXT[!MUST,implementation]:    a recipient MUST anticipate potentially large decimal numerals and
+    TEXT[!MUST,implementation]:    prevent parsing errors due to integer conversion overflows or
+    TEXT[!MUST,implementation]:    precision loss due to integer conversion
+    TEXT[!MUST]:  (Section 17.5).
     TEXT[!MUST,exception]:    As a result, a sender MUST NOT forward a message with a Content-
     TEXT[!MUST,exception]:    Length header field value that is known to be incorrect.
     TEXT[!MUST]:    Likewise, a sender MUST NOT forward a message with a Content-Length
@@ -1307,6 +1309,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,exception]:    URI.
 
   SECTION: [TE](#section-10.1.4)
+    TEXT[implementation,test]:      transfer-coding    = token *( OWS ";" OWS transfer-parameter )
+    TEXT[implementation,test]:      transfer-parameter = token BWS "=" BWS ( token / quoted-string )
     TEXT[!MUST,exception]:    A sender of TE MUST also send a "TE" connection option within the
     TEXT[!MUST,exception]:    Connection header field (Section 7.6.1) to inform intermediaries not
     TEXT[!MUST,exception]:    to forward this field.
@@ -2291,6 +2295,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]:    than chunked is applied to a response's content, the sender MUST
     TEXT[!MUST]:    either apply chunked as the final transfer coding or terminate the
     TEXT[!MUST]:    message by closing the connection.
+    TEXT[test]:    For example,
+    TEXT[test]:    Transfer-Encoding: gzip, chunked
+    TEXT[test]:    indicates that the content has been compressed using the gzip coding
+    TEXT[test]:    and then chunked using the chunked coding while forming the message
+    TEXT[test]:    body.
     TEXT[!MAY]: Any
     TEXT[!MAY]:    recipient along the request/response chain MAY decode the received
     TEXT[!MAY]:    transfer coding(s) or apply additional transfer coding(s) to the
@@ -2307,8 +2316,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]: A server MUST NOT send a Transfer-Encoding header field in
     TEXT[!MUST]:    any 2xx (Successful) response to a CONNECT request (Section 9.3.6 of
     TEXT[!MUST]:    [HTTP]).
-    TEXT[!SHOULD]:    A server that receives a request message with a transfer coding it
-    TEXT[!SHOULD]:    does not understand SHOULD respond with 501 (Not Implemented).
+    TEXT[!SHOULD,implementation,test]:    A server that receives a request message with a transfer coding it
+    TEXT[!SHOULD,implementation,test]:    does not understand SHOULD respond with 501 (Not Implemented).
     TEXT[!MUST,exception]:    A client MUST NOT send a request containing Transfer-Encoding unless
     TEXT[!MUST,exception]:    it knows the server will handle HTTP/1.1 requests (or later minor
     TEXT[!MUST,exception]:    revisions); such knowledge might be in the form of specific user
@@ -2317,22 +2326,24 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]: A server MUST NOT send a response containing Transfer-
     TEXT[!MUST]:    Encoding unless the corresponding request indicates HTTP/1.1 (or
     TEXT[!MUST]:    later minor revisions).
-    TEXT[!MAY]:    A server MAY reject a request that contains both Content-Length and
-    TEXT[!MAY]:    Transfer-Encoding or process such a request in accordance with the
-    TEXT[!MAY]:    Transfer-Encoding alone.
-    TEXT[!MUST]: Regardless, the server MUST close the
-    TEXT[!MUST]:    connection after responding to such a request to avoid the potential
-    TEXT[!MUST]:    attacks.
-    TEXT[!MUST]:    A server or client that receives an HTTP/1.0 message containing a
-    TEXT[!MUST]:    Transfer-Encoding header field MUST treat the message as if the
-    TEXT[!MUST]:    framing is faulty, even if a Content-Length is present, and close the
-    TEXT[!MUST]:    connection after processing the message.
+    TEXT[!MAY,implementation]:    A server MAY reject a request that contains both Content-Length and
+    TEXT[!MAY,implementation]:    Transfer-Encoding or process such a request in accordance with the
+    TEXT[!MAY,implementation]:    Transfer-Encoding alone.
+    TEXT[!MUST,implementation]: Regardless, the server MUST close the
+    TEXT[!MUST,implementation]:    connection after responding to such a request to avoid the potential
+    TEXT[!MUST,implementation]:    attacks.
+    TEXT[!MUST,implementation]:    A server or client that receives an HTTP/1.0 message containing a
+    TEXT[!MUST,implementation]:    Transfer-Encoding header field MUST treat the message as if the
+    TEXT[!MUST,implementation]:    framing is faulty, even if a Content-Length is present, and close the
+    TEXT[!MUST,implementation]:    connection after processing the message.
 
   SECTION: [Content-Length](#section-6.2)
     TEXT[!MUST]:    A sender MUST NOT send a Content-Length header field in any message
     TEXT[!MUST]:    that contains a Transfer-Encoding header field.
 
   SECTION: [Message Body Length](#section-6.3)
+    TEXT[test]:    The length of a message body is determined by one of the following
+    TEXT[test]:    (in order of precedence):
     TEXT[!MUST,exception]: A client MUST ignore any
     TEXT[!MUST,exception]:        Content-Length or Transfer-Encoding header fields received in
     TEXT[!MUST,exception]:        such a message.
@@ -2341,19 +2352,19 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]:        remove the received Content-Length field and process the
     TEXT[!MUST,exception]:        Transfer-Encoding (as described below) prior to forwarding the
     TEXT[!MUST,exception]:        message downstream.
-    TEXT[!MUST]:        If a Transfer-Encoding header field is present in a request and
-    TEXT[!MUST]:        the chunked transfer coding is not the final encoding, the
-    TEXT[!MUST]:        message body length cannot be determined reliably; the server
-    TEXT[!MUST]:        MUST respond with the 400 (Bad Request) status code and then
-    TEXT[!MUST]:        close the connection.
-    TEXT[!MUST]: If a message is received without Transfer-Encoding and with an
-    TEXT[!MUST]:        invalid Content-Length header field, then the message framing is
-    TEXT[!MUST]:        invalid and the recipient MUST treat it as an unrecoverable
-    TEXT[!MUST]:        error, unless the field value can be successfully parsed as a
-    TEXT[!MUST]:        comma-separated list (Section 5.6.1 of [HTTP]), all values in the
-    TEXT[!MUST]:        list are valid, and all values in the list are the same (in which
-    TEXT[!MUST]:        case, the message is processed with that single value used as the
-    TEXT[!MUST]:        Content-Length field value).
+    TEXT[!MUST,implementation]:        If a Transfer-Encoding header field is present in a request and
+    TEXT[!MUST,implementation]:        the chunked transfer coding is not the final encoding, the
+    TEXT[!MUST,implementation]:        message body length cannot be determined reliably; the server
+    TEXT[!MUST,implementation]:        MUST respond with the 400 (Bad Request) status code and then
+    TEXT[!MUST,implementation]:        close the connection.
+    TEXT[!MUST,implementation]: If a message is received without Transfer-Encoding and with an
+    TEXT[!MUST,implementation]:        invalid Content-Length header field, then the message framing is
+    TEXT[!MUST,implementation]:        invalid and the recipient MUST treat it as an unrecoverable
+    TEXT[!MUST,implementation]:        error, unless the field value can be successfully parsed as a
+    TEXT[!MUST,implementation]:        comma-separated list (Section 5.6.1 of [HTTP]), all values in the
+    TEXT[!MUST,implementation]:        list are valid, and all values in the list are the same (in which
+    TEXT[!MUST,implementation]:        case, the message is processed with that single value used as the
+    TEXT[!MUST,implementation]:        Content-Length field value).
     TEXT[!MUST]: If the unrecoverable error is in a
     TEXT[!MUST]:        request message, the server MUST respond with a 400 (Bad Request)
     TEXT[!MUST]:        status code and then close the connection.
@@ -2369,6 +2380,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]:        the recipient times out before the indicated number of octets are
     TEXT[!MUST]:        received, the recipient MUST consider the message to be
     TEXT[!MUST]:        incomplete and close the connection.
+    TEXT[implementation]: If this is a request message and none of the above are true, then
+    TEXT[implementation]:        the message body length is zero (no message body is present).
     TEXT[!SHOULD]:    Since there is no way to distinguish a successfully completed, close-
     TEXT[!SHOULD]:    delimited response message from a partially received message
     TEXT[!SHOULD]:    interrupted by network failure, a server SHOULD generate encoding or
@@ -2397,6 +2410,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]:    separate response, since such behavior would be vulnerable to cache
     TEXT[!MUST,exception]:    poisoning.
 
+  SECTION: [Transfer Codings](#section-7)
+    TEXT[implementation]:    All transfer-coding names are case-insensitive
+
   SECTION: [Chunked Transfer Coding](#section-7.1)
     TEXT[!MAY]:    The chunked transfer coding wraps content in order to transfer it as
     TEXT[!MAY]:    a series of chunks, each with its own size indicator, followed by an
@@ -2407,8 +2423,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]:    anticipate potentially large hexadecimal numerals and prevent parsing
     TEXT[!MUST]:    errors due to integer conversion overflows or precision loss due to
     TEXT[!MUST]:    integer representation.
-    TEXT[!SHOULD]: Their presence
-    TEXT[!SHOULD]:    SHOULD be treated as an error.
+    TEXT[implementation]:    The chunked coding does not define any parameters.
+    TEXT[!SHOULD,implementation]: Their presence
+    TEXT[!SHOULD,implementation]:    SHOULD be treated as an error.
 
   SECTION: [Chunk Extensions](#section-7.1.1)
     TEXT[!MUST]:    A recipient MUST ignore unrecognized chunk extensions.

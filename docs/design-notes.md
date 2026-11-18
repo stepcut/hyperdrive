@@ -60,6 +60,15 @@ So:
   allow-lists, not URI or origin equivalence: they identify a trailing
   dot and an IPv4-mapped address with the plain forms, which RFC 3986
   and, for https certificates, RFC 9110 Section 4.3.5 do not.
+- HTTP/1.1 request framing (`Hyperdrive.HTTP1.Framing`) rejects, with
+  400 and closing the connection, every request whose body length is
+  not unambiguous. Where RFC 9112 Section 6.1 allows either rejecting a
+  request with both `Content-Length` and `Transfer-Encoding` or obeying
+  `Transfer-Encoding` alone, it rejects: that is the request smuggling
+  pattern. A `Content-Length` list is accepted when every value is the
+  same number (`5, 05` is 5), so every reading that accepts it agrees on
+  the length. The only transfer coding supported is chunked; any other
+  gets 501 (RFC 9112 Section 6.1).
 - IPv6 zone identifiers (`[fe80::1%25eth0]`) are rejected in hosts, as
   RFC 3986 says. RFC 6874 had added them to URIs, but already required
   HTTP clients and intermediaries to remove them before sending a
