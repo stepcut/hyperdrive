@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Build a package for an independent review of hyperdrive-semantics:
+# the documented API (no implementation), the RFC texts, the reviewer's
+# instructions, and a script that type-checks the reviewer's tests
+# against the compiled library without running them. See README.md.
+#
+# Usage, from the repository root, after `cabal build hyperdrive-semantics`:
+#   docs/independent-review/prepare DIR
+set -euo pipefail
+if [ $# -ne 1 ]; then echo "usage: $0 DIR" >&2; exit 2; fi
+repo=$(cd "$(dirname "$0")/../.." && pwd)
+out=$1
+mkdir -p "$out"
+here="$repo/docs/independent-review"
+
+python3 "$repo/scripts/extract-api" "$repo"/hyperdrive-semantics/src/Hyperdrive/Semantics/*.hs > "$out/API.md"
+for n in 9110 9112 3986 5952; do
+  cp "$repo/.duvet/specifications/www.rfc-editor.org/rfc/rfc$n.txt" "$out/"
+done
+for n in 1123 952; do
+  curl -sSf -o "$out/rfc$n.txt" "https://www.rfc-editor.org/rfc/rfc$n.txt"
+done
+sed "s|@REPO@|$repo|g" "$here/INSTRUCTIONS.md" > "$out/INSTRUCTIONS.md"
+
+cat > "$out/check.sh" <<CHECK
+#!/usr/bin/env bash
+# Type-checks ReviewTests.hs against the compiled library (interface files
+# only). It does not run anything. Usage: ./check.sh
+set -euo pipefail
+cd "\$(dirname "\$0")"
+REPO=$repo
+nix develop "\$REPO" -c ghc -fno-code -Wall -Wno-unused-imports \\
+  -package-db "\$REPO/dist-newstyle/packagedb/ghc-\$(nix develop "\$REPO" -c ghc --numeric-version 2>/dev/null)" \\
+  -package hyperdrive-semantics -package bytestring -package containers \\
+  ReviewTests.hs 2>&1 | grep -v "^warning: Git tree"
+CHECK
+chmod +x "$out/check.sh"
+echo "review package written to $out"
