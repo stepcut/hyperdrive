@@ -9,7 +9,9 @@
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
 
       haskellPackages = pkgs: pkgs.haskellPackages.extend (final: prev: {
-        hyperdrive-semantics = final.callCabal2nix "hyperdrive-semantics" ./hyperdrive-semantics { };
+        # the differential tests run Python's ipaddress module
+        hyperdrive-semantics = pkgs.haskell.lib.addTestToolDepends
+          (final.callCabal2nix "hyperdrive-semantics" ./hyperdrive-semantics { }) [ pkgs.python3 ];
         hyperdrive-abnf = final.callCabal2nix "hyperdrive-abnf" ./hyperdrive-abnf { };
       });
     in {

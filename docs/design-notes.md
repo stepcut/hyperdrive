@@ -45,6 +45,15 @@ So:
   rendering only matters to systems that compare our text with theirs.
   Parsing and host comparison work on the address value, so none of
   this affects which requests are accepted or matched.
+- IPv6 zone identifiers (`[fe80::1%25eth0]`) are rejected in hosts, as
+  RFC 3986 says. RFC 6874 had added them to URIs, but already required
+  HTTP clients and intermediaries to remove them before sending a
+  request, and RFC 9844 (2025) obsoletes RFC 6874 and reverts the URI
+  syntax, because zone identifiers are of local significance and "must
+  not be sent on the wire". Address libraries such as Python's
+  `ipaddress` accept `fe80::1%eth0`, which is RFC 4007's text form for
+  APIs and user interfaces, not URI syntax. This is the one difference
+  the differential test against Python allows.
 - `Request` and `Response` are version-independent. Fields about framing
   or the connection (`Connection`, `Keep-Alive`, `Proxy-Connection`,
   `TE`, `Transfer-Encoding`, `Upgrade`, `Content-Length`) are never part

@@ -23,6 +23,7 @@ extra-source-files: test/data/README.md
                     test/data/payloadsallthethings/LICENSE
                     test/data/structured-field-tests/*.json
                     test/data/structured-field-tests/LICENSE.md
+                    test/differential/ipv6.py
 
 common warnings
   ghc-options: -Wall
@@ -72,3 +73,24 @@ test-suite hyperdrive-semantics-tests
                   , QuickCheck       >= 2.14 && < 2.18
                   , tasty            >= 1.4  && < 1.6
                   , tasty-quickcheck >= 0.10 && < 0.12
+
+-- Compares our parsing and rendering with other implementations, run as
+-- separate programs: Python's ipaddress module, through
+-- test/differential/ipv6.py. Needs python3 on the PATH (or in $PYTHON).
+test-suite hyperdrive-semantics-differential
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test/differential test
+  main-is:          Main.hs
+  other-modules:    Grammar
+  default-language: GHC2021
+  build-depends:    base
+                  , aeson
+                  , bytestring
+                  , containers
+                  , hyperdrive-abnf
+                  , hyperdrive-semantics
+                  , process          >= 1.6  && < 1.7
+                  , QuickCheck
+                  , tasty
+                  , tasty-quickcheck
