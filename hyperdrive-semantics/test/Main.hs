@@ -20,6 +20,7 @@ import FieldSyntaxTests (fieldSyntaxTests)
 import GrammarTests (grammarTests)
 import IndependentTests (independentTests)
 import MessageTests (messageTests)
+import ReviewTests (reviewTests)
 import SafePathTests (safePathTests)
 import SecurityTests (securityTests)
 import ThirdPartyTests (thirdPartyTests)
@@ -61,6 +62,8 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
   , grammarTests
   , testGroup "Independent re-derivation"
       [ testProperty d (once b) | (d, b) <- independentTests ]
+  , testGroup "Second independent review"
+      [ testProperty d (once b) | (d, b) <- reviewTests ]
   ]
 
 ------------------------------------------------------------------------------

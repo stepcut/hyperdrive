@@ -58,6 +58,7 @@ test-suite hyperdrive-semantics-tests
                     GrammarTests
                     IndependentTests
                     MessageTests
+                    ReviewTests
                     SafePathTests
                     SecurityTests
                     ThirdPartyTests
