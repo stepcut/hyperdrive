@@ -45,6 +45,21 @@ So:
   rendering only matters to systems that compare our text with theirs.
   Parsing and host comparison work on the address value, so none of
   this affects which requests are accepted or matched.
+- A 205 (Reset Content) has empty content, `ContentBytes ""`, not
+  `ContentNone`: RFC 9110 Section 6.4.1 gives only 1xx, 204 and 304 no
+  content, and RFC 9112 Section 6.3 frames a 205's body. Found by the
+  second independent review.
+- Trailer fields are declared by the stream that sends them, and only
+  declared fields may be sent: an allow-list rather than a list of
+  fields that cannot be trailers, which could never be complete (RFC
+  9110 Section 6.5.1). The declaration also gives the `Trailer` field.
+- Lists of entity tags are split with `splitEntityTags`, not
+  `splitList`: a backslash in an entity tag is not an escape (RFC 9110
+  Section 8.8.3).
+- `canonicalHost` and `authorityKey` are a policy for routing and
+  allow-lists, not URI or origin equivalence: they identify a trailing
+  dot and an IPv4-mapped address with the plain forms, which RFC 3986
+  and, for https certificates, RFC 9110 Section 4.3.5 do not.
 - IPv6 zone identifiers (`[fe80::1%25eth0]`) are rejected in hosts, as
   RFC 3986 says. RFC 6874 had added them to URIs, but already required
   HTTP clients and intermediaries to remove them before sending a
@@ -144,7 +159,12 @@ Each item came from a security review of `hyperdrive-semantics`
   start of the next response, and abort if a stream or file provides
   more or fewer (a file can change size after it was measured). Never
   send `Content-Length` with a 1xx or 204 response, or a 2xx response to
-  CONNECT (RFC 9110 Section 8.6).
+  CONNECT (RFC 9110 Section 8.6). A 205 has content of zero length,
+  which HTTP/1.1 must frame (`Content-Length: 0`): RFC 9112 Section 6.3
+  does not end a 205 at the header section. A 304 may carry the
+  `Content-Length` its 200 would have had (RFC 9110 Section 8.6); that
+  is not supported, since a `Response` with no content has no length to
+  give.
 - **M2a. Failure is never a normal end.** If producing content fails
   (the stream throws, a file read fails, the length is wrong), close the
   connection or reset the stream. Never end the content normally, with a
@@ -157,8 +177,8 @@ Each item came from a security review of `hyperdrive-semantics`
   size, whatever `bodyLength` says.
 - **M2c. Checks before sending.** Call `checkResponseFor` with the
   request before sending any response (it rejects a 2xx response to
-  CONNECT, which would open a tunnel), and `checkTrailers` on the
-  trailers a stream returns, aborting if either fails.
+  CONNECT, which would open a tunnel), and `checkTrailers` with the
+  response on the trailers its stream returns, aborting if either fails.
 - **M3. HEAD.** Send the fields that describe the content, such as its
   length, and never the content itself. Applications build the same
   `Response` as for GET.
@@ -168,19 +188,41 @@ Each item came from a security review of `hyperdrive-semantics`
   need their own API (`100 Continue` when the application starts
   reading a body sent with `Expect: 100-continue`, `103 Early Hints`),
   and must never be sent to an HTTP/1.0 client (RFC 9110 Section 15.2).
-- **M6. Trailers.** Only send trailer fields whose definitions allow it
-  (RFC 9110 Section 6.5.1); `checkTrailers` rejects the ones that
-  clearly cannot be trailers. In HTTP/1.1, trailers need chunked
-  framing. Never merge received trailers into the header section.
+- **M6. Trailers.** A `ContentStream` declares the names of the fields
+  it may send as trailers. `mkResponse` rejects declared fields that
+  cannot be trailers, and singletons also among the header fields;
+  `checkTrailers` rejects undeclared fields and repeated singletons
+  (RFC 9110 Sections 5.3 and 6.5.1). Generate the `Trailer` header field
+  from the declared names (RFC 9110 Section 6.6.2). In HTTP/1.1,
+  trailers need chunked framing. Never merge received trailers into the
+  header section (RFC 9110 Section 6.5.1, RFC 9112 Section 7.1.2).
+  Still to decide: what to do with trailers when the client did not
+  send `TE: trailers` (RFC 9110 Sections 6.5.1 and 10.1.4). `TE` is a
+  protocol field, so the application cannot see it.
 - **M7. Upgrade.** `Upgrade` is a protocol field. Present an HTTP/1.1
   upgrade (WebSocket) to applications the way HTTP/2 and HTTP/3 present
-  it: as an extended CONNECT (RFC 8441, RFC 9220).
+  it: as an extended CONNECT (RFC 8441, RFC 9220). Until upgrades are
+  supported, `mkResponse` rejects a 426 (Upgrade Required), which must
+  carry `Upgrade` (RFC 9110 Sections 7.8 and 15.5.22), and nothing
+  advertises upgrades.
 - **M8. Connection context.** The peer address and whether the
   connection is secured are not part of a `Request`; they travel
   alongside it, and are needed for P3's https check.
 - **M9. Set-Cookie.** Serialize each `Set-Cookie` field line separately;
   they can never be combined (RFC 9110 Section 5.3). `Fields` keeps them
   separate.
+- **M10. CONNECT.** A CONNECT request has no content (RFC 9110 Section
+  9.3.6): deliver an empty body. In HTTP/1.x CONNECT uses only the
+  authority form (RFC 9112 Section 3.2.3); `mkRequest` rejects anything
+  else, since an extended CONNECT only exists in HTTP/2 and HTTP/3.
+- **M11. TE parameters.** A transfer-parameter allows whitespace
+  around "=" (`token BWS "=" BWS ...`, RFC 9110 Section 10.1.4), which
+  parameters elsewhere do not (Section 5.6.6), so parse `TE` with its
+  own rule rather than `parseParameters`.
+- **M12. Singleton fields from other RFCs.** `mkResponse` rejects
+  repeated singletons defined in RFC 9110 and RFC 9111 only. Add others
+  (`Content-Disposition`, RFC 6266; `Strict-Transport-Security`, RFC
+  6797) as they come into use.
 
 `Response` fields can only be built from `FieldName` and `FieldValue`,
 so decoded request data containing CR or LF (which `pathSegments`
