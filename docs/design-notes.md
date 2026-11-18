@@ -213,9 +213,12 @@ Each item came from a security review of `hyperdrive-semantics`
   from the declared names (RFC 9110 Section 6.6.2). In HTTP/1.1,
   trailers need chunked framing. Never merge received trailers into the
   header section (RFC 9110 Section 6.5.1, RFC 9112 Section 7.1.2).
-  Still to decide: what to do with trailers when the client did not
-  send `TE: trailers` (RFC 9110 Sections 6.5.1 and 10.1.4). `TE` is a
-  protocol field, so the application cannot see it.
+  When the client did not send `TE: trailers`, declared trailers are
+  sent anyway (every HTTP/1.1 client must parse a trailer section), and
+  a version-independent property of `Request` tells the application
+  whether the client asked for them, since only it knows whether they
+  are necessary (RFC 9110 Sections 6.5.1 and 10.1.4; decided with the
+  user, docs/http1-core-design.md D9).
 - **M7. Upgrade.** `Upgrade` is a protocol field. Present an HTTP/1.1
   upgrade (WebSocket) to applications the way HTTP/2 and HTTP/3 present
   it: as an extended CONNECT (RFC 8441, RFC 9220). Until upgrades are

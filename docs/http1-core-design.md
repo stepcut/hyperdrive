@@ -1,6 +1,7 @@
 # HTTP/1.1 core: design proposal
 
-Status: draft for discussion (2026-11-17). Nothing here is implemented
+Status (2026-11-17): D2, D4 and D9 decided as recommended; the other
+recommendations stand unless revisited. Nothing here is implemented
 yet, apart from framing (`Hyperdrive.HTTP1.Framing`).
 
 ## Constraints already decided
@@ -71,12 +72,13 @@ unparsed tail of the input.
 
 ## Decisions to make
 
-Each has a recommendation; the ones marked **(you)** need your call.
+Each has a recommendation. The ones marked **(decided)** were agreed
+with the user on 2026-11-17.
 
 **D1. One `step`, or receive/send halves.** Recommended: one `step`,
 for testing and a single driver loop (above).
 
-**D2. Pipelining (you).** A client may send the next request before the
+**D2. Pipelining (decided: one request at a time).** A client may send the next request before the
 response to the previous one. Options: (a) parse requests one at a
 time: after a request's head, the next is not parsed until its response
 has been sent (as h11 does); pipelined requests still work, served in
@@ -91,7 +93,7 @@ response (`Content-Length: 0`, `Connection: close`), so that every
 protocol error path is pure and tested. An optional hook could let the
 application supply a body later.
 
-**D4. Limits (you).** The core enforces limits on the request line,
+**D4. Limits (decided: the defaults below).** The core enforces limits on the request line,
 the length of a field line, the size of the header section, the number
 of fields, chunk sizes and chunk extensions, and the trailer section,
 answering with 414, 431 or 400 (RFC 9112 Section 3, RFC 9110 Sections
@@ -133,7 +135,8 @@ core then decides: close quietly when idle or before any byte of a
 request, send 408 when part of a head has arrived (a slow-header
 attack), and close when a body stalls.
 
-**D9. Trailers when the client did not send `TE: trailers` (you).**
+**D9. Trailers when the client did not send `TE: trailers` (decided:
+send them, and tell the application).**
 RFC 9110 Section 10.1.4: the client is "willing to accept trailer
 fields" if it sends it; Section 6.5.1: a server "SHOULD NOT generate
 trailer fields that it believes are necessary for the user agent to
