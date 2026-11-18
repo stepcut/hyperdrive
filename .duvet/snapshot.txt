@@ -2449,29 +2449,56 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MAY]:    The chunked transfer coding wraps content in order to transfer it as
     TEXT[!MAY]:    a series of chunks, each with its own size indicator, followed by an
     TEXT[!MAY]:    OPTIONAL trailer section containing trailer fields.
-    TEXT[!MUST]:    A recipient MUST be able to parse and decode the chunked transfer
-    TEXT[!MUST]:    coding.
-    TEXT[!MUST]: Therefore, recipients MUST
-    TEXT[!MUST]:    anticipate potentially large hexadecimal numerals and prevent parsing
-    TEXT[!MUST]:    errors due to integer conversion overflows or precision loss due to
-    TEXT[!MUST]:    integer representation.
+    TEXT[implementation,test]:      chunked-body   = *chunk
+    TEXT[implementation,test]:                       last-chunk
+    TEXT[implementation,test]:                       trailer-section
+    TEXT[implementation,test]:                       CRLF
+    TEXT[implementation,test]:      chunk          = chunk-size [ chunk-ext ] CRLF
+    TEXT[implementation,test]:                       chunk-data CRLF
+    TEXT[implementation,test]:      chunk-size     = 1*HEXDIG
+    TEXT[implementation,test]:      last-chunk     = 1*("0") [ chunk-ext ] CRLF
+    TEXT[implementation,test]:      chunk-data     = 1*OCTET ; a sequence of chunk-size octets
+    TEXT[implementation,test]: The chunked transfer coding is complete
+    TEXT[implementation,test]:    when a chunk with a chunk-size of zero is received, possibly followed
+    TEXT[implementation,test]:    by a trailer section, and finally terminated by an empty line.
+    TEXT[!MUST,implementation,test]:    A recipient MUST be able to parse and decode the chunked transfer
+    TEXT[!MUST,implementation,test]:    coding.
+    TEXT[!MUST,implementation,test]: Therefore, recipients MUST
+    TEXT[!MUST,implementation,test]:    anticipate potentially large hexadecimal numerals and prevent parsing
+    TEXT[!MUST,implementation,test]:    errors due to integer conversion overflows or precision loss due to
+    TEXT[!MUST,implementation,test]:    integer representation.
     TEXT[implementation]:    The chunked coding does not define any parameters.
     TEXT[!SHOULD,implementation]: Their presence
     TEXT[!SHOULD,implementation]:    SHOULD be treated as an error.
 
   SECTION: [Chunk Extensions](#section-7.1.1)
-    TEXT[!MUST]:    A recipient MUST ignore unrecognized chunk extensions.
+    TEXT[implementation,test]:      chunk-ext      = *( BWS ";" BWS chunk-ext-name
+    TEXT[implementation,test]:                          [ BWS "=" BWS chunk-ext-val ] )
+    TEXT[implementation,test]:      chunk-ext-name = token
+    TEXT[implementation,test]:      chunk-ext-val  = token / quoted-string
+    TEXT[!MUST,implementation,test]:    A recipient MUST ignore unrecognized chunk extensions.
+    TEXT[implementation,test]: A server
+    TEXT[implementation,test]:    ought to limit the total length of chunk extensions received in a
+    TEXT[implementation,test]:    request to an amount reasonable for the services provided, in the
+    TEXT[implementation,test]:    same way that it applies length limitations and timeouts for other
+    TEXT[implementation,test]:    parts of a message, and generate an appropriate 4xx (Client Error)
+    TEXT[implementation,test]:    response if that amount is exceeded.
 
   SECTION: [Chunked Trailer Section](#section-7.1.2)
-    TEXT[!MAY]:    A recipient that removes the chunked coding from a message MAY
-    TEXT[!MAY]:    selectively retain or discard the received trailer fields.
-    TEXT[!MUST]:    recipient that retains a received trailer field MUST either store/
-    TEXT[!MUST]:    forward the trailer field separately from the received header fields
-    TEXT[!MUST]:    or merge the received trailer field into the header section.
-    TEXT[!MUST]:    recipient MUST NOT merge a received trailer field into the header
-    TEXT[!MUST]:    section unless its corresponding header field definition explicitly
-    TEXT[!MUST]:    permits and instructs how the trailer field value can be safely
-    TEXT[!MUST]:    merged.
+    TEXT[test]:      trailer-section   = *( field-line CRLF )
+    TEXT[!MAY,implementation]:    A recipient that removes the chunked coding from a message MAY
+    TEXT[!MAY,implementation]:    selectively retain or discard the received trailer fields.
+    TEXT[!MUST,implementation,test]:    recipient that retains a received trailer field MUST either store/
+    TEXT[!MUST,implementation,test]:    forward the trailer field separately from the received header fields
+    TEXT[!MUST,implementation,test]:    or merge the received trailer field into the header section.
+    TEXT[!MUST,implementation,test]:    recipient MUST NOT merge a received trailer field into the header
+    TEXT[!MUST,implementation,test]:    section unless its corresponding header field definition explicitly
+    TEXT[!MUST,implementation,test]:    permits and instructs how the trailer field value can be safely
+    TEXT[!MUST,implementation,test]:    merged.
+
+  SECTION: [Decoding Chunked](#section-7.1.3)
+    TEXT[test]:    A process for decoding the chunked transfer coding can be represented
+    TEXT[test]:    in pseudo-code as:
 
   SECTION: [Transfer Codings for Compression](#section-7.2)
     TEXT[!SHOULD]: The presence

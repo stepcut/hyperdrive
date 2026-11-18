@@ -15,6 +15,9 @@ module Hyperdrive.HTTP1.Head
   , HeadError(..)
   , parseRequestHead
   , headErrorStatus
+    -- * Field lines, also used for trailer sections
+  , parseFieldLine
+  , checkLine
   ) where
 
 import Data.ByteString (ByteString)

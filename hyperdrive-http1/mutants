@@ -143,3 +143,77 @@ why: a method too long gets 501 (RFC 9112 Section 3), a target too long 414
 why: a header section too large gets 431 (RFC 6585)
 - FieldSectionTooLarge   -> requestHeaderFieldsTooLarge
 + FieldSectionTooLarge   -> BadRequest
+
+file: src/Hyperdrive/HTTP1/Chunked.hs
+
+why: a chunk's data ends exactly where its size says
+- left  = n - fromIntegral (B.length piece)
++ left  = n - fromIntegral (B.length piece) - 1
+
+why: chunk data must be followed by CRLF, not just any two octets
+- | B.take 2 input == "\r\n" -> go (used + 2) d { decoderPhase = SizeLine } (B.drop 2 input)
++ | True -> go (used + 2) d { decoderPhase = SizeLine } (B.drop 2 input)
+
+why: a chunk-size line ends with CRLF, and a bare CR or LF in it is an error
+- | B.elem 0x0A line || B.elem 0x0D line = Left ChunkLineEnding
++ | B.elem 0x0A line = Left ChunkLineEnding
+
+why: a chunk size needs at least one digit
+- | B.null digits = Left InvalidChunkSize
++ | False = Left InvalidChunkSize
+
+why: a size too large for 64 bits is an error, not wrapped around (RFC 9112 Section 7.1)
+- if n > maxBound `div` 16 then Nothing else Just (n * 16 + hexValue w)
++ Just (n * 16 + hexValue w)
+
+why: hex digits are case-insensitive
+- | w >= 0x61 = fromIntegral (w - 0x61 + 10)
++ | w >= 0x61 = fromIntegral (w - 0x61)
+
+why: a size of zero ends the chunks, whatever the number of zeros
+- , decoderPhase = if size == 0 then Trailers 0 else InData size }
++ , decoderPhase = if B.length line == 1 && size == 0 then Trailers 0 else InData size }
+
+why: chunk extensions are counted over the whole body, not per chunk
+- | decoderExtensions d + extLength > maxChunkExtensions limits -> DecodeError ChunkExtensionsTooLong
++ | extLength > maxChunkExtensions limits -> DecodeError ChunkExtensionsTooLong
+
+why: a chunk-size line is limited even before its CRLF arrives
+- | B.length line > maxSizeLine -> DecodeError ChunkSizeLineTooLong
++ | B.length line > maxSizeLine, not (B.null rest) -> DecodeError ChunkSizeLineTooLong
+
+why: an extension needs a name
+- if B.null name then Left InvalidChunkExtension else Right ()
++ Right ()
+
+why: whitespace is allowed around the "=" of an extension (BWS)
+- Just (0x3D, s4) -> value (B.dropWhile isOWS s4) >>= extensions
++ Just (0x3D, s4) -> value s4 >>= extensions
+
+why: an extension's value needs at least one octet
+- in if B.null t then Left InvalidChunkExtension else Right rest
++ in Right rest
+
+why: anything but an extension after the size is an error
+- _ -> Left InvalidChunkExtension
++ _ -> Right ()
+
+why: quoted-string values must be terminated
+- Just (0x22, _) -> either (const (Left InvalidChunkExtension)) (Right . snd) (parseQuotedString s)
++ Just (0x22, _) -> Right (B.drop 1 (B.dropWhile (/= 0x22) (B.drop 1 s)))
+
+why: an empty trailer section is just the final CRLF
+- | B.take 2 input == "\r\n" = Finished emptyFields (used + 2)
++ | B.take 2 input == "\r\n" = Finished emptyFields used
+
+why: the trailer section is limited even before it is complete
+- if B.length input >= limit then DecodeError TrailerSectionTooLarge
++ if False then DecodeError TrailerSectionTooLarge
+
+why: a resumed search may find a CRLF CRLF that started in the earlier input
+- where start = max 0 (searched - 3)
++ where start = searched
+
+why: trailer lines are field lines, with the same strictness as the head
+- fieldLine l = checkLine l >> parseFieldLine l
++ fieldLine l = parseFieldLine l
