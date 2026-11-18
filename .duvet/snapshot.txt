@@ -931,24 +931,25 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,exception]: A user agent SHOULD NOT send a Content-Length header field
     TEXT[!SHOULD,exception]:    when the request message does not contain content and the method
     TEXT[!SHOULD,exception]:    semantics do not anticipate such data.
-    TEXT[!MUST]:    A server MAY send a Content-Length header field in a response to a
-    TEXT[!MUST]:    HEAD request (Section 9.3.2); a server MUST NOT send Content-Length
-    TEXT[!MUST]:    in such a response unless its field value equals the decimal number
-    TEXT[!MUST]:    of octets that would have been sent in the content of a response if
-    TEXT[!MUST]:    the same request had used the GET method.
-    TEXT[!MUST]:    A server MAY send a Content-Length header field in a 304 (Not
-    TEXT[!MUST]:    Modified) response to a conditional GET request (Section 15.4.5); a
-    TEXT[!MUST]:    server MUST NOT send Content-Length in such a response unless its
-    TEXT[!MUST]:    field value equals the decimal number of octets that would have been
-    TEXT[!MUST]:    sent in the content of a 200 (OK) response to the same request.
-    TEXT[!MUST]:    A server MUST NOT send a Content-Length header field in any response
-    TEXT[!MUST]:    with a status code of 1xx (Informational) or 204 (No Content).
-    TEXT[!MUST]:    server MUST NOT send a Content-Length header field in any 2xx
-    TEXT[!MUST]:    (Successful) response to a CONNECT request (Section 9.3.6).
-    TEXT[!SHOULD]:    Aside from the cases defined above, in the absence of Transfer-
-    TEXT[!SHOULD]:    Encoding, an origin server SHOULD send a Content-Length header field
-    TEXT[!SHOULD]:    when the content size is known prior to sending the complete header
-    TEXT[!SHOULD]:    section.
+    TEXT[!MUST,implementation]:    A server MAY send a Content-Length header field in a response to a
+    TEXT[!MUST,implementation]:    HEAD request (Section 9.3.2); a server MUST NOT send Content-Length
+    TEXT[!MUST,implementation]:    in such a response unless its field value equals the decimal number
+    TEXT[!MUST,implementation]:    of octets that would have been sent in the content of a response if
+    TEXT[!MUST,implementation]:    the same request had used the GET method.
+    TEXT[!MUST,implementation]:    A server MAY send a Content-Length header field in a 304 (Not
+    TEXT[!MUST,implementation]:    Modified) response to a conditional GET request (Section 15.4.5); a
+    TEXT[!MUST,implementation]:    server MUST NOT send Content-Length in such a response unless its
+    TEXT[!MUST,implementation]:    field value equals the decimal number of octets that would have been
+    TEXT[!MUST,implementation]:    sent in the content of a 200 (OK) response to the same request.
+    TEXT[!MUST,implementation]:    A server MUST NOT send a Content-Length header field in any response
+    TEXT[!MUST,implementation]:    with a status code of 1xx (Informational) or 204 (No Content).
+    TEXT[implementation]:   A
+    TEXT[!MUST,implementation]:    server MUST NOT send a Content-Length header field in any 2xx
+    TEXT[!MUST,implementation]:    (Successful) response to a CONNECT request (Section 9.3.6).
+    TEXT[!SHOULD,implementation]:    Aside from the cases defined above, in the absence of Transfer-
+    TEXT[!SHOULD,implementation]:    Encoding, an origin server SHOULD send a Content-Length header field
+    TEXT[!SHOULD,implementation]:    when the content size is known prior to sending the complete header
+    TEXT[!SHOULD,implementation]:    section.
     TEXT[!MUST]: Since there is no predefined limit to the length of content,
     TEXT[!MUST,implementation]:    a recipient MUST anticipate potentially large decimal numerals and
     TEXT[!MUST,implementation]:    prevent parsing errors due to integer conversion overflows or
@@ -1085,8 +1086,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [HEAD](#section-9.3.2)
     TEXT[!MUST]:    The HEAD method is identical to GET except that the server MUST NOT
     TEXT[!MUST]:    send content in the response.
-    TEXT[!SHOULD]:    The server SHOULD send the same header fields in response to a HEAD
-    TEXT[!SHOULD]:    request as it would have sent if the request method had been GET.
+    TEXT[!SHOULD,test]:    The server SHOULD send the same header fields in response to a HEAD
+    TEXT[!SHOULD,test]:    request as it would have sent if the request method had been GET.
     TEXT[!MAY]:    However, a server MAY omit header fields for which a value is
     TEXT[!MAY]:    determined only while generating the content.
     TEXT[!SHOULD,exception]: A client SHOULD NOT generate content
@@ -2310,12 +2311,12 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MAY]:    request, neither of which includes a message body, to indicate that
     TEXT[!MAY]:    the origin server would have applied a transfer coding to the message
     TEXT[!MAY]:    body if the request had been an unconditional GET.
-    TEXT[!MUST]:    A server MUST NOT send a Transfer-Encoding header field in any
-    TEXT[!MUST]:    response with a status code of 1xx (Informational) or 204 (No
-    TEXT[!MUST]:    Content).
-    TEXT[!MUST]: A server MUST NOT send a Transfer-Encoding header field in
-    TEXT[!MUST]:    any 2xx (Successful) response to a CONNECT request (Section 9.3.6 of
-    TEXT[!MUST]:    [HTTP]).
+    TEXT[!MUST,implementation]:    A server MUST NOT send a Transfer-Encoding header field in any
+    TEXT[!MUST,implementation]:    response with a status code of 1xx (Informational) or 204 (No
+    TEXT[!MUST,implementation]:    Content).
+    TEXT[!MUST,implementation]: A server MUST NOT send a Transfer-Encoding header field in
+    TEXT[!MUST,implementation]:    any 2xx (Successful) response to a CONNECT request (Section 9.3.6 of
+    TEXT[!MUST,implementation]:    [HTTP]).
     TEXT[!SHOULD,implementation,test]:    A server that receives a request message with a transfer coding it
     TEXT[!SHOULD,implementation,test]:    does not understand SHOULD respond with 501 (Not Implemented).
     TEXT[!MUST,exception]:    A client MUST NOT send a request containing Transfer-Encoding unless
@@ -2323,9 +2324,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]:    revisions); such knowledge might be in the form of specific user
     TEXT[!MUST,exception]:    configuration or by remembering the version of a prior received
     TEXT[!MUST,exception]:    response.
-    TEXT[!MUST]: A server MUST NOT send a response containing Transfer-
-    TEXT[!MUST]:    Encoding unless the corresponding request indicates HTTP/1.1 (or
-    TEXT[!MUST]:    later minor revisions).
+    TEXT[!MUST,implementation]: A server MUST NOT send a response containing Transfer-
+    TEXT[!MUST,implementation]:    Encoding unless the corresponding request indicates HTTP/1.1 (or
+    TEXT[!MUST,implementation]:    later minor revisions).
     TEXT[!MAY,implementation]:    A server MAY reject a request that contains both Content-Length and
     TEXT[!MAY,implementation]:    Transfer-Encoding or process such a request in accordance with the
     TEXT[!MAY,implementation]:    Transfer-Encoding alone.
@@ -2344,6 +2345,12 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
   SECTION: [Message Body Length](#section-6.3)
     TEXT[test]:    The length of a message body is determined by one of the following
     TEXT[test]:    (in order of precedence):
+    TEXT[test]:    1.  Any response to a HEAD request and any response with a 1xx
+    TEXT[test]:        (Informational), 204 (No Content), or 304 (Not Modified) status
+    TEXT[test]:        code is always terminated by the first empty line after the
+    TEXT[test]:        header fields, regardless of the header fields present in the
+    TEXT[test]:        message, and thus cannot contain a message body or trailer
+    TEXT[test]:        section.
     TEXT[!MUST,exception]: A client MUST ignore any
     TEXT[!MUST,exception]:        Content-Length or Transfer-Encoding header fields received in
     TEXT[!MUST,exception]:        such a message.
@@ -2382,10 +2389,14 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]:        incomplete and close the connection.
     TEXT[implementation]: If this is a request message and none of the above are true, then
     TEXT[implementation]:        the message body length is zero (no message body is present).
-    TEXT[!SHOULD]:    Since there is no way to distinguish a successfully completed, close-
-    TEXT[!SHOULD]:    delimited response message from a partially received message
-    TEXT[!SHOULD]:    interrupted by network failure, a server SHOULD generate encoding or
-    TEXT[!SHOULD]:    length-delimited messages whenever possible.
+    TEXT[test]:    8.  Otherwise, this is a response message without a declared message
+    TEXT[test]:        body length, so the message body length is determined by the
+    TEXT[test]:        number of octets received prior to the server closing the
+    TEXT[test]:        connection.
+    TEXT[!SHOULD,implementation]:    Since there is no way to distinguish a successfully completed, close-
+    TEXT[!SHOULD,implementation]:    delimited response message from a partially received message
+    TEXT[!SHOULD,implementation]:    interrupted by network failure, a server SHOULD generate encoding or
+    TEXT[!SHOULD,implementation]:    length-delimited messages whenever possible.
     TEXT[!MAY]:    A server MAY reject a request that contains a message body but not a
     TEXT[!MAY]:    Content-Length by responding with 411 (Length Required).
     TEXT[!SHOULD,exception]:    Unless a transfer coding other than chunked has been applied, a

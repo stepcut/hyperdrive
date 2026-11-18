@@ -12,16 +12,21 @@ import Hyperdrive.ABNF.Types (mkRuleName)
 import Hyperdrive.HTTP1.Framing
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.Message (HttpVersion, pattern HTTP_1_0, pattern HTTP_1_1)
-import Hyperdrive.Semantics.Status (pattern BadRequest, pattern NotImplemented)
+import Hyperdrive.Semantics.Method (Method, pattern CONNECT, pattern GET, pattern HEAD, pattern OPTIONS, pattern POST)
+import Hyperdrive.Semantics.Status (Status, StatusClass(..), mkStatus, statusClass, statusCode, pattern BadRequest, pattern NotImplemented)
+import Data.Word (Word64)
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
 
 framingTests :: TestTree
-framingTests = testGroup "Request framing (RFC 9112 Section 6)"
+framingTests = testGroup "Framing (RFC 9112 Section 6)"
   [ testProperty "the labelled samples agree with RFC 9110's grammars" prop_labels
   , testProperty "every combination of up to two lines of each field (exhaustive)" prop_exhaustive
   , testProperty "the RFC's examples, and the status for each error" prop_examples
+  , testProperty "responses: a client reads exactly the body sent (exhaustive)" prop_responseReadBack
+  , testProperty "responses: the RFC's MUST NOTs and SHOULDs (exhaustive)" prop_responseRules
+  , testProperty "responses: the framing fields for each kind of framing" prop_framingFields
   ]
 
 ------------------------------------------------------------------------------
@@ -165,3 +170,116 @@ prop_examples = once $ conjoin
   ]
   where
     framing v cls tes = requestFraming v (fieldsFromList ([ (hContentLength, value c) | c <- cls ] ++ [ (hTransferEncoding, value t) | t <- tes ]))
+
+------------------------------------------------------------------------------
+-- responses
+------------------------------------------------------------------------------
+
+-- | Every combination of request version and method, final status, and
+-- kind of payload.
+responseCases :: [(HttpVersion, Method, Status, Maybe Payload)]
+responseCases =
+  [ (v, m, st, p)
+  | v <- [HTTP_1_0, HTTP_1_1]
+  , m <- [GET, HEAD, POST, OPTIONS, CONNECT]
+  , Just st <- map mkStatus [200 .. 599]
+  , p <- [ Nothing, Just (Payload (Just 0) False), Just (Payload (Just 7) False)
+         , Just (Payload Nothing False), Just (Payload (Just 7) True), Just (Payload Nothing True) ] ]
+
+-- | How a client determines the length of a response's body.
+data ClientReads = ReadsNothing | Tunnel | ReadsLength Word64 | ReadsChunked | ReadsUntilClose
+  deriving (Eq, Show)
+
+-- = https://www.rfc-editor.org/rfc/rfc9112#section-6.3
+-- # 1.  Any response to a HEAD request and any response with a 1xx
+-- # (Informational), 204 (No Content), or 304 (Not Modified) status
+-- # code is always terminated by the first empty line after the
+-- # header fields, regardless of the header fields present in the
+-- # message, and thus cannot contain a message body or trailer
+-- # section.
+
+-- = https://www.rfc-editor.org/rfc/rfc9112#section-6.3
+-- # 8.  Otherwise, this is a response message without a declared message
+-- # body length, so the message body length is determined by the
+-- # number of octets received prior to the server closing the
+-- # connection.
+
+-- | RFC 9112 Section 6.3's rules as a client applies them to a
+-- response, written independently of 'responseFraming', from the
+-- request method, the status and the framing fields sent.
+clientReads :: Method -> Status -> [(FieldName, FieldValue)] -> ClientReads
+clientReads method status fs
+  | method == HEAD || code < 200 || code == 204 || code == 304 = ReadsNothing
+  | method == CONNECT && code >= 200 && code < 300 = Tunnel
+  | (_ : _) <- te = if last (concatMap codings te) == "chunked" then ReadsChunked else ReadsUntilClose
+  | [v] <- cl = ReadsLength (read (C.unpack (fieldValueBytes v)))
+  | otherwise = ReadsUntilClose
+  where
+    code = statusCode status
+    te = [ v | (n, v) <- fs, n == hTransferEncoding ]
+    cl = [ v | (n, v) <- fs, n == hContentLength ]
+    codings = C.split ',' . C.filter (/= ' ') . fieldValueBytes
+
+-- | Whatever the response, a client following RFC 9112 reads exactly
+-- the body that is sent: no more, which would eat the next response,
+-- and no less.
+prop_responseReadBack :: Property
+prop_responseReadBack = once $
+  let failures = [ (v, m, statusCode st, p, f, clientRead)
+                 | (v, m, st, p) <- responseCases
+                 , let f = responseFraming v m st p
+                       clientRead = clientReads m st (framingFields f)
+                 , not (consistent f clientRead) ]
+      consistent f clientRead' = case (f, clientRead') of
+        (HeaderOnly _, ReadsNothing)          -> True
+        (HeaderOnly _, Tunnel)                -> True
+        (SendLength n, ReadsLength n')        -> n == n'
+        (SendChunked, ReadsChunked)           -> True
+        (SendUntilClose, ReadsUntilClose)     -> True
+        _                                     -> False
+  in counterexample (show (take 5 failures)) (length responseCases > 20000 .&&. null failures)
+
+-- | The requirements on what a server sends, each checked over every
+-- case it applies to.
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-9.3.2
+-- # The server SHOULD send the same header fields in response to a HEAD
+-- # request as it would have sent if the request method had been GET.
+prop_responseRules :: Property
+prop_responseRules = once $ conjoin
+  [ rule "no Content-Length or Transfer-Encoding with 204 or a 2xx to CONNECT (RFC 9110 8.6, RFC 9112 6.1)" $
+      \_ m st _ f -> not (code st == 204 || (m == CONNECT && statusClass st == Successful)) || null (framingFields f)
+  , rule "no Content-Length with 304, whose 200's length is unknown" $
+      \_ _ st _ f -> code st /= 304 || null (framingFields f)
+  , rule "a response to HEAD has Content-Length only if it is GET's length (RFC 9110 8.6)" $
+      \_ m st p f -> m /= HEAD || code st `elem` [204, 304] || f == HeaderOnly (p >>= payloadLength)
+  , rule "a response to HEAD carries the Content-Length GET would send, when known (RFC 9110 9.3.2)" $
+      \_ m st p f -> m /= HEAD || code st `elem` [204, 304] || case p >>= payloadLength of
+        Just n  -> framingFields f == [(hContentLength, value (C.pack (show n)))]
+        Nothing -> null (framingFields f)
+  , rule "no Transfer-Encoding unless the request is HTTP/1.1 (RFC 9112 6.1)" $
+      \v _ _ _ f -> v /= HTTP_1_0 || f /= SendChunked
+  , rule "Content-Length whenever the length is known and nothing needs chunking (RFC 9110 8.6)" $
+      \_ m st p f -> not (sendsBody m st) || case p of
+        Just (Payload (Just n) False) -> f == SendLength n
+        _                             -> True
+  , rule "close-delimited only for HTTP/1.0 with an unknown length (RFC 9112 6.3)" $
+      \v _ _ p f -> f /= SendUntilClose || (v == HTTP_1_0 && (p >>= payloadLength) == Nothing)
+  , rule "trailers are sent, with chunked, to HTTP/1.1 clients" $
+      \v m st p f -> not (sendsBody m st && v == HTTP_1_1 && maybe False payloadTrailers p) || f == SendChunked
+  ]
+  where
+    code = statusCode
+    sendsBody m st = m /= HEAD && code st `notElem` [204, 304] && not (m == CONNECT && statusClass st == Successful)
+    rule name ok = counterexample name $
+      let failures = [ (v, m, code st, p) | (v, m, st, p) <- responseCases, not (ok v m st p (responseFraming v m st p)) ]
+      in counterexample (show (take 5 failures)) (null failures)
+
+prop_framingFields :: Property
+prop_framingFields = once $ conjoin
+  [ framingFields (HeaderOnly Nothing) === []
+  , framingFields (HeaderOnly (Just 12)) === [(hContentLength, value "12")]
+  , framingFields (SendLength 0) === [(hContentLength, value "0")]
+  , framingFields (SendLength 18446744073709551615) === [(hContentLength, value "18446744073709551615")]
+  , framingFields SendChunked === [(hTransferEncoding, value "chunked")]
+  , framingFields SendUntilClose === []
+  ]

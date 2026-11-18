@@ -1,26 +1,35 @@
 {-# LANGUAGE OverloadedStrings, PatternSynonyms #-}
--- | How the body of an HTTP/1.1 request is framed (RFC 9112, Section 6):
--- by @Content-Length@, by the chunked transfer coding, or not at all.
+-- | How the body of an HTTP/1.1 message is framed (RFC 9112, Section 6):
+-- by @Content-Length@, by the chunked transfer coding, by closing the
+-- connection, or not at all. For requests, how to read it; for
+-- responses, how to send it.
 --
 -- This is where request smuggling happens: when two implementations
 -- on the path read the framing of the same bytes differently, one of
 -- them takes part of a body for a new request. So every request whose
 -- framing is not unambiguous is rejected, and the connection closed.
 module Hyperdrive.HTTP1.Framing
-  ( RequestFraming(..)
+  ( -- * Requests
+    RequestFraming(..)
   , FramingError(..)
   , requestFraming
   , framingErrorStatus
+    -- * Responses
+  , Payload(..)
+  , ResponseFraming(..)
+  , responseFraming
+  , framingFields
   ) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Data.Word (Word64)
-import Hyperdrive.Semantics.Field (FieldValue, Fields, hContentLength, hTransferEncoding, lookupAll)
+import Hyperdrive.Semantics.Field (FieldName, FieldValue, Fields, hContentLength, hTransferEncoding, lookupAll, mkFieldValue)
 import Hyperdrive.Semantics.FieldSyntax (Comments(..), parseQuotedString, splitList)
 import Hyperdrive.Semantics.Message (HttpVersion, pattern HTTP_1_1)
-import Hyperdrive.Semantics.Status (Status, pattern BadRequest, pattern NotImplemented)
+import Hyperdrive.Semantics.Method (Method, pattern CONNECT, pattern HEAD)
+import Hyperdrive.Semantics.Status (Status, StatusClass(..), statusClass, pattern BadRequest, pattern NoContent, pattern NotImplemented, pattern NotModified)
 import Hyperdrive.Semantics.Syntax (isDIGIT, isOWS, isTChar)
 
 -- | How a request's body is framed.
@@ -188,3 +197,114 @@ contentLength vs = do
       n <- acc
       let d = fromIntegral (w - 0x30)
       if n > (maxBound - d) `div` 10 then Nothing else Just (n * 10 + d)
+
+------------------------------------------------------------------------------
+-- Responses
+------------------------------------------------------------------------------
+
+-- | What framing needs to know about a response's content: its length,
+-- if known before the header section is sent, and whether it has a
+-- trailer section. The length of a file comes from the file system
+-- when the response is sent.
+data Payload = Payload
+  { payloadLength   :: !(Maybe Word64)
+  , payloadTrailers :: !Bool
+  } deriving (Eq, Show)
+
+-- | How to send a response's body.
+data ResponseFraming
+  = HeaderOnly !(Maybe Word64)
+    -- ^ no body: the response ends with its header section, with a
+    -- Content-Length if one is given
+  | SendLength !Word64
+    -- ^ Content-Length, then exactly that many octets
+  | SendChunked
+    -- ^ Transfer-Encoding: chunked, then the chunks and the trailer section
+  | SendUntilClose
+    -- ^ neither field: the body ends when the server closes the connection
+  deriving (Eq, Show)
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.6
+-- # A server MUST NOT send a Content-Length header field in any response
+-- # with a status code of 1xx (Informational) or 204 (No Content).  A
+-- # server MUST NOT send a Content-Length header field in any 2xx
+-- # (Successful) response to a CONNECT request (Section 9.3.6).
+
+-- = https://www.rfc-editor.org/rfc/rfc9112#section-6.1
+-- # A server MUST NOT send a Transfer-Encoding header field in any
+-- # response with a status code of 1xx (Informational) or 204 (No
+-- # Content).  A server MUST NOT send a Transfer-Encoding header field in
+-- # any 2xx (Successful) response to a CONNECT request (Section 9.3.6 of
+-- # [HTTP]).
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.6
+-- # A server MAY send a Content-Length header field in a 304 (Not
+-- # Modified) response to a conditional GET request (Section 15.4.5); a
+-- # server MUST NOT send Content-Length in such a response unless its
+-- # field value equals the decimal number of octets that would have been
+-- # sent in the content of a 200 (OK) response to the same request.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.6
+-- # A server MAY send a Content-Length header field in a response to a
+-- # HEAD request (Section 9.3.2); a server MUST NOT send Content-Length
+-- # in such a response unless its field value equals the decimal number
+-- # of octets that would have been sent in the content of a response if
+-- # the same request had used the GET method.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.6
+-- # Aside from the cases defined above, in the absence of Transfer-
+-- # Encoding, an origin server SHOULD send a Content-Length header field
+-- # when the content size is known prior to sending the complete header
+-- # section.
+
+-- = https://www.rfc-editor.org/rfc/rfc9112#section-6.1
+-- # A server MUST NOT send a response containing Transfer-
+-- # Encoding unless the corresponding request indicates HTTP/1.1 (or
+-- # later minor revisions).
+
+-- = https://www.rfc-editor.org/rfc/rfc9112#section-6.3
+-- # Since there is no way to distinguish a successfully completed, close-
+-- # delimited response message from a partially received message
+-- # interrupted by network failure, a server SHOULD generate encoding or
+-- # length-delimited messages whenever possible.
+
+-- | How to send the body of a response, from the version and method of
+-- the request it answers, its status and its payload ('Nothing' for
+-- 'Hyperdrive.Semantics.Message.ContentNone').
+--
+-- * A 204, a 2xx to CONNECT, and a 304 have no body and no
+--   Content-Length. (A 304 could carry the length of the 200 it stands
+--   for, but a 'Hyperdrive.Semantics.Message.Response' does not know
+--   it.)
+-- * A response to HEAD has no body, and a Content-Length if the length
+--   is known: the response is built as it would be for GET, so that is
+--   the length GET would send.
+-- * Otherwise a known length without trailers is sent with
+--   Content-Length. An unknown length, or trailers, need the chunked
+--   coding, which an HTTP/1.0 client does not have: it gets
+--   Content-Length when the length is known (and the trailers are
+--   dropped), and otherwise a body that ends when the connection
+--   closes.
+responseFraming :: HttpVersion -> Method -> Status -> Maybe Payload -> ResponseFraming
+responseFraming version method status payload
+  | status == NoContent || status == NotModified = HeaderOnly Nothing
+  | method == CONNECT, statusClass status == Successful = HeaderOnly Nothing
+  | method == HEAD = HeaderOnly (payload >>= payloadLength)
+  | otherwise = case payload of
+      Nothing                    -> SendLength 0
+      Just (Payload (Just n) False) -> SendLength n
+      Just (Payload len _)
+        | version >= HTTP_1_1    -> SendChunked
+        | Just n <- len          -> SendLength n
+        | otherwise              -> SendUntilClose
+
+-- | The framing fields to send in the header section.
+framingFields :: ResponseFraming -> [(FieldName, FieldValue)]
+framingFields f = case f of
+  HeaderOnly (Just n) -> [(hContentLength, decimal n)]
+  SendLength n        -> [(hContentLength, decimal n)]
+  SendChunked         -> [(hTransferEncoding, chunked)]
+  _                   -> []
+  where
+    decimal = either (error "framingFields") id . mkFieldValue . C.pack . show
+    chunked = either (error "framingFields") id (mkFieldValue "chunked")

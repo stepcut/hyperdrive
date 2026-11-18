@@ -49,3 +49,35 @@ why: a length too large for 64 bits is invalid, not wrapped around
 why: 501 is for a coding the server does not support; every other framing error is 400
 - framingErrorStatus (UnsupportedTransferCoding _) = NotImplemented
 + framingErrorStatus (UnsupportedTransferCoding _) = BadRequest
+
+why: a 204 has no body and no framing fields (RFC 9110 8.6, RFC 9112 6.1)
+- | status == NoContent || status == NotModified = HeaderOnly Nothing
++ | status == NotModified = HeaderOnly Nothing
+
+why: a 304 has no body, and its 200's length is unknown
+- | status == NoContent || status == NotModified = HeaderOnly Nothing
++ | status == NoContent = HeaderOnly Nothing
+
+why: a 2xx to CONNECT has no framing fields; only 2xx opens a tunnel
+- | method == CONNECT, statusClass status == Successful = HeaderOnly Nothing
++ | method == CONNECT = HeaderOnly Nothing
+
+why: a response to HEAD has no body
+- | method == HEAD = HeaderOnly (payload >>= payloadLength)
++ | False = HeaderOnly (payload >>= payloadLength)
+
+why: a known length without trailers is sent with Content-Length, not chunked
+- Just (Payload (Just n) False) -> SendLength n
++ Just (Payload (Just n) False) | version < HTTP_1_1 -> SendLength n
+
+why: Transfer-Encoding only for HTTP/1.1 requests (RFC 9112 6.1)
+- | version >= HTTP_1_1    -> SendChunked
++ | True    -> SendChunked
+
+why: an HTTP/1.0 client gets Content-Length when the length is known, not a close-delimited body
+- | Just n <- len          -> SendLength n
++ | Just n <- len, n == 0  -> SendLength n
+
+why: a response to HEAD sends the length GET would have sent
+- HeaderOnly (Just n) -> [(hContentLength, decimal n)]
++ HeaderOnly (Just _) -> []

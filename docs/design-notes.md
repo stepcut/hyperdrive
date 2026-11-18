@@ -69,6 +69,14 @@ So:
   same number (`5, 05` is 5), so every reading that accepts it agrees on
   the length. The only transfer coding supported is chunked; any other
   gets 501 (RFC 9112 Section 6.1).
+- HTTP/1.1 response framing (`responseFraming`) sends `Content-Length`
+  whenever the length is known and there are no trailers, chunked for
+  an unknown length or trailers, and to an HTTP/1.0 client (which has no
+  chunked coding) `Content-Length` when known, dropping any trailers,
+  and otherwise a body that ends when the connection closes. A response
+  to HEAD carries the `Content-Length` GET would send, when known. A 304
+  carries none, since a `Response` does not know its 200's length (RFC
+  9110 Section 8.6 allows it only if it is exactly that).
 - IPv6 zone identifiers (`[fe80::1%25eth0]`) are rejected in hosts, as
   RFC 3986 says. RFC 6874 had added them to URIs, but already required
   HTTP clients and intermediaries to remove them before sending a
