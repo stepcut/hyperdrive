@@ -638,6 +638,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    or equal to the one received in the request.
     TEXT[!MUST]: A server MUST NOT send
     TEXT[!MUST]:    a version to which it is not conformant.
+    TEXT[implementation]: A server can send a 505
+    TEXT[implementation]:    (HTTP Version Not Supported) response if it wishes, for any reason,
+    TEXT[implementation]:    to refuse service of the client's major protocol version.
     TEXT[!SHOULD]:    A recipient that receives a message with a major version number that
     TEXT[!SHOULD]:    it implements and a minor version number higher than what it
     TEXT[!SHOULD]:    implements SHOULD process the message as if it were in the highest
@@ -2011,6 +2014,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY]:    client to wait before retrying the request.
 
   SECTION: [505 HTTP Version Not Supported](#section-15.6.6)
+    TEXT[implementation]:    The 505 (HTTP Version Not Supported) status code indicates that the
+    TEXT[implementation]:    server does not support, or refuses to support, the major version of
+    TEXT[implementation]:    HTTP that was used in the request message.
     TEXT[!SHOULD]: The server SHOULD generate a representation
     TEXT[!SHOULD]:    for the 505 response that describes why that version is not supported
     TEXT[!SHOULD]:    and what other protocols are supported by that server.
@@ -2088,31 +2094,38 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[test]:      obs-text      = <obs-text, see [HTTP], Section 5.6.4>
     TEXT[implementation,test]:    The rules below are defined in [URI]:
 
+  SECTION: [Message Format](#section-2.1)
+    TEXT[test]:      HTTP-message   = start-line CRLF
+    TEXT[test]:                       *( field-line CRLF )
+    TEXT[test]:                       CRLF
+    TEXT[test]:                       [ message-body ]
+
   SECTION: [Message Parsing](#section-2.2)
     TEXT[!MUST]:    A recipient MUST parse an HTTP message as a sequence of octets in an
     TEXT[!MUST]:    encoding that is a superset of US-ASCII [USASCII].
-    TEXT[!MAY]:    Although the line terminator for the start-line and fields is the
-    TEXT[!MAY]:    sequence CRLF, a recipient MAY recognize a single LF as a line
-    TEXT[!MAY]:    terminator and ignore any preceding CR.
+    TEXT[!MAY,test]:    Although the line terminator for the start-line and fields is the
+    TEXT[!MAY,test]:    sequence CRLF, a recipient MAY recognize a single LF as a line
+    TEXT[!MAY,test]:    terminator and ignore any preceding CR.
     TEXT[!MUST]:    A sender MUST NOT generate a bare CR (a CR character not immediately
     TEXT[!MUST]:    followed by LF) within any protocol elements other than the content.
-    TEXT[!MUST]:    A recipient of such a bare CR MUST consider that element to be
-    TEXT[!MUST]:    invalid or replace each bare CR with SP before processing the element
-    TEXT[!MUST]:    or forwarding the message.
+    TEXT[!MUST,implementation,test]:    A recipient of such a bare CR MUST consider that element to be
+    TEXT[!MUST,implementation,test]:    invalid or replace each bare CR with SP before processing the element
+    TEXT[!MUST,implementation,test]:    or forwarding the message.
     TEXT[!MUST,exception]: An HTTP/1.1 user agent MUST NOT preface
     TEXT[!MUST,exception]:    or follow a request with an extra CRLF.
     TEXT[!MUST,exception]: If terminating the request
     TEXT[!MUST,exception]:    message body with a line-ending is desired, then the user agent MUST
     TEXT[!MUST,exception]:    count the terminating CRLF octets as part of the message body length.
-    TEXT[!SHOULD]:    In the interest of robustness, a server that is expecting to receive
-    TEXT[!SHOULD]:    and parse a request-line SHOULD ignore at least one empty line (CRLF)
-    TEXT[!SHOULD]:    received prior to the request-line.
+    TEXT[!SHOULD,implementation]:    In the interest of robustness, a server that is expecting to receive
+    TEXT[!SHOULD,implementation]:    and parse a request-line SHOULD ignore at least one empty line (CRLF)
+    TEXT[!SHOULD,implementation]:    received prior to the request-line.
     TEXT[!MUST]:    A sender MUST NOT send whitespace between the start-line and the
     TEXT[!MUST]:    first header field.
-    TEXT[!MUST]:    A recipient that receives whitespace between the start-line and the
-    TEXT[!MUST]:    first header field MUST either reject the message as invalid or
-    TEXT[!MUST]:    consume each whitespace-preceded line without further processing of
-    TEXT[!MUST]:    it (i.e., ignore the entire line, along with any subsequent lines
+    TEXT[!MUST,implementation,test]:    A recipient that receives whitespace between the start-line and the
+    TEXT[!MUST,implementation,test]:    first header field MUST either reject the message as invalid or
+    TEXT[!MUST,implementation,test]:    consume each whitespace-preceded line without further processing of
+    TEXT[!MUST,implementation,test]:    it
+    TEXT[!MUST]:  (i.e., ignore the entire line, along with any subsequent lines
     TEXT[!MUST]:    preceded by whitespace, until a properly formed header field is
     TEXT[!MUST]:    received or the header section is terminated).
     TEXT[!SHOULD]:    When a server listening only for HTTP request messages, or processing
@@ -2123,6 +2136,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!SHOULD]:    connection.
 
   SECTION: [HTTP Version](#section-2.3)
+    TEXT[implementation]:      HTTP-version  = HTTP-name "/" DIGIT "." DIGIT
+    TEXT[implementation]:      HTTP-name     = %s"HTTP"
     TEXT[!MUST,exception]:    Intermediaries that process HTTP messages (i.e., all intermediaries
     TEXT[!MUST,exception]:    other than those acting as tunnels) MUST send their own HTTP-version
     TEXT[!MUST,exception]:    in forwarded messages, unless it is purposefully downgraded as a
@@ -2140,21 +2155,24 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!SHOULD]:    the values sent by a client known to be in error.
 
   SECTION: [Request Line](#section-3)
-    TEXT[!MAY]:    Although the request-line grammar rule requires that each of the
-    TEXT[!MAY]:    component elements be separated by a single SP octet, recipients MAY
-    TEXT[!MAY]:    instead parse on whitespace-delimited word boundaries and, aside from
+    TEXT[implementation,test]:      request-line   = method SP request-target SP HTTP-version
+    TEXT[!MAY,test]:    Although the request-line grammar rule requires that each of the
+    TEXT[!MAY,test]:    component elements be separated by a single SP octet, recipients MAY
+    TEXT[!MAY,test]:    instead parse on whitespace-delimited word boundaries
+    TEXT[!MAY]:  and, aside from
     TEXT[!MAY]:    the CRLF terminator, treat any form of whitespace as the SP separator
     TEXT[!MAY]:    while ignoring preceding or trailing whitespace; such whitespace
     TEXT[!MAY]:    includes one or more of the following octets: SP, HTAB, VT (%x0B), FF
     TEXT[!MAY]:    (%x0C), or bare CR.
-    TEXT[!SHOULD]: A server that receives
-    TEXT[!SHOULD]:    a method longer than any that it implements SHOULD respond with a 501
-    TEXT[!SHOULD]:    (Not Implemented) status code.
-    TEXT[!MUST]: A server that receives a request-
-    TEXT[!MUST]:    target longer than any URI it wishes to parse MUST respond with a 414
-    TEXT[!MUST]:    (URI Too Long) status code (see Section 15.5.15 of [HTTP]).
-    TEXT[!SHOULD]: It is RECOMMENDED that all HTTP senders and recipients
-    TEXT[!SHOULD]:    support, at a minimum, request-line lengths of 8000 octets.
+    TEXT[!SHOULD,implementation]: A server that receives
+    TEXT[!SHOULD,implementation]:    a method longer than any that it implements SHOULD respond with a 501
+    TEXT[!SHOULD,implementation]:    (Not Implemented) status code.
+    TEXT[!MUST,implementation]: A server that receives a request-
+    TEXT[!MUST,implementation]:    target longer than any URI it wishes to parse MUST respond with a 414
+    TEXT[!MUST,implementation]:    (URI Too Long) status code
+    TEXT[!MUST]:  (see Section 15.5.15 of [HTTP]).
+    TEXT[!SHOULD,implementation,test]: It is RECOMMENDED that all HTTP senders and recipients
+    TEXT[!SHOULD,implementation,test]:    support, at a minimum, request-line lengths of 8000 octets.
 
   SECTION: [Request Target](#section-3.2)
     TEXT[!SHOULD]:    Recipients of an invalid request-line SHOULD respond with either a
@@ -2251,10 +2269,13 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]:    the reason-phrase is absent (i.e., the status-line would end with the
     TEXT[!MUST]:    space).
 
+  SECTION: [Field Syntax](#section-5)
+    TEXT[implementation,test]:      field-line   = field-name ":" OWS field-value OWS
+
   SECTION: [Field Line Parsing](#section-5.1)
-    TEXT[!MUST]:    server MUST reject, with a response status code of 400 (Bad Request),
-    TEXT[!MUST]:    any received request message that contains whitespace between a
-    TEXT[!MUST]:    header field name and colon.
+    TEXT[!MUST,implementation,test]:    server MUST reject, with a response status code of 400 (Bad Request),
+    TEXT[!MUST,implementation,test]:    any received request message that contains whitespace between a
+    TEXT[!MUST,implementation,test]:    header field name and colon.
     TEXT[!MUST,exception]: A proxy MUST remove any such whitespace
     TEXT[!MUST,exception]:    from a response message before forwarding the message downstream.
 
@@ -2263,12 +2284,12 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST]:    (i.e., that has any field line value that contains a match to the
     TEXT[!MUST]:    obs-fold rule) unless the message is intended for packaging within
     TEXT[!MUST]:    the "message/http" media type.
-    TEXT[!MUST]:    A server that receives an obs-fold in a request message that is not
-    TEXT[!MUST]:    within a "message/http" container MUST either reject the message by
-    TEXT[!MUST]:    sending a 400 (Bad Request), preferably with a representation
-    TEXT[!MUST]:    explaining that obsolete line folding is unacceptable, or replace
-    TEXT[!MUST]:    each received obs-fold with one or more SP octets prior to
-    TEXT[!MUST]:    interpreting the field value or forwarding the message downstream.
+    TEXT[!MUST,implementation,test]:    A server that receives an obs-fold in a request message that is not
+    TEXT[!MUST,implementation,test]:    within a "message/http" container MUST either reject the message by
+    TEXT[!MUST,implementation,test]:    sending a 400 (Bad Request), preferably with a representation
+    TEXT[!MUST,implementation,test]:    explaining that obsolete line folding is unacceptable, or replace
+    TEXT[!MUST,implementation,test]:    each received obs-fold with one or more SP octets prior to
+    TEXT[!MUST,implementation,test]:    interpreting the field value or forwarding the message downstream.
     TEXT[!MUST,exception]:    A proxy or gateway that receives an obs-fold in a response message
     TEXT[!MUST,exception]:    that is not within a "message/http" container MUST either discard the
     TEXT[!MUST,exception]:    message and replace it with a 502 (Bad Gateway) response, preferably

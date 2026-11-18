@@ -69,6 +69,18 @@ So:
   same number (`5, 05` is 5), so every reading that accepts it agrees on
   the length. The only transfer coding supported is chunked; any other
   gets 501 (RFC 9112 Section 6.1).
+- The HTTP/1.1 request-head parser (`Hyperdrive.HTTP1.Head`) takes the
+  strict choice wherever RFC 9112 allows leniency, since recipients that
+  read the same bytes differently are how request smuggling works: lines
+  must end with CRLF (a bare LF is rejected, though Section 2.2 allows
+  accepting it), the request line's parts are separated by exactly one
+  space (Section 3 allows any whitespace), and lines beginning with
+  whitespace (obsolete line folding, or whitespace after the request
+  line) are rejected rather than ignored or unfolded (Sections 2.2 and
+  5.2). Empty lines before the request line are ignored (Section 2.2,
+  SHOULD). A head that is malformed gets 400 even if its version is
+  also unsupported; 505 is for well-formed heads of another major
+  version.
 - HTTP/1.1 response framing (`responseFraming`) sends `Content-Length`
   whenever the length is known and there are no trailers, chunked for
   an unknown length or trailers, and to an HTTP/1.0 client (which has no

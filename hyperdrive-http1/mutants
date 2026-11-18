@@ -81,3 +81,65 @@ why: an HTTP/1.0 client gets Content-Length when the length is known, not a clos
 why: a response to HEAD sends the length GET would have sent
 - HeaderOnly (Just n) -> [(hContentLength, decimal n)]
 + HeaderOnly (Just _) -> []
+
+file: src/Hyperdrive/HTTP1/Head.hs
+
+why: a line may not contain a bare LF (lines end with CRLF)
+- | B.elem 0x0A line = Left BareLineFeed
++ | False = Left BareLineFeed
+
+why: a bare CR is invalid (RFC 9112 Section 2.2)
+- | B.elem 0x0D line = Left BareCarriageReturn
++ | False = Left BareCarriageReturn
+
+why: empty lines before the request line are ignored (RFC 9112 Section 2.2)
+- | B.take 2 (B.drop i input) == "\r\n" = skipEmptyLines (i + 2)
++ | False = skipEmptyLines (i + 2)
+
+why: the search resumes three octets back, in case the CRLF CRLF straddles two reads
+- case findEnd (max start (searched - 3)) of
++ case findEnd (max start searched) of
+
+why: a request line of exactly the limit is accepted
+- | B.length line > maxRequestLine limits -> Just (lineTooLong line)
++ | B.length line >= maxRequestLine limits -> Just (lineTooLong line)
+
+why: a complete head's request line is checked against the limit too
+- if B.length requestLine > maxRequestLine limits then Left (lineTooLong requestLine) else Right ()
++ if False then Left (lineTooLong requestLine) else Right ()
+
+why: the header section counts its final CRLF
+- if B.length head' + 4 - B.length requestLine - 2 > maxFieldSection limits
++ if B.length head' + 2 - B.length requestLine - 2 > maxFieldSection limits
+
+why: exactly the limit's number of field lines is accepted
+- if length fieldLines > maxFields limits then Left TooManyFields else Right ()
++ if length fieldLines >= maxFields limits then Left TooManyFields else Right ()
+
+why: only HTTP/1.x is served
+- if major /= 1 then Left (UnsupportedVersion major) else Right ()
++ if False then Left (UnsupportedVersion major) else Right ()
+
+why: a line starting with a tab is folded too
+- | Just (w, _) <- B.uncons line, w == 0x20 || w == 0x09 = Left LineFolding
++ | Just (w, _) <- B.uncons line, w == 0x20 = Left LineFolding
+
+why: whitespace between a field name and its colon is its own error (RFC 9112 Section 5.1)
+- , B.take 1 (B.dropWhile (\x -> x == 0x20 || x == 0x09) rest) == ":" -> Left WhitespaceBeforeColon
++ , False -> Left WhitespaceBeforeColon
+
+why: a request target is visible ASCII only
+- , not (B.null target), B.all (\w -> w >= 0x21 && w <= 0x7E) target
++ , not (B.null target), B.all (\w -> w >= 0x21) target
+
+why: the minor version is a digit
+- , digit major, digit minor
++ , digit major
+
+why: a method too long gets 501 (RFC 9112 Section 3), a target too long 414
+- | not (B.elem 0x20 line) = MethodTooLong
++ | B.elem 0x20 line = MethodTooLong
+
+why: a header section too large gets 431 (RFC 6585)
+- FieldSectionTooLarge   -> requestHeaderFieldsTooLarge
++ FieldSectionTooLarge   -> BadRequest

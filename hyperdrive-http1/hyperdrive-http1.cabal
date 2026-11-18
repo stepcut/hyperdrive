@@ -20,6 +20,7 @@ library
   hs-source-dirs:   src
   default-language: GHC2021
   exposed-modules:  Hyperdrive.HTTP1.Framing
+                    Hyperdrive.HTTP1.Head
   build-depends:    base                 >= 4.18 && < 5
                   , bytestring           >= 0.11 && < 0.13
                   , hyperdrive-semantics
@@ -30,6 +31,7 @@ test-suite hyperdrive-http1-tests
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    FramingTests
+                    HeadTests
   default-language: GHC2021
   build-depends:    base
                   , bytestring
