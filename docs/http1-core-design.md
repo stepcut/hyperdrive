@@ -180,6 +180,172 @@ Section 7.4). A request with no `Host` (HTTP/1.0) or an empty one uses
 a configured default authority, or is rejected if there is none (RFC
 9112 Section 3.3).
 
+## `step`: state and transitions (draft for review, 2026-11-18)
+
+Everything `step` needs underneath now exists: `parseRequestHead`,
+`requestFraming`, `reconstructTarget`, `acceptsTrailers`,
+`decodeChunked` and `responseFraming`. This section fixes what `step`
+does with them. Questions for the user are marked **Q**.
+
+### Types
+
+```haskell
+data Config = Config
+  { headLimits    :: Limits          -- D4
+  , chunkLimits   :: ChunkedLimits   -- D4
+  , targetContext :: TargetContext   -- scheme of the connection, default authority
+  , discardLimit  :: Word64          -- D6: 64 KiB
+  }
+
+-- what the driver passes on to mkRequest and the application
+data RequestHead = RequestHead
+  { headVersion, headMethod, headTarget
+  , headFields          :: Fields    -- protocol fields and Host removed
+  , headBodyLength      :: Maybe Word64  -- Just 0: no body; Nothing: chunked
+  , headAcceptsTrailers :: Bool }    -- D9
+
+-- what the driver makes of the application's Response
+data ResponseHead = ResponseHead
+  { respStatus   :: Status            -- final, never 1xx (M5)
+  , respFields   :: Fields            -- no protocol fields; the driver adds Date (M4)
+  , respLength   :: Maybe Word64      -- Nothing: unknown
+  , respTrailers :: [FieldName]       -- declared, for the Trailer field (M6)
+  , respHasContent :: Bool }          -- False for ContentNone
+```
+
+Inputs and outputs are as in "Proposed shape" above, with three
+changes:
+
+- **Q1. `WantBody` means "the application wants the next chunk"**,
+  one per `readChunk`, not "it started reading". The core answers each
+  with one `RequestData` (from what it holds, or after `NeedInput`),
+  or `RequestEnd`. That is the flow control: the core never asks for
+  bytes nobody wants, so its buffer stays bounded (by one read plus the
+  head limits) however large the body is.
+- **New output `RequestAborted`**: the body will not arrive in full
+  (the client closed, the chunked coding was invalid, or the body timed
+  out). `readChunk` throws `IncompleteBody`.
+- **New input `Abort`**: the application failed while sending a
+  response (an exception, or `ContentStream` wrote more or less than
+  it declared). The core answers with `Close`, never ending the body
+  normally, so a truncated response cannot pass for a complete one.
+
+`phase :: Conn -> Phase` tells the driver which timer to run (D8).
+
+### States
+
+The connection is a request side and a response side, plus flags:
+
+```
+request side:   AwaitingHead buffer searched     -- includes "no bytes yet" (idle)
+                ReadingBody  BodyState           -- Remaining n | Chunked Decoder
+                Discarding   BodyState budget    -- D6, after the response
+                RequestDone                      -- body read; next head waits (D2)
+response side:  AwaitingResponse | SendingBody SendState | ResponseDone
+flags:          keepAlive, continueSent / expects100, peerClosed, closing
+```
+
+D2 holds by construction: the request side leaves `RequestDone` for
+`AwaitingHead` only when the response side reaches `ResponseDone`, and
+only then are the buffered bytes (a pipelined request) parsed.
+
+### Transitions
+
+**Reading a head** (`Received`, or bytes left over from the previous
+request): append, `parseRequestHead`.
+- Incomplete: `NeedInput`.
+- Any error, from the head, `requestFraming`, `reconstructTarget`, or
+  the checks below: a minimal error response (D3: status line,
+  `Content-Length: 0`, `Connection: close`) and `Close`. Nothing reaches
+  the application.
+- Complete: remove protocol fields, decide `keepAlive` (D5: false for
+  HTTP/1.0 or `Connection: close`), emit `RequestHead`, go to
+  `ReadingBody` (or `RequestDone` if there is no body).
+- Checks that are new in `step`:
+  - **Q2.** A CONNECT request with `Content-Length` or
+    `Transfer-Encoding`: 400. RFC 9110 Section 9.3.6 gives CONNECT
+    content no meaning, and M10 delivers an empty body anyway.
+  - **Q3.** `Expect` with anything other than `100-continue`: 417
+    (Expectation Failed), which RFC 9110 Section 10.1.1 allows. In an
+    HTTP/1.0 request `100-continue` is ignored, as it requires.
+
+**Reading a body**: on `WantBody`, deliver from the buffer (a slice,
+never a copy), or `NeedInput` and deliver on the next `Received`. The
+first `WantBody` sends `100 Continue` if the request expects it and no
+response has started (D7). At the end, `RequestEnd` with the trailers
+(empty for `Content-Length`). An invalid chunked body, or `PeerClosed`
+or `TimedOut` before the end: `RequestAborted`, `keepAlive` off, and
+an error response (400, or 408 for a timeout) if none has started,
+else `Close`.
+
+**Responding** (`Respond`): `responseFraming` from the request's
+version and method, then one `Send` of the status line (always
+`HTTP/1.1`, RFC 9110 Section 6.2), the fields, the framing fields,
+`Trailer` if chunked with declared trailers, and `Connection: close`
+if the connection will close. `WriteBody` adds the bytes, with chunk
+framing for chunked (an empty write sends nothing, since an empty
+chunk would end the body), and nothing for `HeaderOnly` (HEAD, 204,
+304). `EndBody`: the last chunk and trailers for chunked; for
+`Content-Length`, `Close` instead if fewer bytes were written; for a
+close-delimited body, `Close`. Writing more than `Content-Length`
+declared is `Abort`.
+
+**After the response**:
+- request body fully read and `keepAlive`: back to reading a head,
+  starting with the bytes already buffered;
+- body not fully read (the application responded first): `Discarding`
+  up to `discardLimit` more octets, then as above, or `Close` if the
+  body is longer (D6);
+- otherwise `Close`.
+
+`Close` is staged by the driver: send what is queued, half-close,
+read and discard until the client closes or a short timer expires,
+then close (RFC 9112 Section 9.6). After `Close`, every input is
+ignored.
+
+**Other inputs**:
+- `PeerClosed`: idle or mid-head, `Close` (no response: there is no
+  request). During a body, see above. Once the request is complete,
+  finish the response, then `Close` (a client may half-close after
+  sending its request).
+- `TimedOut`: idle, `Close`; mid-head, 408 and `Close`; during a body,
+  as above. Waiting for the application or writing is the driver's
+  business, not a protocol timeout.
+- `Shutdown`: idle, `Close`; otherwise `keepAlive` off, so the current
+  response carries `Connection: close` (if not yet sent) and the
+  connection closes after it.
+
+**Q4. Misuse by the driver** (`WriteBody` before `Respond`, two
+`Respond`s, `WantBody` with no body): `Close`, and a `ProtocolMisuse`
+output naming it, so tests and logs see the bug rather than a silent
+close. These are bugs in hyperdrive's own driver, never the
+application's or the client's.
+
+**Q5. Error response bodies**: empty (`Content-Length: 0`), as D3
+recommends. A short `text/plain` reason would help someone debugging
+with curl, and costs nothing in safety. Recommended: keep them empty
+for now; an application hook can come later (D3).
+
+### Tests
+
+- **Model**: a reference function on the *whole* input at once, with
+  no incremental state: split the bytes into requests with the same
+  parsers used once over each message, and compute the outputs a
+  scripted application (which responds with given heads and bodies,
+  reads all, part or none of each body) should see. `step` driven
+  with the same bytes split at arbitrary points must give the same
+  requests, the same body bytes (chunk boundaries aside) and the same
+  sent bytes.
+- **Read-back**: everything `Send` produces, parsed by an independent
+  client-side response parser, is exactly one response per request, in
+  order, with the bodies and trailers written (extending the existing
+  response framing test).
+- **Properties**: nothing after `Close`; no `RequestHead` while a
+  response is unfinished; buffered input never exceeds one read plus
+  the head limits; every byte of input is used exactly once, by a
+  head, a body or discarding.
+- Mutation testing as for the parsers.
+
 ## Testing
 
 - The parser of request lines and fields against RFC 9112's grammar,
