@@ -1,0 +1,81 @@
+# Deliberate bugs that the test suite must catch. See scripts/mutation-test.
+
+file: src/Hyperdrive/Server/Connection.hs
+
+why: the connection's scheme comes from whether it is secured
+- config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
++ config' = config { configTarget = target { contextScheme = HTTPS } }
+
+why: what the core said before closing is still sent
+- Left e | Just ConnectionClosed <- fromException e -> linger env
++ Left e | Just ConnectionClosed <- fromException e -> pure ()
+
+why: writes are buffered until the driver waits, and sent then
+- flush env  -- what is buffered goes out before waiting
++ pure ()
+
+why: the head timer runs from the start of the head, not from the last byte (slowloris)
+- | fst (stTimer st) == ph, ph `elem` [ReadingHead, DiscardingBody] = snd (stTimer st)
++ | fst (stTimer st) == ph, ph `elem` [DiscardingBody] = snd (stTimer st)
+
+why: an expired timer is fed to the core
+- TimerFired -> feed env TimedOut
++ TimerFired -> pure ()
+
+why: shutdown is fed to the core once
+- (if stShutdownSeen st then retry else ShuttingDown <$ envShutdown env)
++ retry
+
+why: the end of input is PeerClosed, not empty data
+- feed env (if B.null bs then PeerClosed else Received bs)
++ feed env (Received bs)
+
+why: closing is staged: half-close first (RFC 9112 Section 9.6)
+- transportShutdownWrite (envTransport env)
++ pure ()
+
+why: the end of a body comes with its last data
+- (RequestData b : RequestEnd t : outs) -> rest' outs >> writeIORef bodyRef (BodyEnded t) >> pure b
++ (RequestData b : RequestEnd _ : outs) -> rest' outs >> pure b
+
+why: an aborted body throws IncompleteBody
+- (RequestAborted : outs) -> rest' outs >> failed
++ (RequestAborted : outs) -> rest' outs >> pure B.empty
+
+why: S3: an exception before the response starts gets a 500
+- if hasStarted then feed env Abort else respondWithStatus env InternalServerError
++ if hasStarted then feed env Abort else feed env Abort
+
+why: S3: an exception after the response starts cuts it off
+- if hasStarted then feed env Abort else respondWithStatus env InternalServerError
++ if hasStarted then feed env (EndBody emptyFields) else respondWithStatus env InternalServerError
+
+why: the handler time limit gets 503 and a close
+- | otherwise -> feed env Shutdown >> respondWithStatus env ServiceUnavailable
++ | otherwise -> respondWithStatus env InternalServerError
+
+why: responses carry Date (RFC 9110 Section 6.6.1)
+- | null (lookupAll hDate fs) = fieldsFromList (fieldsToList fs ++ [(hDate, either (error . show) id (mkFieldValue date))])
++ | False = fieldsFromList (fieldsToList fs ++ [(hDate, either (error . show) id (mkFieldValue date))])
+
+why: a stream that writes other than its declared length is an error
+- Just declared | declared /= n -> throwIO (StreamLengthMismatch declared n)
++ Just declared | False -> throwIO (StreamLengthMismatch declared n)
+
+why: a stream's trailers are checked against those it declared
+- checked <- either (throwIO . InvalidTrailers) pure (checkTrailers resp trailers)
++ let checked = trailers
+
+why: a shutdown that came while the application worked closes the connection after its response
+- when stopping $ do
++ when False $ do
+
+file: src/Hyperdrive/Server.hs
+
+why: shutdown first lets busy connections finish (the graceful stage)
+- atomically (writeTVar stopping True)
++ mapM_ (\t -> forkIO (killThread t)) . Map.keys =<< readTVarIO threads
+
+why: connections still running after the grace period are killed
+- mapM_ (\t -> forkIO (killThread t)) remaining
++ pure ()

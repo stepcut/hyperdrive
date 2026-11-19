@@ -1,5 +1,6 @@
 packages: hyperdrive-semantics/
           hyperdrive-abnf/
           hyperdrive-http1/
+          hyperdrive-server/
 
 tests: True

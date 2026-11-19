@@ -1,0 +1,56 @@
+cabal-version:      3.0
+name:               hyperdrive-server
+version:            0.1.0.0
+synopsis:           The hyperdrive HTTP server: sockets, timers and applications
+description:
+  The IO around hyperdrive's protocol cores: listening and accepting,
+  one thread per connection, timeouts, graceful shutdown, and turning
+  Requests and Responses into the core's inputs and outputs.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Jeremy Shaw
+maintainer:         jeremy@seereason.com
+category:           Web
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  default-language: GHC2021
+  exposed-modules:  Hyperdrive.Server
+                    Hyperdrive.Server.Connection
+                    Hyperdrive.Server.Date
+                    Hyperdrive.Server.Transport
+  build-depends:    base                 >= 4.18 && < 5
+                  , bytestring           >= 0.11 && < 0.13
+                  , containers           >= 0.6  && < 0.8
+                  , hyperdrive-http1
+                  , hyperdrive-semantics
+                  , network              >= 3.1  && < 3.3
+                  , stm                  >= 2.5  && < 2.6
+                  , time                 >= 1.12 && < 1.15
+
+test-suite hyperdrive-server-tests
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    MemoryTransport
+                    ServerTests
+  default-language: GHC2021
+  ghc-options:      -threaded
+  build-depends:    base
+                  , bytestring
+                  , hyperdrive-abnf
+                  , hyperdrive-http1
+                  , hyperdrive-http1:testing
+                  , hyperdrive-semantics
+                  , hyperdrive-server
+                  , network
+                  , stm
+                  , QuickCheck       >= 2.14 && < 2.18
+                  , tasty            >= 1.4  && < 1.6
+                  , tasty-quickcheck >= 0.10 && < 0.12

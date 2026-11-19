@@ -611,6 +611,7 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]: When a sender generates a field
     TEXT[!MUST]:    that contains one or more timestamps defined as HTTP-date, the sender
     TEXT[!MUST]:    MUST generate those timestamps in the IMF-fixdate format.
+    TEXT[implementation,test]:      IMF-fixdate  = day-name "," SP date1 SP time-of-day SP GMT
     TEXT[!MUST]:    A sender MUST NOT generate additional whitespace in an HTTP-date
     TEXT[!MUST]:    beyond that specifically included as SP in the grammar.
     TEXT[!MUST]:    Recipients of a timestamp value in rfc850-date format, which uses a
@@ -688,11 +689,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD]:    A sender that generates a Date header field SHOULD generate its field
     TEXT[!SHOULD]:    value as the best available approximation of the date and time of
     TEXT[!SHOULD]:    message generation.
-    TEXT[!MUST]:    An origin server with a clock (as defined in Section 5.6.7) MUST
-    TEXT[!MUST]:    generate a Date header field in all 2xx (Successful), 3xx
-    TEXT[!MUST]:    (Redirection), and 4xx (Client Error) responses, and MAY generate a
-    TEXT[!MUST]:    Date header field in 1xx (Informational) and 5xx (Server Error)
-    TEXT[!MUST]:    responses.
+    TEXT[!MUST,implementation,test]:    An origin server with a clock (as defined in Section 5.6.7) MUST
+    TEXT[!MUST,implementation,test]:    generate a Date header field in all 2xx (Successful), 3xx
+    TEXT[!MUST,implementation,test]:    (Redirection), and 4xx (Client Error) responses, and MAY generate a
+    TEXT[!MUST,implementation,test]:    Date header field in 1xx (Informational) and 5xx (Server Error)
+    TEXT[!MUST,implementation,test]:    responses.
     TEXT[!MUST]:    An origin server without a clock MUST NOT generate a Date header
     TEXT[!MUST]:    field.
     TEXT[!MUST,exception]:    A recipient with a clock that receives a response message without a
@@ -2683,6 +2684,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]:    the response message containing the "close" connection option; if
     TEXT[!MUST,exception]:    additional pipelined requests had been sent on the connection, the
     TEXT[!MUST,exception]:    client SHOULD NOT assume that they will be processed by the server.
+    TEXT[implementation]:    If a server performs an immediate close of a TCP connection, there is
+    TEXT[implementation]:    a significant risk that the client will not be able to read the last
+    TEXT[implementation]:    HTTP response.
 
   SECTION: [TLS Connection Initiation](#section-9.7)
     TEXT[!MUST]: All

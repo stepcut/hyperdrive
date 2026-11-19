@@ -1,5 +1,25 @@
 # The server: IO driver for HTTP/1.1 (S1 to S7 decided as recommended, 2026-11-18)
 
+Implemented in `hyperdrive-server` (`Hyperdrive.Server`,
+`Hyperdrive.Server.Connection`). Changes from the draft below:
+
+- Timers use GHC's timer manager directly (`registerTimeout`, removed
+  with `unregisterTimeout` after each wait), not `registerDelay`, whose
+  timers cannot be cancelled and would pile up, one per wait, for up
+  to a minute each.
+- `serveConnection` takes the shutdown signal as an `STM ()` argument;
+  `runServer` and `withServer` (which returns a `Server` with its port
+  and a shutdown action) are built on it.
+- A shutdown that arrives while the application works is checked for
+  (without blocking) just before the response head is sent, so that
+  the response says `Connection: close`.
+- What the core said before closing (a 400 when a body turns out
+  invalid, say) is sent even if the application then fails on the
+  closed connection.
+- The tests share the session generators, client reader and reference
+  model with `hyperdrive-http1`'s through its public sub-library
+  `hyperdrive-http1:testing`.
+
 The protocol core (`Hyperdrive.HTTP1.Connection.step`) is pure and
 done. This document proposes the IO around it: sockets, timers, running
 the application, and turning `Request`/`Response` into `step`'s inputs
