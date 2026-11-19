@@ -1,0 +1,25 @@
+cabal-version:      3.0
+name:               hyperdrive-bench
+version:            0.1.0.0
+synopsis:           Benchmark servers: the same application on hyperdrive and on warp
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Jeremy Shaw
+maintainer:         jeremy@seereason.com
+build-type:         Simple
+
+-- Both built the same way, so that only the server differs.
+common server
+  default-language: GHC2021
+  ghc-options:      -Wall -O2 -threaded -rtsopts "-with-rtsopts=-N8 -A32m"
+  build-depends:    base >= 4.18 && < 5, bytestring
+
+executable bench-hyperdrive
+  import:           server
+  main-is:          Hyperdrive.hs
+  build-depends:    hyperdrive-semantics, hyperdrive-server
+
+executable bench-warp
+  import:           server
+  main-is:          Warp.hs
+  build-depends:    http-types, wai, warp

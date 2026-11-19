@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Benchmark hyperdrive against warp, with the same application on each
+# (bench/Hyperdrive.hs, bench/Warp.hs), built the same way.
+#
+#   nix develop .#bench -c scripts/bench
+#
+# DURATION (default 10s), SERVER_CPUS (default 0-7) and CLIENT_CPUS
+# (default 8-15) can be set. The server and wrk run on separate cores
+# (on a 16-core Ryzen, 0-7 and 8-15 are separate CCDs and never SMT
+# siblings), so that they do not compete.
+set -euo pipefail
+
+DURATION=${DURATION:-10s}
+SERVER_CPUS=${SERVER_CPUS:-0-7}
+CLIENT_CPUS=${CLIENT_CPUS:-8-15}
+IDLE=${IDLE:-10000}
+PORT=18080
+here=$(cd "$(dirname "$0")/.." && pwd)
+
+ulimit -n 65536 2>/dev/null || true
+
+wrk_run() {  # name, wrk arguments...
+  local name=$1; shift
+  local out
+  out=$(taskset -c "$CLIENT_CPUS" wrk -t8 -d"$DURATION" --latency "$@" 2>&1)
+  local rps p50 p99 errors
+  rps=$(awk '/Requests\/sec/ {print $2}' <<<"$out")
+  p50=$(awk '/^ +50%/ {print $2}' <<<"$out")
+  p99=$(awk '/^ +99%/ {print $2}' <<<"$out")
+  errors=$(grep -E "Non-2xx|Socket errors" <<<"$out" | tr '\n' ' ' || true)
+  printf "  %-28s %12s req/s   p50 %8s   p99 %8s   %s\n" "$name" "$rps" "$p50" "$p99" "$errors"
+}
+
+start() {  # server: start it, and wait until it accepts connections
+  taskset -c "$SERVER_CPUS" "bench-$1" "$PORT" +RTS -N8 -RTS &
+  pid=$!
+  trap 'kill $pid 2>/dev/null || true' EXIT
+  for _ in $(seq 50); do
+    (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break
+    sleep 0.1
+  done
+}
+
+stop() {
+  kill "$pid"; wait "$pid" 2>/dev/null || true
+  trap - EXIT
+}
+
+for server in hyperdrive warp; do
+  echo "$server"
+  start "$server"
+  url=http://127.0.0.1:$PORT
+  wrk_run "hello, 100 connections"     -c100  "$url/"
+  wrk_run "hello, 1000 connections"    -c1000 "$url/"
+  wrk_run "hello, pipelined x16"       -c100  -s "$here/bench/wrk/pipeline.lua" "$url/"
+  wrk_run "1 MiB responses, 32 conns"  -c32   "$url/large"
+  wrk_run "1 MiB uploads, 32 conns"    -c32   -s "$here/bench/wrk/upload.lua" "$url/upload"
+  stop
+  # memory per idle connection, in a fresh process
+  start "$server"
+  echo -n "  "; python3 "$here/bench/idle.py" "$PORT" "$pid" "$IDLE"
+  stop
+done

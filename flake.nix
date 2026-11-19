@@ -15,6 +15,8 @@
         hyperdrive-abnf = final.callCabal2nix "hyperdrive-abnf" ./hyperdrive-abnf { };
         hyperdrive-http1 = final.callCabal2nix "hyperdrive-http1" ./hyperdrive-http1 { };
         hyperdrive-server = final.callCabal2nix "hyperdrive-server" ./hyperdrive-server { };
+        # not checked: run with `nix develop .#bench -c scripts/bench`
+        hyperdrive-bench = final.callCabal2nix "hyperdrive-bench" ./bench { };
       });
     in {
       packages = forAllSystems (pkgs: {
@@ -23,6 +25,7 @@
         hyperdrive-abnf = (haskellPackages pkgs).hyperdrive-abnf;
         hyperdrive-http1 = (haskellPackages pkgs).hyperdrive-http1;
         hyperdrive-server = (haskellPackages pkgs).hyperdrive-server;
+        hyperdrive-bench = (haskellPackages pkgs).hyperdrive-bench;
       });
 
       # `nix flake check` builds the packages (which runs their test
@@ -63,6 +66,15 @@
             pkgs.cabal-install
             pkgs.python3 # for scripts/mutation-test
             self.packages.${pkgs.stdenv.hostPlatform.system}.duvet
+          ];
+        };
+        # benchmarks against warp: nix develop .#bench -c scripts/bench
+        bench = pkgs.mkShell {
+          packages = [
+            (haskellPackages pkgs).hyperdrive-bench
+            pkgs.wrk
+            pkgs.util-linux # taskset
+            pkgs.python3
           ];
         };
       });
