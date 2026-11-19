@@ -30,3 +30,39 @@ busy). Without timers at all it reached 481k; with the coarse timers
 
 Next: small responses, where hyperdrive spends about 11 µs of CPU per
 request to warp's 7.6 µs. Profile before changing anything.
+
+## 2026-11-19, the small-response path profiled
+
+Measured per request with 100 connections (perf, `+RTS -s`, strace,
+/proc): hyperdrive used about 11.3 µs of CPU (4.7 user, 6.7 kernel),
+warp 6.6 (1.8 user, 4.8 kernel). The pure core (`step` for a whole
+exchange, single-threaded) costs 1.7 µs and allocates 6.9 KB; the rest
+is the driver and the kernel. Changes, each measured:
+
+- Shutdown is signalled through a `TVar` per connection, not one that
+  every waiting connection read (its STM bookkeeping showed in perf).
+- `Date` reads whole seconds from `getSystemTime`; `getPOSIXTime` went
+  through Integer arithmetic on every response.
+- The driver tries a non-blocking receive before waiting. System calls
+  per request went from recv 1, writev 1, epoll_ctl 1, epoll_wait 0.9
+  to recv 1, writev 1, epoll 0.03 each, as warp's.
+- Each connection receives into one 16 KiB buffer and copies out what
+  arrived. Allocation fell from 46 KB to 13 KB a request (warp: 5.8
+  KB), and young-generation collections from 2,277 to 101 in 5 s; GC is
+  now 7% of the time. The buffer costs memory: 26 KB per idle
+  connection, from 17 (warp: 22).
+
+CPU per request hardly moved (11.3 to 11.2 µs): what remains is spread
+over the driver (about 3 µs of user time beyond the core) and the
+kernel (about 2 µs more than warp's for the same system calls, not
+explained yet; kernel profiling needs privileges this machine does not
+give). Joining small writes into one buffer made no difference.
+
+| | hyperdrive | warp |
+|---|---|---|
+| small responses, 100 connections | 449k req/s (p50 0.17 ms, p99 5.4 ms) | 691k (0.11 ms, 4.1 ms) |
+| small responses, 1000 connections | 451k (1.2 ms, 62 ms) | 704k (1.1 ms, 42 ms) |
+| small responses, pipelined 16 deep | 724k (1.2 ms, 7.2 ms) | 882k (1.0 ms, 7.3 ms) |
+| 1 MiB responses, 32 connections | 11.1k (2.7 ms, 7.5 ms) | 11.4k (2.7 ms, 7.6 ms) |
+| 1 MiB uploads, 32 connections | 8.2k (3.4 ms, 19 ms) | 6.0k (3.9 ms, 120 ms) |
+| memory per idle connection (10,000) | 26 KB | 22 KB |

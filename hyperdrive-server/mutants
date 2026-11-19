@@ -27,8 +27,8 @@ why: shutdown is fed to the core once
 + retry
 
 why: the end of input is PeerClosed, not empty data
-- feed env (if B.null bs then PeerClosed else Received bs)
-+ feed env (Received bs)
+- received env bs = feed env (if B.null bs then PeerClosed else Received bs)
++ received env bs = feed env (Received bs)
 
 why: closing is staged: half-close first (RFC 9112 Section 9.6)
 - transportShutdownWrite (envTransport env)
@@ -73,7 +73,7 @@ why: a shutdown that came while the application worked closes the connection aft
 file: src/Hyperdrive/Server.hs
 
 why: shutdown first lets busy connections finish (the graceful stage)
-- atomically (writeTVar stopping True)
+- beginShutdown timers
 + mapM_ (\t -> forkIO (killThread t)) . Map.keys =<< readTVarIO threads
 
 why: connections still running after the grace period are killed
@@ -98,4 +98,18 @@ file: src/Hyperdrive/Server/Connection.hs
 
 why: writes have a deadline
 - armWrite (envTimer env) =<< deadlineIn (timeoutWrite (settingsTimeouts (envSettings env)))
++ pure ()
+
+why: input that is already there is used, not dropped
+- Just bs -> received env bs
++ Just _ -> waitFor env st deadline
+
+file: src/Hyperdrive/Server/Timer.hs
+
+why: a connection that starts after shutdown began is told too
+- when stopping (atomically (writeTVar (timerStop t) True))
++ pure ()
+
+why: shutdown reaches every connection
+- forM_ registry $ \t -> atomically (writeTVar (timerStop t) True)
 + pure ()

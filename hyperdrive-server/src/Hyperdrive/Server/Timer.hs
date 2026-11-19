@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 -- | Coarse timers for connections: one ticker thread for the whole
--- server, and per connection a deadline that is cheap to set.
+-- server, and per connection a deadline that is cheap to set. The same
+-- registry carries the shutdown signal to each connection.
 --
 -- GHC's timer manager is exact, but every registration and
 -- cancellation goes through one shared, locked structure; with one per
@@ -9,6 +10,12 @@
 -- deadline is a write to the connection's own 'IORef', and the ticker
 -- looks at every connection once per tick, so a timeout fires up to a
 -- tick late.
+--
+-- Shutdown is signalled through a 'TVar' per connection, set for each
+-- in turn, rather than one shared 'TVar' that every waiting connection
+-- reads: with thousands of connections waiting on one variable, STM's
+-- bookkeeping for it (its queue of waiters, and the lock on it) became
+-- a point of contention.
 module Hyperdrive.Server.Timer
   ( Timers
   , withTimers
@@ -18,6 +25,8 @@ module Hyperdrive.Server.Timer
   , armWrite
   , disarm
   , deadlineIn
+  , beginShutdown
+  , shutdownRequested
   ) where
 
 import Control.Concurrent (forkIOWithUnmask, killThread, threadDelay)
@@ -32,6 +41,7 @@ import GHC.Clock (getMonotonicTimeNSec)
 data Timers = Timers
   { timersRegistry :: !(IORef (IntMap.IntMap Timer))
   , timersNext     :: !(IORef Int)
+  , timersStopping :: !(IORef Bool)
   }
 
 -- | A connection's timer: what it is armed for, until when (monotonic
@@ -41,6 +51,7 @@ data Timer = Timer
   , timerGen   :: !(IORef Int)    -- ^ counts read armings, so that each is told apart
   , timerFired :: !(TVar Int)     -- ^ the generation of the last read arming that expired
   , timerAbort :: IO ()           -- ^ what to do when a write expires
+  , timerStop  :: !(TVar Bool)    -- ^ the server is shutting down
   }
 
 data Armed
@@ -52,7 +63,7 @@ data Armed
 -- number of microseconds, stopping it afterwards.
 withTimers :: Int -> (Timers -> IO a) -> IO a
 withTimers resolution act = do
-  timers <- Timers <$> newIORef IntMap.empty <*> newIORef 0
+  timers <- Timers <$> newIORef IntMap.empty <*> newIORef 0 <*> newIORef False
   let tick = do
         now <- getMonotonicTimeNSec
         registry <- readIORef (timersRegistry timers)
@@ -71,12 +82,15 @@ withTimers resolution act = do
 -- should make the blocked write fail, by shutting the socket down.
 withTimer :: Timers -> IO () -> (Timer -> IO a) -> IO a
 withTimer timers abort act = do
-  t <- Timer <$> newIORef Disarmed <*> newIORef 0 <*> newTVarIO 0 <*> pure abort
+  t <- Timer <$> newIORef Disarmed <*> newIORef 0 <*> newTVarIO 0 <*> pure abort <*> newTVarIO False
   bracket (mask_ (register t)) unregister (const (act t))
   where
     register t = do
       k <- atomicModifyIORef' (timersNext timers) (\n -> (n + 1, n))
       atomicModifyIORef' (timersRegistry timers) (\m -> (IntMap.insert k t m, ()))
+      -- either 'beginShutdown' sees this timer, or this sees its flag
+      stopping <- atomicModifyIORef' (timersStopping timers) (\b -> (b, b))
+      when stopping (atomically (writeTVar (timerStop t) True))
       pure k
     unregister k = atomicModifyIORef' (timersRegistry timers) (\m -> (IntMap.delete k m, ()))
 
@@ -100,3 +114,15 @@ disarm t = writeIORef (timerState t) Disarmed
 -- number of microseconds.
 deadlineIn :: Int -> IO Word64
 deadlineIn micros = (+ fromIntegral micros * 1000) <$> getMonotonicTimeNSec
+
+-- | Tell every connection, present and future, that the server is
+-- shutting down.
+beginShutdown :: Timers -> IO ()
+beginShutdown timers = do
+  atomicModifyIORef' (timersStopping timers) (const (True, ()))
+  registry <- readIORef (timersRegistry timers)
+  forM_ registry $ \t -> atomically (writeTVar (timerStop t) True)
+
+-- | Succeeds once the server is shutting down.
+shutdownRequested :: Timer -> STM ()
+shutdownRequested t = readTVar (timerStop t) >>= check

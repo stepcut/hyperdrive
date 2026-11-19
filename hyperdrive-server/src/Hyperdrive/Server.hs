@@ -19,6 +19,7 @@ module Hyperdrive.Server
   , serveConnection
   , Timers
   , withTimers
+  , beginShutdown
   , Transport(..)
   , socketTransport
   ) where
@@ -69,13 +70,12 @@ startServer settings timers app = do
     listen s 1024
     pure s
   port <- socketPort listener
-  stopping <- newTVarIO False
   live <- newTVarIO (0 :: Int)
   threads <- newTVarIO (Map.empty :: Map.Map ThreadId ())
-  let shuttingDown = readTVar stopping >>= check
-      serve s peer = do
+  let serve s peer = do
         local <- getSocketName s
-        serveConnection settings timers shuttingDown (socketTransport s) (Context peer local False) app
+        transport <- socketTransport s
+        serveConnection settings timers transport (Context peer local False) app
       acceptLoop = forever $ do
         -- wait below the connection limit, if there is one
         case settingsMaxConnections settings of
@@ -103,7 +103,7 @@ startServer settings timers app = do
           killThread acceptor
           close listener
           -- graceful: idle connections close now, busy ones after their exchange
-          atomically (writeTVar stopping True)
+          beginShutdown timers
           grace <- registerDelay (settingsShutdownGrace settings)
           atomically $ (readTVar live >>= check . (== 0)) `orElse` (readTVar grace >>= check)
           -- forced: kill what is left, without waiting on any one thread

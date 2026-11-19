@@ -156,20 +156,20 @@ data BodyState = BodyOpen | BodyEnded !Fields | BodyFailed
 -- The connection
 ------------------------------------------------------------------------------
 
--- | Serve one connection until it closes. Its timeouts are kept by the
--- given 'Timers' (see 'withTimers'); the 'STM' action succeeds once the
--- server is shutting down. The transport is closed at the end whatever
--- happens; asynchronous exceptions (the thread being killed) are
--- rethrown after that.
-serveConnection :: Settings -> Timers -> STM () -> Transport -> Context -> Application -> IO ()
-serveConnection settings timers shutdown transport context app =
+-- | Serve one connection until it closes. Its timeouts, and the signal
+-- to shut down ('beginShutdown'), come through the given 'Timers' (see
+-- 'withTimers'). The transport is closed at the end whatever happens;
+-- asynchronous exceptions (the thread being killed) are rethrown after
+-- that.
+serveConnection :: Settings -> Timers -> Transport -> Context -> Application -> IO ()
+serveConnection settings timers transport context app =
   withTimer timers (transportAbort transport) $ \timer -> do
     let config = settingsConfig settings
         target = configTarget config
         config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
     ref <- newIORef (St (newConn config') [] [] 0 False False False (Closed, 0))
     dates <- newDateCache
-    let env = Env settings shutdown transport context app dates timer ref
+    let env = Env settings (shutdownRequested timer) transport context app dates timer ref
     (do r <- try (mainLoop env)
         case r of
           -- what the core had to say before closing (a 400, say) is still sent
@@ -258,6 +258,18 @@ waitInput env = do
         | fst (stTimer st) == ph, ph `elem` [ReadingHead, DiscardingBody] = snd (stTimer st)
         | otherwise = now + fromIntegral limit * 1000
   writeIORef (envRef env) st { stTimer = (ph, deadline) }
+  ready <- transportTryRecv (envTransport env)
+  case ready of
+    Just bs -> received env bs
+    Nothing -> waitFor env st deadline
+
+-- | Feed what was received; nothing means the end of input.
+received :: Env -> ByteString -> IO ()
+received env bs = feed env (if B.null bs then PeerClosed else Received bs)
+
+-- | Nothing has arrived: wait for input, the timer or shutdown.
+waitFor :: Env -> St -> Word64 -> IO ()
+waitFor env st deadline = do
   fired <- armRead (envTimer env) deadline
   (readable, release) <- transportWaitReadable (envTransport env)
   woken <- atomically $
@@ -268,8 +280,7 @@ waitInput env = do
   release
   case woken of
     Readable -> do
-      bs <- transportRecv (envTransport env)
-      feed env (if B.null bs then PeerClosed else Received bs)
+      received env =<< transportRecv (envTransport env)
     TimerFired -> feed env TimedOut
     ShuttingDown -> do
       modifyIORef' (envRef env) $ \s -> s { stShutdownSeen = True }

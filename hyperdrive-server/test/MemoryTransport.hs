@@ -37,6 +37,13 @@ memoryTransport = do
             case q of
               (x : xs) -> writeTVar (pipeIn p) xs >> pure x
               []       -> pure B.empty
+        , transportTryRecv = atomically $ do
+            q <- readTVar (pipeIn p)
+            eof <- readTVar (pipeEOF p)
+            case q of
+              (x : xs) -> writeTVar (pipeIn p) xs >> pure (Just x)
+              [] | eof -> pure (Just B.empty)
+                 | otherwise -> pure Nothing
         , transportSendMany = \bs -> do
             ok <- atomically $ do
               shut <- (||) <$> readTVar (pipeShutWrite p) <*> readTVar (pipeClosed p)

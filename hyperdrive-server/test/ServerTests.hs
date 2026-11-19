@@ -3,7 +3,7 @@ module ServerTests (serverTests) where
 
 import Control.Concurrent
 import Control.Exception hiding (assert)
-import Control.Concurrent.STM (STM, atomically, orElse, retry)
+import Control.Concurrent.STM (atomically, orElse)
 import Control.Monad (forM_, forever, unless)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -128,7 +128,7 @@ prop_memory = withMaxSuccess 500 $ forAll genSession $ \(scripts, wire) -> forAl
       seenRef <- newIORef []
       errs <- newIORef []
       let ctx = Context (SockAddrInet 0 0) (SockAddrInet 0 0) False
-      withTimers 10000 $ \timers -> serveConnection (quietSettings errs) timers retrySTM t ctx (scripted scriptsRef seenRef)
+      withTimers 10000 $ \timers -> serveConnection (quietSettings errs) timers t ctx (scripted scriptsRef seenRef)
       (,,,) <$> (reverse <$> readIORef seenRef) <*> clientReceived pipe <*> readIORef errs <*> serverShutWrite pipe
     let (wantSeen, wantResps) = model scripts wire
         heads = [ m == "HEAD" | (m, _, _, _, _, _, _, _) <- wantSeen ]
@@ -138,9 +138,6 @@ prop_memory = withMaxSuccess 500 $ forAll genSession $ \(scripts, wire) -> forAl
     assert (null errs)
     assert shut  -- closed in stages: the server half-closed first
 
--- | A shutdown that never comes.
-retrySTM :: STM ()
-retrySTM = retry
 
 prop_sockets :: Property
 prop_sockets = withMaxSuccess 100 $ forAll genSession $ \(scripts, wire) -> forAll (splitInput wire) $ \pieces ->
@@ -381,7 +378,11 @@ prop_timers = once $ monadicIO $ do
       armWrite t =<< deadlineIn 0
       threadDelay 50000
       wasAborted <- readIORef aborted
-      pure (fired1, fired2, wasAborted)
+      -- shutdown reaches this connection, and one that starts afterwards
+      beginShutdown timers
+      stopped <- timeout 1000000 (atomically (shutdownRequested t))
+      late <- withTimer timers (pure ()) $ \t' -> timeout 1000000 (atomically (shutdownRequested t'))
+      pure (fired1, fired2, wasAborted, stopped, late)
   monitor (counterexample (show results))
-  let (fired1, fired2, wasAborted) = results
-  assert (fired1 == Just () && not fired2 && wasAborted)
+  let (fired1, fired2, wasAborted, stopped, late) = results
+  assert (fired1 == Just () && not fired2 && wasAborted && stopped == Just () && late == Just ())

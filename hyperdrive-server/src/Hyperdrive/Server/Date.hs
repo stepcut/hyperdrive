@@ -11,7 +11,8 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C
 import Data.Int (Int64)
 import Data.IORef
-import Data.Time.Clock.POSIX (getPOSIXTime, posixSecondsToUTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 
 -- | The last second formatted, and its text. Each connection keeps its
@@ -31,7 +32,9 @@ newDateCache = DateCache <$> newIORef (-1, "")
 -- | The current time as an HTTP-date.
 currentDate :: DateCache -> IO ByteString
 currentDate (DateCache ref) = do
-  now <- floor <$> getPOSIXTime
+  -- whole seconds directly: getPOSIXTime's fixed-point value would go
+  -- through Integer arithmetic on every response
+  now <- systemSeconds <$> getSystemTime
   (second, text) <- readIORef ref
   if second == now then pure text else do
     let text' = formatHttpDate now
