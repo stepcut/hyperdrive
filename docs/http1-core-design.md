@@ -197,9 +197,10 @@ implementing it:
   the body, so the rest of the input cannot be told apart.
 - `Connection` options must be tokens; anything else is 400.
 
-Not yet done: the reference-model test described below (the session
-tests check served requests against what was sent, and the responses
-with an independent client-side reader, instead).
+The reference-model test below is `prop_model` in
+`test/ConnectionTests.hs`; it compares scripts that read all of a body
+or none of it, since how much a partial read gets depends on how the
+input arrived.
 
 Everything `step` needs underneath now exists: `parseRequestHead`,
 `requestFraming`, `reconstructTarget`, `acceptsTrailers`,
