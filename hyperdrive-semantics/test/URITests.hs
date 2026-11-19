@@ -271,6 +271,9 @@ prop_authorityExamples = conjoin
   [ fmap host' (parseAuthority "1.2.3.4")     === Right "HostIPv4 16909060"
   , fmap host' (parseAuthority "1.2.3.256")   === Right "HostRegName (RegName \"1.2.3.256\")"
   , fmap host' (parseAuthority "01.2.3.4")    === Right "HostRegName (RegName \"01.2.3.4\")"
+    -- 2^64: a dec-octet has at most three digits, so this cannot wrap
+    -- around to 0 and pass for the IPv4 address 0.0.0.1
+  , fmap host' (parseAuthority "18446744073709551616.0.0.1") === Right "HostRegName (RegName \"18446744073709551616.0.0.1\")"
   , fmap renderAuthority (parseAuthority "Example.COM%2f:")  === Right "example.com%2F"
   , fmap authorityPort (parseAuthority "x:0080")  === Right (Just 80)
   , fmap authorityPort (parseAuthority "x:65535") === Right (Just 65535)

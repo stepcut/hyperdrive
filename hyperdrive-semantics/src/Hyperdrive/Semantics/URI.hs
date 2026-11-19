@@ -47,6 +47,7 @@ import Control.Monad (guard)
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Unsafe as BU
 import qualified Data.ByteString.Char8 as C
 import Data.List (intersperse)
 import qualified Data.List as L
@@ -229,7 +230,11 @@ isRegName = allEncoded (\w -> isUnreserved w || isSubDelim w)
 -- lower case, and the hex digits of the remaining percent-encodings
 -- are made upper case.
 normalizeRegName :: ByteString -> ByteString
-normalizeRegName = B.pack . go . B.unpack
+normalizeRegName bs
+  -- the usual host is already in normal form: no upper case, nothing
+  -- percent-encoded; it is not rebuilt
+  | not (B.any (\w -> w == 0x25 || (w >= 0x41 && w <= 0x5A)) bs) = bs
+  | otherwise = B.pack (go (B.unpack bs))
   where
     go (0x25 : a : b : rest)
       | isUnreserved c = toLower c : go rest
@@ -267,13 +272,6 @@ isIPvFuture bs =
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
 -- # If host matches the rule for IPv4address, then it should be
 -- # considered an IPv4 address literal and not a reg-name.
-parseIPv4 :: ByteString -> Maybe Word32
-parseIPv4 bs =
-  case B.split 0x2E bs of
-    [a, b, c, d] -> do
-      os <- traverse decOctet [a, b, c, d]
-      pure (L.foldl' (\acc o -> (acc `shiftL` 8) .|. fromIntegral o) 0 os)
-    _ -> Nothing
 
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
 -- # dec-octet   = DIGIT                 ; 0-9
@@ -281,13 +279,27 @@ parseIPv4 bs =
 -- # / "1" 2DIGIT            ; 100-199
 -- # / "2" %x30-34 DIGIT     ; 200-249
 -- # / "25" %x30-35          ; 250-255
-decOctet :: ByteString -> Maybe Word8
-decOctet bs = do
-  guard (B.length bs >= 1 && B.length bs <= 3 && B.all isDIGIT bs)
-  guard (B.length bs == 1 || B.head bs /= 0x30) -- no leading zeros
-  let n = B.foldl' (\acc w -> acc * 10 + fromIntegral (w - 0x30)) (0 :: Int) bs
-  guard (n <= 255)
-  pure (fromIntegral n)
+
+parseIPv4 :: ByteString -> Maybe Word32
+parseIPv4 bs = go 0 (0 :: Int) 0 (0 :: Int) (0 :: Int)
+  where
+    -- four dec-octets separated by ".", read in one pass over the
+    -- bytes (a Host is parsed on every request): i is the position, k
+    -- the octets finished, acc their value, n and len the current
+    -- octet's value and number of digits
+    end = B.length bs
+    go i k acc n len
+      -- exactly four: a fifth octet fails here
+      | i == end = if k == 3 && len > 0 && n <= 255 then Just ((acc `shiftL` 8) .|. fromIntegral n) else Nothing
+      | otherwise = case BU.unsafeIndex bs i of
+          w | isDIGIT w ->
+                -- at most three digits, and no leading zero
+                if len == 3 || (len == 1 && n == 0) then Nothing
+                else go (i + 1) k acc (n * 10 + fromIntegral (w - 0x30)) (len + 1)
+            | w == 0x2E ->
+                if len == 0 || n > 255 then Nothing
+                else go (i + 1) (k + 1) ((acc `shiftL` 8) .|. fromIntegral n) 0 0
+            | otherwise -> Nothing
 
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
 -- # IPv6address =                            6( h16 ":" ) ls32

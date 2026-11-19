@@ -27,8 +27,8 @@ why: DELETE is idempotent
 file: src/Hyperdrive/Semantics/Field.hs
 
 why: field names are case-insensitive, and normalized to lower case
-- | w >= 0x41 && w <= 0x5A = w + 0x20
-+ | w >= 0x41 && w <= 0x5A = w
+- | isUpper w = w + 0x20
++ | isUpper w = w
 
 why: NUL must be reported as one of the dangerous CR, LF or NUL
 - isCRLFNUL w = w == 0x0D || w == 0x0A || w == 0x00
@@ -63,12 +63,28 @@ why: an IPv6 address with "::" has at most 7 explicit pieces
 + guard (n <= 8)
 
 why: dec-octet does not allow leading zeros, so 01.2.3.4 is a reg-name
-- guard (B.length bs == 1 || B.head bs /= 0x30) -- no leading zeros
-+ pure ()
+- if len == 3 || (len == 1 && n == 0) then Nothing
++ if len == 3 then Nothing
+
+why: a dec-octet has at most three digits, so 0001.2.3.4 is a reg-name
+- if len == 3 || (len == 1 && n == 0) then Nothing
++ if len == 1 && n == 0 then Nothing
 
 why: the largest dec-octet is 255
-- guard (n <= 255)
-+ guard (n <= 256)
+- | i == end = if k == 3 && len > 0 && n <= 255 then Just ((acc `shiftL` 8) .|. fromIntegral n) else Nothing
++ | i == end = if k == 3 && len > 0 then Just ((acc `shiftL` 8) .|. fromIntegral n) else Nothing
+
+why: every dec-octet but the last is at most 255 too
+- if len == 0 || n > 255 then Nothing
++ if len == 0 then Nothing
+
+why: an IPv4 address has exactly four dec-octets
+- | i == end = if k == 3 && len > 0 && n <= 255 then Just ((acc `shiftL` 8) .|. fromIntegral n) else Nothing
++ | i == end = if k >= 3 && len > 0 && n <= 255 then Just ((acc `shiftL` 8) .|. fromIntegral n) else Nothing
+
+why: a dec-octet is not empty, so 1..2.3 is a reg-name
+- if len == 0 || n > 255 then Nothing
++ if n > 255 then Nothing
 
 why: h16 is at most 4 hex digits
 - guard (B.length bs >= 1 && B.length bs <= 4 && B.all isHEXDIG bs)
@@ -293,8 +309,8 @@ why: the CONNECT and asterisk forms are only for CONNECT and OPTIONS
 + | False   = Left TargetNotValidForMethod
 
 why: an empty path is "/" except for OPTIONS
-- | otherwise = Right (Request version method (normalizeEmptyPath method target) fields body)
-+ | otherwise = Right (Request version method target fields body)
+- | otherwise = Right (Request version method (normalizeEmptyPath method target) fields body False)
++ | otherwise = Right (Request version method target fields body False)
 
 why: a 1xx response is interim, not final
 - | statusClass status == Informational = Left InterimStatus

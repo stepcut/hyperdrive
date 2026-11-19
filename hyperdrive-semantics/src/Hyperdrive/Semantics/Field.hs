@@ -53,13 +53,17 @@ import Hyperdrive.Semantics.Syntax (isFieldVChar, isOWS, isToken)
 -- HTTP/2 and HTTP/3 require on the wire.
 mkFieldName :: ByteString -> Maybe FieldName
 mkFieldName bs
-  | isToken bs = Just (FieldName (B.map toLower bs))
+  -- most names on the wire are already lower case (always, in HTTP/2
+  -- and HTTP/3); those are not copied
+  | isToken bs = Just (FieldName (if B.any isUpper bs then B.map toLower bs else bs))
   | otherwise  = Nothing
   where
+    isUpper :: Word8 -> Bool
+    isUpper w = w >= 0x41 && w <= 0x5A
     toLower :: Word8 -> Word8
     toLower w
-      | w >= 0x41 && w <= 0x5A = w + 0x20
-      | otherwise              = w
+      | isUpper w = w + 0x20
+      | otherwise = w
 
 -- | the field name, in lower case
 fieldNameBytes :: FieldName -> ByteString
@@ -123,9 +127,10 @@ data FieldValueError
 -- neither of the two behaviours the RFC allows.
 mkFieldValue :: ByteString -> Either FieldValueError FieldValue
 mkFieldValue bs
+  -- one pass for a valid value; which error, only for an invalid one
+  | B.all (\w -> isFieldVChar w || isOWS w) v   = Right (FieldValue v)
   | B.any isCRLFNUL v                            = Left ContainsCRLFNUL
-  | not (B.all (\w -> isFieldVChar w || isOWS w) v) = Left ContainsCTL
-  | otherwise                                    = Right (FieldValue v)
+  | otherwise                                    = Left ContainsCTL
   where
     v = stripOWS bs
     isCRLFNUL w = w == 0x0D || w == 0x0A || w == 0x00
@@ -224,4 +229,4 @@ lookupFirst n = listToMaybe . lookupAll n
 
 -- | the values of every field line with this name, in order. /O(n)/
 lookupAll :: FieldName -> Fields -> [FieldValue]
-lookupAll n (Fields fs) = [ v | (n', v) <- toList fs, n' == n ]
+lookupAll n (Fields fs) = reverse (foldl' (\acc (n', v) -> if n' == n then v : acc else acc) [] fs)

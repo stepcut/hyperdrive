@@ -90,3 +90,32 @@ Then: response heads rendered into one buffer of the exact size
 (status lines precomputed per code, numbers without `show`, the `Date`
 value made once a second and appended rather than the fields
 rebuilt). In process, 2.95 to 2.4 µs a request, 10.3 to 9.0 KB.
+
+## 2026-11-19 (afternoon): allocation, measured while the machine was busy
+
+Timings were not taken (other work was running); allocation per request
+is exact whatever the load, so changes were judged by it, in process
+(`serveConnection` on a transport that generates requests), for two
+requests: wrk's minimal one (41 bytes, `Host` only) and a browser's
+(499 bytes, 13 header fields, `Connection: keep-alive` among them).
+
+| change | minimal | browser |
+|---|---|---|
+| start | 9,017 | (not yet measured) |
+| request line: version checked in place, not unpacked to a list | 8,697 | |
+| IPv4 hosts read in one pass over the bytes | 8,633 | |
+| field values checked in one pass when valid | 8,633 | |
+| (harness changed to add the browser request) | 8,769 | 23,735 |
+| `lookupAll` folds the sequence rather than listing it | 8,641 | 23,495 |
+| field names and hosts already in normal form not copied | 8,713 | 22,127 |
+| `firstProtocolField` folds the sequence | 8,713 | 22,031 |
+| `lookupAll` folds strictly (the lazy fold left a thunk per field, and a request makes eight lookups) | 8,737 | 19,319 |
+
+Tried and reverted, both worse: building the driver's state for a
+step's outputs in one pass (8,633 to 8,953), and skipping the rebuild
+of a request's fields when it has no protocol fields to remove (worse
+for the browser request, which has one).
+
+Mutation testing found that the three-digit limit on a dec-octet is
+what keeps a 20-digit octet from wrapping around (2^64.0.0.1 would
+have read as 0.0.0.1); now tested.

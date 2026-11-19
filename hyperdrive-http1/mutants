@@ -133,8 +133,8 @@ why: a request target is visible ASCII only
 + , not (B.null target), B.all (\w -> w >= 0x21) target
 
 why: the minor version is a digit
-- , digit major, digit minor
-+ , digit major
+- , digit (BU.unsafeIndex v 5), digit (BU.unsafeIndex v 7)
++ , digit (BU.unsafeIndex v 5)
 
 why: a method too long gets 501 (RFC 9112 Section 3), a target too long 414
 - | not (B.elem 0x20 line) = MethodTooLong

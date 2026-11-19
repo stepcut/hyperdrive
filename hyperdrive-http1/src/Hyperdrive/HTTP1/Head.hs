@@ -22,6 +22,7 @@ module Hyperdrive.HTTP1.Head
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Unsafe as BU
 import Data.Maybe (fromJust)
 import Data.Word (Word8)
 import Hyperdrive.Semantics.Field (FieldName, FieldValue, FieldValueError, Fields, fieldsFromList, mkFieldName, mkFieldValue)
@@ -206,9 +207,9 @@ parseRequestLine line = case B.split 0x20 line of
   [m, target, v]
     | Just method <- mkMethod m
     , not (B.null target), B.all (\w -> w >= 0x21 && w <= 0x7E) target
-    , [0x48, 0x54, 0x54, 0x50, 0x2F, major, 0x2E, minor] <- B.unpack v   -- "HTTP/" DIGIT "." DIGIT
-    , digit major, digit minor
-    -> Right (method, target, fromIntegral (major - 0x30), minor - 0x30)
+    , B.length v == 8, B.take 5 v == "HTTP/", BU.unsafeIndex v 6 == 0x2E  -- "HTTP/" DIGIT "." DIGIT
+    , digit (BU.unsafeIndex v 5), digit (BU.unsafeIndex v 7)
+    -> Right (method, target, fromIntegral (BU.unsafeIndex v 5 - 0x30), BU.unsafeIndex v 7 - 0x30)
   _ -> Left InvalidRequestLine
   where digit w = w >= 0x30 && w <= 0x39
 

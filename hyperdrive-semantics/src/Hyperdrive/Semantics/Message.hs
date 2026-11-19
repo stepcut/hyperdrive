@@ -59,7 +59,7 @@ import Data.Foldable (find)
 import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Word (Word64, Word8)
 import Hyperdrive.Semantics.Field
-import Hyperdrive.Semantics.Internal (FieldName(..))
+import Hyperdrive.Semantics.Internal (FieldName(..), Fields(..))
 import Hyperdrive.Semantics.Method (Method, pattern CONNECT)
 import Hyperdrive.Semantics.Status (Status, StatusClass(..), statusClass, pattern NoContent, pattern ResetContent, pattern NotModified, pattern UpgradeRequired)
 import Hyperdrive.Semantics.Target (Target(..), normalizeEmptyPath, validForMethod)
@@ -112,7 +112,7 @@ protocolFields =
   , "transfer-encoding", "upgrade", "content-length" ]
 
 firstProtocolField :: Fields -> Maybe FieldName
-firstProtocolField = find isProtocolField . map fst . fieldsToList
+firstProtocolField (Fields fs) = fst <$> find (isProtocolField . fst) fs
 
 ------------------------------------------------------------------------------
 -- Requests
