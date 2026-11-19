@@ -119,3 +119,38 @@ for the browser request, which has one).
 Mutation testing found that the three-digit limit on a dec-octet is
 what keeps a 20-digit octet from wrapping around (2^64.0.0.1 would
 have read as 0.0.0.1); now tested.
+
+## 2026-11-19 (evening): timings on a quiet machine
+
+In process, before (8d10336) and after (ec75509) the allocation work,
+three alternating runs each on one core, means:
+
+| | before | after |
+|---|---|---|
+| minimal request (41 bytes) | 2.40 µs | 2.23 µs |
+| browser request (499 bytes, 13 fields) | 10.39 µs | 9.68 µs |
+
+The browser request costs four times the minimal one, about 0.6 µs a
+header field: the next thing to work on, since real requests look like
+it and wrk's do not.
+
+Over sockets (`scripts/bench`), ec75509 against warp 3.4.9:
+
+| | hyperdrive | warp |
+|---|---|---|
+| small responses, 100 connections | 607k req/s (p50 0.14 ms, p99 1.6 ms) | 745k (0.11 ms, 3.4 ms) |
+| small responses, 1000 connections | 564k (1.0 ms, 18 ms) | 755k (1.1 ms, 7.0 ms) |
+| small responses, pipelined 16 deep | 885k (1.9 ms) | 942k (0.9 ms) |
+| 1 MiB responses, 32 connections | 13.1k (2.3 ms, 6.8 ms) | 11.3k (2.6 ms, 7.9 ms) |
+| 1 MiB uploads, 32 connections | 10.8k (2.7 ms, 6.6 ms) | 6.2k (4.1 ms, 78 ms) |
+| memory per idle connection (10,000) | 24 KB | 22 KB |
+
+CPU per small request: hyperdrive 3.4 µs user and 5.8 kernel, warp 1.8
+and 4.8. With kernel profiling allowed (`perf_event_paranoid` 1,
+`kptr_restrict` 0), both kernel profiles are mostly the same TCP,
+loopback and netfilter work; hyperdrive's alone shows the event
+manager's registration path (`sock_poll` 2.0%, `do_epoll_ctl` 1.4%,
+`tcp_poll` 1.3%, `ep_poll_callback` 0.6% of samples), so at 100
+connections its non-blocking receive often finds nothing and it
+registers with epoll to wait, more often than warp does. Counting the
+calls needs the tracing file system readable, which it is not here.
