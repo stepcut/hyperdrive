@@ -3,10 +3,15 @@
 Implemented in `hyperdrive-server` (`Hyperdrive.Server`,
 `Hyperdrive.Server.Connection`). Changes from the draft below:
 
-- Timers use GHC's timer manager directly (`registerTimeout`, removed
-  with `unregisterTimeout` after each wait), not `registerDelay`, whose
-  timers cannot be cancelled and would pile up, one per wait, for up
-  to a minute each.
+- Timers are coarse (`Hyperdrive.Server.Timer`): each connection sets
+  its deadline in its own `IORef`, and one ticker thread per server
+  checks them every `settingsTimerResolution` (100 ms), waking an
+  expired wait through its STM flag and making an expired write fail
+  by shutting the socket down (`transportAbort`). The first version
+  registered every wait and every write with GHC's timer manager, and
+  threads queued on its lock: 34k requests a second against warp's
+  595k (docs/benchmarks.md). `registerDelay` was never an option, since
+  its timers cannot be cancelled.
 - `serveConnection` takes the shutdown signal as an `STM ()` argument;
   `runServer` and `withServer` (which returns a `Server` with its port
   and a shutdown action) are built on it.

@@ -17,6 +17,8 @@ module Hyperdrive.Server
   , ServerError(..)
     -- * Lower level
   , serveConnection
+  , Timers
+  , withTimers
   , Transport(..)
   , socketTransport
   ) where
@@ -30,6 +32,7 @@ import qualified Data.Map.Strict as Map
 import Foreign.C.Error (Errno(..), eMFILE, eNFILE)
 import GHC.IO.Exception (IOException(..))
 import Hyperdrive.Server.Connection
+import Hyperdrive.Server.Timer
 import Hyperdrive.Server.Transport
 import Network.Socket
 
@@ -52,10 +55,12 @@ runServer settings app = withServer settings app (\_ -> forever (threadDelay max
 -- | Start a server, run the action, and shut the server down when the
 -- action returns or throws.
 withServer :: Settings -> Application -> (Server -> IO a) -> IO a
-withServer settings app = bracket (startServer settings app) serverShutdown
+withServer settings app act =
+  withTimers (settingsTimerResolution settings) $ \timers ->
+    bracket (startServer settings timers app) serverShutdown act
 
-startServer :: Settings -> Application -> IO Server
-startServer settings app = do
+startServer :: Settings -> Timers -> Application -> IO Server
+startServer settings timers app = do
   let hints = defaultHints { addrFlags = [AI_PASSIVE], addrSocketType = Stream }
   addr : _ <- getAddrInfo (Just hints) (settingsHost settings) (Just (show (settingsPort settings)))
   listener <- bracketOnError (openSocket addr) close $ \s -> do
@@ -70,7 +75,7 @@ startServer settings app = do
   let shuttingDown = readTVar stopping >>= check
       serve s peer = do
         local <- getSocketName s
-        serveConnection settings shuttingDown (socketTransport s) (Context peer local False) app
+        serveConnection settings timers shuttingDown (socketTransport s) (Context peer local False) app
       acceptLoop = forever $ do
         -- wait below the connection limit, if there is one
         case settingsMaxConnections settings of

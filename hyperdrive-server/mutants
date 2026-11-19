@@ -79,3 +79,23 @@ why: shutdown first lets busy connections finish (the graceful stage)
 why: connections still running after the grace period are killed
 - mapM_ (\t -> forkIO (killThread t)) remaining
 + pure ()
+
+file: src/Hyperdrive/Server/Timer.hs
+
+why: an expired wait is woken
+- Reading gen deadline | deadline <= now -> (Disarmed, atomically (writeTVar (timerFired t) gen))
++ Reading gen deadline | deadline <= now -> (Disarmed, pure ())
+
+why: an expired write is aborted
+- Writing deadline     | deadline <= now -> (Disarmed, timerAbort t)
++ Writing deadline     | deadline <= now -> (Disarmed, pure ())
+
+why: only the current arming's expiry counts, not an earlier one's
+- pure (readTVar (timerFired t) >>= \fired -> when (fired /= gen) retry)
++ pure (readTVar (timerFired t) >>= \fired -> when (fired == 0) retry)
+
+file: src/Hyperdrive/Server/Connection.hs
+
+why: writes have a deadline
+- armWrite (envTimer env) =<< deadlineIn (timeoutWrite (settingsTimeouts (envSettings env)))
++ pure ()

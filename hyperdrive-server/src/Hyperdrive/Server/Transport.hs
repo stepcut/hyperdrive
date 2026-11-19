@@ -24,6 +24,9 @@ data Transport = Transport
     -- block, and an action to call afterwards to release what waiting
     -- registered
   , transportShutdownWrite :: IO ()
+  , transportAbort         :: IO ()
+    -- ^ make a write blocked in another thread fail (shut the socket
+    -- down both ways); used when a write times out
   , transportClose         :: IO ()
   }
 
@@ -34,5 +37,6 @@ socketTransport s = Transport
   , transportSendMany      = SB.sendMany s
   , transportWaitReadable  = S.withFdSocket s (threadWaitReadSTM . Fd)
   , transportShutdownWrite = S.shutdown s S.ShutdownSend `catch` \e -> const (pure ()) (e :: IOException)
+  , transportAbort         = S.shutdown s S.ShutdownBoth `catch` \e -> const (pure ()) (e :: IOException)
   , transportClose         = S.close s
   }

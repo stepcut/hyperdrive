@@ -23,6 +23,7 @@ library
   exposed-modules:  Hyperdrive.Server
                     Hyperdrive.Server.Connection
                     Hyperdrive.Server.Date
+                    Hyperdrive.Server.Timer
                     Hyperdrive.Server.Transport
   build-depends:    base                 >= 4.18 && < 5
                   , bytestring           >= 0.11 && < 0.13

@@ -3,7 +3,7 @@ module ServerTests (serverTests) where
 
 import Control.Concurrent
 import Control.Exception hiding (assert)
-import Control.Concurrent.STM (STM, retry)
+import Control.Concurrent.STM (STM, atomically, orElse, retry)
 import Control.Monad (forM_, forever, unless)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -21,6 +21,7 @@ import Hyperdrive.Semantics.Method (methodBytes)
 import Hyperdrive.Semantics.Status (mkStatus)
 import Hyperdrive.Server
 import Hyperdrive.Server.Date (formatHttpDate)
+import Hyperdrive.Server.Timer
 import Hyperdrive.Testing.Client
 import Hyperdrive.Testing.Model
 import Hyperdrive.Testing.Session
@@ -42,6 +43,7 @@ serverTests = testGroup "hyperdrive-server"
   , testProperty "handler failures and the time limit" prop_failures
   , testProperty "request bodies: 100 (Continue) on the wire, and bodies cut short" prop_bodies
   , testProperty "Date is an IMF-fixdate" prop_date
+  , testProperty "coarse timers: expiries, re-arming, write aborts" prop_timers
   ]
 
 ------------------------------------------------------------------------------
@@ -126,7 +128,7 @@ prop_memory = withMaxSuccess 500 $ forAll genSession $ \(scripts, wire) -> forAl
       seenRef <- newIORef []
       errs <- newIORef []
       let ctx = Context (SockAddrInet 0 0) (SockAddrInet 0 0) False
-      serveConnection (quietSettings errs) retrySTM t ctx (scripted scriptsRef seenRef)
+      withTimers 10000 $ \timers -> serveConnection (quietSettings errs) timers retrySTM t ctx (scripted scriptsRef seenRef)
       (,,,) <$> (reverse <$> readIORef seenRef) <*> clientReceived pipe <*> readIORef errs <*> serverShutWrite pipe
     let (wantSeen, wantResps) = model scripts wire
         heads = [ m == "HEAD" | (m, _, _, _, _, _, _, _) <- wantSeen ]
@@ -182,7 +184,7 @@ recvAll s = fmap (maybe "<timed out>" id) $ timeout 5000000 $ do
 ------------------------------------------------------------------------------
 
 fast :: Settings -> Settings
-fast s = s { settingsTimeouts = defaultTimeouts
+fast s = s { settingsTimerResolution = 10000, settingsTimeouts = defaultTimeouts
   { timeoutIdle = 100000, timeoutHead = 100000, timeoutBody = 100000, timeoutDiscard = 100000, timeoutLinger = 100000 } }
 
 ok :: Application
@@ -216,9 +218,20 @@ prop_timeouts = once $ monadicIO $ do
       pure (if end - start < 0.6 then r else "too late: " <> r)
     body <- withServer settings slowBody $ \srv -> withClient (serverPort srv) $ \s ->
       SB.sendAll s "POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 10\r\n\r\nabc" >> recvAll s
-    pure (idle, partial, trickle, body)
-  let (idle, partial, trickle, body) = results
-  monitor (counterexample (show results))
+    -- a client that stops reading: the write times out and the
+    -- connection is dropped, so only part of 64 MiB ever arrives
+    let huge _ _ = either (throwIO . userError . show) pure $
+          mkResponse (fromJust (mkStatus 200)) emptyFields
+            (ContentStream (Just (64 * 1048576)) [] (\write _ -> mapM_ (const (write (B.replicate 65536 120))) [1 .. 1024 :: Int] >> pure emptyFields))
+    stalled <- withServer settings { settingsTimeouts = (settingsTimeouts settings) { timeoutWrite = 200000 } } huge $ \srv ->
+      withClient (serverPort srv) $ \s -> do
+        SB.sendAll s "GET / HTTP/1.1\r\nHost: a\r\n\r\n"
+        threadDelay 1000000
+        B.length <$> recvAll s
+    pure (idle, partial, trickle, body, stalled)
+  let (idle, partial, trickle, body, stalled) = results
+  monitor (counterexample (show (idle, partial, trickle, body, stalled)))
+  assert (stalled > 0 && stalled < 64 * 1048576)
   assert (idle == "")
   assert (statusOf partial == "408")
   assert (statusOf trickle == "408")
@@ -350,3 +363,25 @@ prop_date = conjoin
   ]
   where
     isFixdate = either (error . show) id . matches Recipient httpLibrary "HTTP" (fromJust (mkRuleName "IMF-fixdate"))
+
+prop_timers :: Property
+prop_timers = once $ monadicIO $ do
+  results <- run $ withTimers 5000 $ \timers -> do
+    aborted <- newIORef False
+    withTimer timers (writeIORef aborted True) $ \t -> do
+      -- a read deadline already passed fires within a few ticks
+      first <- armRead t =<< deadlineIn 0
+      fired1 <- timeout 1000000 (atomically first)
+      -- re-armed far ahead: the earlier expiry does not count
+      second <- armRead t =<< deadlineIn 10000000
+      threadDelay 50000
+      fired2 <- atomically ((True <$ second) `orElse` pure False)
+      disarm t
+      -- a write past its deadline is aborted
+      armWrite t =<< deadlineIn 0
+      threadDelay 50000
+      wasAborted <- readIORef aborted
+      pure (fired1, fired2, wasAborted)
+  monitor (counterexample (show results))
+  let (fired1, fired2, wasAborted) = results
+  assert (fired1 == Just () && not fired2 && wasAborted)

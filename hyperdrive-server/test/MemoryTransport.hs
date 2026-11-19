@@ -44,6 +44,7 @@ memoryTransport = do
             if ok then pure () else throwIO ConnectionClosed
         , transportWaitReadable = pure (readable, pure ())
         , transportShutdownWrite = atomically (writeTVar (pipeShutWrite p) True)
+        , transportAbort = atomically (writeTVar (pipeClosed p) True)
         , transportClose = atomically (writeTVar (pipeClosed p) True)
         }
   pure (t, p)

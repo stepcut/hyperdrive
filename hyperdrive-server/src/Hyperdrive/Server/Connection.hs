@@ -29,7 +29,6 @@ import Data.IORef
 import Data.Maybe (fromJust)
 import Data.Word (Word64)
 import GHC.Clock (getMonotonicTimeNSec)
-import GHC.Event (getSystemTimerManager, registerTimeout, unregisterTimeout)
 import Hyperdrive.HTTP1.Connection
 import Hyperdrive.HTTP1.Target (TargetContext(..))
 import Hyperdrive.Semantics.Field
@@ -38,6 +37,7 @@ import Hyperdrive.Semantics.Method (pattern HEAD)
 import Hyperdrive.Semantics.Status (Status, pattern InternalServerError, pattern ServiceUnavailable)
 import Hyperdrive.Semantics.URI (pattern HTTP, pattern HTTPS)
 import Hyperdrive.Server.Date
+import Hyperdrive.Server.Timer
 import Hyperdrive.Server.Transport
 import Network.Socket (HostName, PortNumber, SockAddr)
 import System.IO (IOMode(..), SeekMode(..), hFileSize, hSeek, withBinaryFile)
@@ -82,6 +82,9 @@ data Settings = Settings
   , settingsShutdownGrace    :: !Int               -- ^ microseconds before remaining connections are killed
   , settingsHandlerTimeLimit :: !(Maybe Int)       -- ^ microseconds a handler may run; 'Nothing': no limit
   , settingsMaxConnections   :: !(Maybe Int)
+  , settingsTimerResolution  :: !Int
+    -- ^ microseconds between checks of the connections' timers: a
+    -- timeout fires up to this much late (see "Hyperdrive.Server.Timer")
   , settingsOnException      :: SomeException -> IO ()
     -- ^ told of exceptions from applications, and of bugs; not of
     -- clients going away
@@ -96,6 +99,7 @@ defaultSettings = Settings
   , settingsShutdownGrace = 30000000
   , settingsHandlerTimeLimit = Nothing
   , settingsMaxConnections = Nothing
+  , settingsTimerResolution = 100000
   , settingsOnException = \e -> putStrLn ("hyperdrive: " ++ displayException e)
   }
 
@@ -131,6 +135,7 @@ data Env = Env
   , envContext  :: !Context
   , envApp      :: Application
   , envDates    :: !DateCache
+  , envTimer    :: !Timer
   , envRef      :: !(IORef St)
   }
 
@@ -151,27 +156,29 @@ data BodyState = BodyOpen | BodyEnded !Fields | BodyFailed
 -- The connection
 ------------------------------------------------------------------------------
 
--- | Serve one connection until it closes. The 'STM' action succeeds
--- once the server is shutting down. The transport is closed at the end
--- whatever happens; asynchronous exceptions (the thread being killed)
--- are rethrown after that.
-serveConnection :: Settings -> STM () -> Transport -> Context -> Application -> IO ()
-serveConnection settings shutdown transport context app = do
-  let config = settingsConfig settings
-      target = configTarget config
-      config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
-  ref <- newIORef (St (newConn config') [] [] 0 False False False (Closed, 0))
-  dates <- newDateCache
-  let env = Env settings shutdown transport context app dates ref
-  (do r <- try (mainLoop env)
-      case r of
-        -- what the core had to say before closing (a 400, say) is still sent
-        Left e | Just ConnectionClosed <- fromException e -> linger env
-               | Just (_ :: IOException) <- fromException e -> pure ()
-               | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
-               | otherwise -> settingsOnException settings e
-        Right () -> linger env)
-    `finally` transportClose transport
+-- | Serve one connection until it closes. Its timeouts are kept by the
+-- given 'Timers' (see 'withTimers'); the 'STM' action succeeds once the
+-- server is shutting down. The transport is closed at the end whatever
+-- happens; asynchronous exceptions (the thread being killed) are
+-- rethrown after that.
+serveConnection :: Settings -> Timers -> STM () -> Transport -> Context -> Application -> IO ()
+serveConnection settings timers shutdown transport context app =
+  withTimer timers (transportAbort transport) $ \timer -> do
+    let config = settingsConfig settings
+        target = configTarget config
+        config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
+    ref <- newIORef (St (newConn config') [] [] 0 False False False (Closed, 0))
+    dates <- newDateCache
+    let env = Env settings shutdown transport context app dates timer ref
+    (do r <- try (mainLoop env)
+        case r of
+          -- what the core had to say before closing (a 400, say) is still sent
+          Left e | Just ConnectionClosed <- fromException e -> linger env
+                 | Just (_ :: IOException) <- fromException e -> pure ()
+                 | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+                 | otherwise -> settingsOnException settings e
+          Right () -> linger env)
+      `finally` transportClose transport
 
 mainLoop :: Env -> IO ()
 mainLoop env = do
@@ -215,10 +222,13 @@ flush env = do
   when (stBroken st) (throwIO ConnectionClosed)
   unless (null (stOut st)) $ do
     writeIORef (envRef env) st { stOut = [], stOutBytes = 0 }
-    r <- try (timeout (timeoutWrite (settingsTimeouts (envSettings env))) (transportSendMany (envTransport env) (reverse (stOut st))))
+    -- a write that does not finish in time is made to fail by the
+    -- ticker, which aborts the transport
+    armWrite (envTimer env) =<< deadlineIn (timeoutWrite (settingsTimeouts (envSettings env)))
+    r <- try (transportSendMany (envTransport env) (reverse (stOut st)))
+    disarm (envTimer env)
     case r of
-      Right (Just ()) -> pure ()
-      Right Nothing -> broken
+      Right () -> pure ()
       Left (_ :: IOException) -> broken
   where
     broken = do
@@ -247,17 +257,14 @@ waitInput env = do
       deadline
         | fst (stTimer st) == ph, ph `elem` [ReadingHead, DiscardingBody] = snd (stTimer st)
         | otherwise = now + fromIntegral limit * 1000
-      remaining = if deadline <= now then 0 else fromIntegral ((deadline - now) `div` 1000)
   writeIORef (envRef env) st { stTimer = (ph, deadline) }
-  fired <- newTVarIO False
-  manager <- getSystemTimerManager
-  key <- registerTimeout manager remaining (atomically (writeTVar fired True))
+  fired <- armRead (envTimer env) deadline
   (readable, release) <- transportWaitReadable (envTransport env)
   woken <- atomically $
         (Readable <$ readable)
-    `orElse` (TimerFired <$ (readTVar fired >>= check))
+    `orElse` (TimerFired <$ fired)
     `orElse` (if stShutdownSeen st then retry else ShuttingDown <$ envShutdown env)
-  unregisterTimeout manager key
+  disarm (envTimer env)
   release
   case woken of
     Readable -> do
@@ -283,10 +290,10 @@ linger env = do
     Left ConnectionClosed -> pure ()
     Right () -> do
       transportShutdownWrite (envTransport env)
-      fired <- registerDelay (timeoutLinger (settingsTimeouts (envSettings env)))
+      fired <- armRead (envTimer env) =<< deadlineIn (timeoutLinger (settingsTimeouts (envSettings env)))
       let drain (n :: Int) = do
             (readable, release) <- transportWaitReadable (envTransport env)
-            more <- atomically $ (True <$ readable) `orElse` (False <$ (readTVar fired >>= check))
+            more <- atomically $ (True <$ readable) `orElse` (False <$ fired)
             release
             when (more && n < 1048576) $ do
               bs <- transportRecv (envTransport env)
