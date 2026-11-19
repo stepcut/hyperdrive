@@ -15,8 +15,8 @@ why: writes are buffered until the driver waits, and sent then
 + pure ()
 
 why: the head timer runs from the start of the head, not from the last byte (slowloris)
-- | fst (stTimer st) == ph, ph `elem` [ReadingHead, DiscardingBody] = snd (stTimer st)
-+ | fst (stTimer st) == ph, ph `elem` [DiscardingBody] = snd (stTimer st)
+- | ph' == ph, ph `elem` [ReadingHead, DiscardingBody] = deadline'
++ | ph' == ph, ph `elem` [DiscardingBody] = deadline'
 
 why: an expired timer is fed to the core
 - WakeTimer _ -> feed env TimedOut
@@ -55,8 +55,8 @@ why: the handler time limit gets 503 and a close
 + | otherwise -> respondWithStatus env InternalServerError
 
 why: responses carry Date (RFC 9110 Section 6.6.1)
-- | null (lookupAll hDate fs) = fieldsFromList (fieldsToList fs ++ [(hDate, either (error . show) id (mkFieldValue date))])
-+ | False = fieldsFromList (fieldsToList fs ++ [(hDate, either (error . show) id (mkFieldValue date))])
+- | null (lookupAll hDate fs) = appendField hDate date fs
++ | False = appendField hDate date fs
 
 why: a stream that writes other than its declared length is an error
 - Just declared | declared /= n -> throwIO (StreamLengthMismatch declared n)

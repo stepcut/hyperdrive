@@ -25,7 +25,9 @@ module Hyperdrive.HTTP1.Framing
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
-import Data.Word (Word64)
+import qualified Data.ByteString.Internal as BI
+import Data.Word (Word64, Word8)
+import Foreign.Storable (pokeByteOff)
 import Hyperdrive.Semantics.Field (FieldName, FieldValue, Fields, hContentLength, hTransferEncoding, lookupAll, mkFieldName, mkFieldValue)
 import Data.Maybe (fromJust)
 import Hyperdrive.Semantics.FieldSyntax (Comments(..), parseQuotedString, splitList)
@@ -327,6 +329,18 @@ responseFraming version method status payload
         | otherwise              -> SendUntilClose
 
 -- | The framing fields to send in the header section.
+-- | A number in decimal, without going through 'show' and 'String'.
+decimalBytes :: Word64 -> ByteString
+decimalBytes 0 = "0"
+decimalBytes n = BI.unsafeCreate digits (\p -> go p (digits - 1) n)
+  where
+    digits = length (takeWhile (> 0) (iterate (`div` 10) n))
+    go _ _ 0 = pure ()
+    go p i m = do
+      let (q, r) = m `quotRem` 10
+      pokeByteOff p i (fromIntegral r + 0x30 :: Word8)
+      go p (i - 1) q
+
 framingFields :: ResponseFraming -> [(FieldName, FieldValue)]
 framingFields f = case f of
   HeaderOnly (Just n) -> [(hContentLength, decimal n)]
@@ -334,5 +348,5 @@ framingFields f = case f of
   SendChunked         -> [(hTransferEncoding, chunked)]
   _                   -> []
   where
-    decimal = either (error "framingFields") id . mkFieldValue . C.pack . show
+    decimal = either (error "framingFields") id . mkFieldValue . decimalBytes
     chunked = either (error "framingFields") id (mkFieldValue "chunked")

@@ -85,3 +85,8 @@ checks the live heap stays flat. In process, a small request went from
 3.75 to 2.95 µs (the pure core alone is 1.7); over sockets, about 554k
 small responses a second, 10.2 µs of CPU each (user 4.3, kernel 6.2),
 and GC fell from 1.6 s to 0.07 s per 5-second run.
+
+Then: response heads rendered into one buffer of the exact size
+(status lines precomputed per code, numbers without `show`, the `Date`
+value made once a second and appended rather than the fields
+rebuilt). In process, 2.95 to 2.4 µs a request, 10.3 to 9.0 KB.

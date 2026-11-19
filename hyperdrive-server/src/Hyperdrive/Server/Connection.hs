@@ -425,11 +425,13 @@ respondWithStatus env status = do
   feed env (EndBody emptyFields)
   flush env
 
-withDate :: ByteString -> Fields -> Fields
+withDate :: FieldValue -> Fields -> Fields
 withDate date fs
-  | null (lookupAll hDate fs) = fieldsFromList (fieldsToList fs ++ [(hDate, either (error . show) id (mkFieldValue date))])
+  | null (lookupAll hDate fs) = appendField hDate date fs
   | otherwise = fs
-  where hDate = fromJust (mkFieldName "date")
+
+hDate :: FieldName
+hDate = fromJust (mkFieldName "date")
 
 sendResponse :: Env -> Request -> IORef Bool -> Response -> IO ()
 sendResponse env req started resp0 = do

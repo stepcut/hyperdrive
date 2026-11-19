@@ -369,7 +369,7 @@ why: a client waiting for 100 (Continue) may never send the body, so the connect
 + keepAlive = exKeepAlive ex && not (cShutdown c)
 
 why: a response on a closing connection says so
-- closeField = [ (hConnection, fromJust (either (const Nothing) Just (mkFieldValue "close"))) | not keepAlive ]
+- closeField = [ (hConnection, closeValue) | not keepAlive ]
 + closeField = []
 
 why: the Trailer field announces declared trailers when chunked (RFC 9110 Section 6.6.2)
@@ -393,7 +393,7 @@ why: content short of the declared length is not ended normally
 + SendLength n | False -> close c []
 
 why: a chunked body ends with the last chunk and the trailer section
-- SendChunked    -> prefix [Send ["0\r\n" <> serializeFields (fieldsToList trailers) <> "\r\n"]] done
+- SendChunked    -> prefix [Send [renderHead "0\r\n" (fieldsToList trailers)]] done
 + SendChunked    -> prefix [Send ["0\r\n\r\n"]] done
 
 why: chunk sizes are hexadecimal
@@ -415,3 +415,25 @@ why: an aborted body gets an error response only if no response has started
 why: a client that closes before its head is complete gets no response
 - | cPeerClosed c -> close c []
 + | cPeerClosed c -> reject BadRequest c
+
+why: field lines are name ": " value
+- pokeByteOff p (off' + 1) (0x20 :: Word8)  -- SP
++ pokeByteOff p (off' + 1) (0x3A :: Word8)  -- SP
+
+why: every field line ends with CRLF, and the head with an empty line
+- size = B.length line + sum [ B.length (fieldNameBytes n) + B.length (fieldValueBytes v) + 4 | (n, v) <- fs ] + 2
++ size = B.length line + sum [ B.length (fieldNameBytes n) + B.length (fieldValueBytes v) + 4 | (n, v) <- fs ]
+
+why: a status line for a code without a reason phrase still has its SP
+- makeStatusLine code = "HTTP/1.1 " <> C.pack (show code) <> " " <> fromMaybe "" (lookup code reasonPhrases) <> "\r\n"
++ makeStatusLine code = "HTTP/1.1 " <> C.pack (show code) <> fromMaybe "" (lookup code reasonPhrases) <> "\r\n"
+
+file: src/Hyperdrive/HTTP1/Framing.hs
+
+why: Content-Length is the decimal number of octets
+- pokeByteOff p i (fromIntegral r + 0x30 :: Word8)
++ pokeByteOff p i (fromIntegral r + 0x31 :: Word8)
+
+why: a length of zero is "0", not empty
+- decimalBytes 0 = "0"
++ decimalBytes 0 = ""

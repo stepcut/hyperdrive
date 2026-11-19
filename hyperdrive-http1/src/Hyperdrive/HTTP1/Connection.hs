@@ -27,8 +27,15 @@ module Hyperdrive.HTTP1.Connection
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
+import Control.Monad (foldM)
+import qualified Data.ByteString.Internal as BI
+import qualified Data.ByteString.Unsafe as BU
+import qualified Data.IntMap.Strict as IntMap
 import Data.Maybe (fromJust, fromMaybe, isJust)
-import Data.Word (Word64)
+import Foreign.Marshal.Utils (copyBytes)
+import Foreign.Ptr (castPtr, plusPtr)
+import Foreign.Storable (pokeByteOff)
+import Data.Word (Word64, Word8)
 import Numeric (showHex)
 import Hyperdrive.HTTP1.Chunked
 import Hyperdrive.HTTP1.Framing
@@ -430,13 +437,12 @@ respond h ex c =
       -- (A close-delimited response is only sent to HTTP/1.0, which
       -- never keeps the connection.)
       keepAlive = exKeepAlive ex && not (cShutdown c) && not (bodyUnread && exExpects100 ex)
-      trailerField = [ (fromJust (mkFieldName "trailer"), v)
+      trailerField = [ (hTrailer, v)
                      | framing == SendChunked, not (null (respTrailers h))
                      , Right v <- [mkFieldValue (B.intercalate ", " (map fieldNameBytes (respTrailers h)))] ]
-      closeField = [ (hConnection, fromJust (either (const Nothing) Just (mkFieldValue "close"))) | not keepAlive ]
-      headBytes = statusLine (respStatus h)
-               <> serializeFields (fieldsToList (respFields h) ++ framingFields framing ++ trailerField ++ closeField)
-               <> "\r\n"
+      closeField = [ (hConnection, closeValue) | not keepAlive ]
+      headBytes = renderHead (statusLine (respStatus h))
+                    (fieldsToList (respFields h) ++ framingFields framing ++ trailerField ++ closeField)
       ex' = ex { exKeepAlive = keepAlive, exResponse = Sending framing 0 }
   in (c { cExchange = Just ex' }, [Send [headBytes]])
 
@@ -456,7 +462,7 @@ writeBody bs framing written ex c =
 endBody :: Fields -> ResponseFraming -> Word64 -> Exchange -> Conn -> (Conn, [Output])
 endBody trailers framing written ex c = case framing of
   SendLength n | written < n -> close c []   -- less than declared: aborted
-  SendChunked    -> prefix [Send ["0\r\n" <> serializeFields (fieldsToList trailers) <> "\r\n"]] done
+  SendChunked    -> prefix [Send [renderHead "0\r\n" (fieldsToList trailers)]] done
   SendUntilClose -> close c []
   _              -> done
   where
@@ -477,11 +483,42 @@ finishExchange c = case cExchange c of
   Just ex | exKeepAlive ex, not (cShutdown c) -> advance c { cRequest = AwaitingHead 0, cExchange = Nothing }
   _ -> close c []
 
+-- | The status line, made once for each status code.
 statusLine :: Status -> ByteString
-statusLine s = "HTTP/1.1 " <> C.pack (show (statusCode s)) <> " " <> fromMaybe "" (lookup (statusCode s) reasonPhrases) <> "\r\n"
+statusLine s = IntMap.findWithDefault (makeStatusLine (statusCode s)) (statusCode s) statusLines
 
-serializeFields :: [(FieldName, FieldValue)] -> ByteString
-serializeFields fs = B.concat [ fieldNameBytes n <> ": " <> fieldValueBytes v <> "\r\n" | (n, v) <- fs ]
+statusLines :: IntMap.IntMap ByteString
+statusLines = IntMap.fromList [ (code, makeStatusLine code) | code <- [100 .. 599] ]
+
+makeStatusLine :: Int -> ByteString
+makeStatusLine code = "HTTP/1.1 " <> C.pack (show code) <> " " <> fromMaybe "" (lookup code reasonPhrases) <> "\r\n"
+
+-- | A status line and field lines, and the empty line that ends them,
+-- written into one buffer of the exact size, rather than joined from
+-- several small strings per field.
+renderHead :: ByteString -> [(FieldName, FieldValue)] -> ByteString
+renderHead line fs = BI.unsafeCreate size $ \p -> do
+  start <- put p 0 line
+  end <- foldM (fieldLine p) start fs
+  crlf p end
+  where
+    size = B.length line + sum [ B.length (fieldNameBytes n) + B.length (fieldValueBytes v) + 4 | (n, v) <- fs ] + 2
+    fieldLine p off (n, v) = do
+      off' <- put p off (fieldNameBytes n)
+      pokeByteOff p off' (0x3A :: Word8)        -- ':'
+      pokeByteOff p (off' + 1) (0x20 :: Word8)  -- SP
+      off'' <- put p (off' + 2) (fieldValueBytes v)
+      crlf p off''
+      pure (off'' + 2)
+    put p off bs = BU.unsafeUseAsCStringLen bs $ \(src, len) ->
+      copyBytes (p `plusPtr` off) (castPtr src) len >> pure (off + len)
+    crlf p off = pokeByteOff p off (0x0D :: Word8) >> pokeByteOff p (off + 1) (0x0A :: Word8)
+
+hTrailer :: FieldName
+hTrailer = fromJust (mkFieldName "trailer")
+
+closeValue :: FieldValue
+closeValue = either (error . show) id (mkFieldValue "close")
 
 -- | Reason phrases for the common codes; others are sent without one
 -- (the reason-phrase is optional, RFC 9112 Section 4).
