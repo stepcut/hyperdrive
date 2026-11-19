@@ -66,3 +66,10 @@ give). Joining small writes into one buffer made no difference.
 | 1 MiB responses, 32 connections | 11.1k (2.7 ms, 7.5 ms) | 11.4k (2.7 ms, 7.6 ms) |
 | 1 MiB uploads, 32 connections | 8.2k (3.4 ms, 19 ms) | 6.0k (3.9 ms, 120 ms) |
 | memory per idle connection (10,000) | 26 KB | 22 KB |
+
+Then (same day): each connection waits on one `MVar` of its own,
+filled by the event manager's one-shot callback when its socket is
+readable, by the ticker when its timer expires, and by shutdown,
+instead of an STM transaction over three `TVar`s (about a tenth of the
+time in the profile). CPU per request 11.2 to 10.4-10.7 µs (user 4.6,
+kernel 6.1); 490k-530k small responses a second in the local runs.

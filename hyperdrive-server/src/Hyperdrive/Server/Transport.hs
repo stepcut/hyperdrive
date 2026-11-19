@@ -5,7 +5,6 @@ module Hyperdrive.Server.Transport
   , socketTransport
   ) where
 
-import Control.Concurrent.STM (STM)
 import Control.Exception (IOException, catch)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -14,7 +13,8 @@ import Foreign.C.Error (eAGAIN, eINTR, eWOULDBLOCK, getErrno)
 import Foreign.C.Types (CInt(..), CSize(..))
 import Foreign.ForeignPtr (ForeignPtr, mallocForeignPtrBytes, withForeignPtr)
 import Foreign.Ptr (Ptr, castPtr)
-import GHC.Conc (threadWaitRead, threadWaitReadSTM)
+import GHC.Conc (threadWaitRead)
+import GHC.Event (Lifetime(OneShot), evtRead, getSystemEventManager, registerFd, unregisterFd)
 import System.Posix.Types (CSsize(..), Fd(..))
 import qualified Network.Socket as S
 import qualified Network.Socket.ByteString as SB
@@ -30,10 +30,11 @@ data Transport = Transport
     -- waiting for it (two system calls per request).
   , transportSendMany      :: [ByteString] -> IO ()
     -- ^ write all of these, in order; throws if the connection is gone
-  , transportWaitReadable  :: IO (STM (), IO ())
-    -- ^ an STM action that succeeds once 'transportRecv' would not
-    -- block, and an action to call afterwards to release what waiting
-    -- registered
+  , transportOnReadable    :: IO () -> IO (IO ())
+    -- ^ call the action, once, when 'transportTryRecv' would have
+    -- something (input or the end of it); gives an action that cancels
+    -- this. The action runs on the event manager's thread, so it must
+    -- be quick and must not block.
   , transportShutdownWrite :: IO ()
   , transportAbort         :: IO ()
     -- ^ make a write blocked in another thread fail (shut the socket
@@ -53,7 +54,7 @@ socketTransport s = do
     { transportRecv          = maybe B.empty id <$> recvInto s buffer True
     , transportTryRecv       = recvInto s buffer False
     , transportSendMany      = SB.sendMany s
-    , transportWaitReadable  = S.withFdSocket s (threadWaitReadSTM . Fd)
+    , transportOnReadable    = onReadable s
     , transportShutdownWrite = S.shutdown s S.ShutdownSend `catch` \e -> const (pure ()) (e :: IOException)
     , transportAbort         = S.shutdown s S.ShutdownBoth `catch` \e -> const (pure ()) (e :: IOException)
     , transportClose         = S.close s
@@ -82,3 +83,12 @@ recvInto s buffer wait = S.withFdSocket s $ \fd -> loop fd
         else if errno == eAGAIN || errno == eWOULDBLOCK then
           if wait then threadWaitRead (Fd fd) >> loop fd else pure Nothing
         else pure (Just B.empty)
+
+-- | Register a one-shot callback with the event manager of the current
+-- capability (as 'threadWaitRead' does).
+onReadable :: S.Socket -> IO () -> IO (IO ())
+onReadable s callback = S.withFdSocket s $ \fd -> do
+  manager <- maybe (ioError (userError "no event manager: the server needs the threaded RTS")) pure
+               =<< getSystemEventManager
+  key <- registerFd manager (\_ _ -> callback) (Fd fd) evtRead OneShot
+  pure (unregisterFd manager key)

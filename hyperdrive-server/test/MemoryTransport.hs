@@ -9,6 +9,7 @@ module MemoryTransport
   , serverShutWrite
   ) where
 
+import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.STM
 import Control.Exception (throwIO)
 import Data.ByteString (ByteString)
@@ -49,7 +50,9 @@ memoryTransport = do
               shut <- (||) <$> readTVar (pipeShutWrite p) <*> readTVar (pipeClosed p)
               if shut then pure False else modifyTVar' (pipeOut p) (reverse bs ++) >> pure True
             if ok then pure () else throwIO ConnectionClosed
-        , transportWaitReadable = pure (readable, pure ())
+        , transportOnReadable = \callback -> do
+            t' <- forkIO (atomically readable >> callback)
+            pure (killThread t')
         , transportShutdownWrite = atomically (writeTVar (pipeShutWrite p) True)
         , transportAbort = atomically (writeTVar (pipeClosed p) True)
         , transportClose = atomically (writeTVar (pipeClosed p) True)

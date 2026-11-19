@@ -20,9 +20,9 @@ module Hyperdrive.Server.Connection
   , ServerError(..)
   ) where
 
-import Control.Concurrent.STM
+import Control.Concurrent.MVar
 import Control.Exception
-import Control.Monad (unless, when)
+import Control.Monad (unless, void, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.IORef
@@ -130,7 +130,7 @@ instance Exception ServerError
 
 data Env = Env
   { envSettings :: !Settings
-  , envShutdown :: STM ()
+  , envWake     :: !(MVar Wake)     -- ^ filled by whatever wakes the connection
   , envTransport :: !Transport
   , envContext  :: !Context
   , envApp      :: Application
@@ -162,14 +162,15 @@ data BodyState = BodyOpen | BodyEnded !Fields | BodyFailed
 -- asynchronous exceptions (the thread being killed) are rethrown after
 -- that.
 serveConnection :: Settings -> Timers -> Transport -> Context -> Application -> IO ()
-serveConnection settings timers transport context app =
-  withTimer timers (transportAbort transport) $ \timer -> do
+serveConnection settings timers transport context app = do
+  wake <- newEmptyMVar
+  withTimer timers (void . tryPutMVar wake) (transportAbort transport) $ \timer -> do
     let config = settingsConfig settings
         target = configTarget config
         config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
     ref <- newIORef (St (newConn config') [] [] 0 False False False (Closed, 0))
     dates <- newDateCache
-    let env = Env settings (shutdownRequested timer) transport context app dates timer ref
+    let env = Env settings wake transport context app dates timer ref
     (do r <- try (mainLoop env)
         case r of
           -- what the core had to say before closing (a 400, say) is still sent
@@ -235,8 +236,6 @@ flush env = do
       modifyIORef' (envRef env) $ \s -> s { stBroken = True, stClosed = True }
       throwIO ConnectionClosed
 
-data Woken = Readable | TimerFired | ShuttingDown
-
 -- | Wait for input, the phase's timer, or shutdown, whichever comes
 -- first (S4), and feed the core what happened.
 waitInput :: Env -> IO ()
@@ -260,31 +259,46 @@ waitInput env = do
   writeIORef (envRef env) st { stTimer = (ph, deadline) }
   ready <- transportTryRecv (envTransport env)
   case ready of
-    Just bs -> received env bs
-    Nothing -> waitFor env st deadline
+    Just bs -> received env bs  -- already there
+    Nothing -> waitFor env (stShutdownSeen st) deadline
 
 -- | Feed what was received; nothing means the end of input.
 received :: Env -> ByteString -> IO ()
 received env bs = feed env (if B.null bs then PeerClosed else Received bs)
 
 -- | Nothing has arrived: wait for input, the timer or shutdown.
-waitFor :: Env -> St -> Word64 -> IO ()
-waitFor env st deadline = do
-  fired <- armRead (envTimer env) deadline
-  (readable, release) <- transportWaitReadable (envTransport env)
-  woken <- atomically $
-        (Readable <$ readable)
-    `orElse` (TimerFired <$ fired)
-    `orElse` (if stShutdownSeen st then retry else ShuttingDown <$ envShutdown env)
-  disarm (envTimer env)
-  release
+waitFor :: Env -> Bool -> Word64 -> IO ()
+waitFor env shutdownSeen deadline = do
+  woken <- wakeOn env deadline (not shutdownSeen)
   case woken of
-    Readable -> do
-      received env =<< transportRecv (envTransport env)
-    TimerFired -> feed env TimedOut
-    ShuttingDown -> do
+    WakeReadable -> do
+      ready <- transportTryRecv (envTransport env)
+      case ready of
+        Just bs -> received env bs
+        Nothing -> waitFor env shutdownSeen deadline  -- woken for nothing: wait again
+    WakeTimer _ -> feed env TimedOut
+    WakeShutdown -> do
       modifyIORef' (envRef env) $ \s -> s { stShutdownSeen = True }
       feed env Shutdown
+
+-- | Block until the socket is readable, the timer set for the deadline
+-- expires, or (if asked) the server shuts down. Wakings left over from
+-- earlier waits are ignored.
+wakeOn :: Env -> Word64 -> Bool -> IO Wake
+wakeOn env deadline forShutdown = do
+  _ <- tryTakeMVar (envWake env)
+  gen <- armRead (envTimer env) deadline
+  stopping <- isShuttingDown (envTimer env)
+  if forShutdown && stopping then disarm (envTimer env) >> pure WakeShutdown else do
+    cancel <- transportOnReadable (envTransport env) (void (tryPutMVar (envWake env) WakeReadable))
+    let next = takeMVar (envWake env) >>= \case
+          WakeTimer g | g /= gen -> next
+          WakeShutdown | not forShutdown -> next
+          w -> pure w
+    w <- next `onException` (cancel >> disarm (envTimer env))
+    cancel
+    disarm (envTimer env)
+    pure w
 
 -- = https://www.rfc-editor.org/rfc/rfc9112#section-9.6
 -- # If a server performs an immediate close of a TCP connection, there is
@@ -301,14 +315,14 @@ linger env = do
     Left ConnectionClosed -> pure ()
     Right () -> do
       transportShutdownWrite (envTransport env)
-      fired <- armRead (envTimer env) =<< deadlineIn (timeoutLinger (settingsTimeouts (envSettings env)))
-      let drain (n :: Int) = do
-            (readable, release) <- transportWaitReadable (envTransport env)
-            more <- atomically $ (True <$ readable) `orElse` (False <$ fired)
-            release
-            when (more && n < 1048576) $ do
-              bs <- transportRecv (envTransport env)
-              unless (B.null bs) (drain (n + B.length bs))
+      deadline <- deadlineIn (timeoutLinger (settingsTimeouts (envSettings env)))
+      let drain (n :: Int) = when (n < 1048576) $ do
+            ready <- transportTryRecv (envTransport env)
+            case ready of
+              Just bs -> unless (B.null bs) (drain (n + B.length bs))
+              Nothing -> wakeOn env deadline False >>= \case
+                WakeReadable -> drain n
+                _            -> pure ()
       drain 0
 
 ------------------------------------------------------------------------------
@@ -390,7 +404,7 @@ noticeShutdown :: Env -> IO ()
 noticeShutdown env = do
   st <- readIORef (envRef env)
   unless (stShutdownSeen st) $ do
-    stopping <- atomically ((True <$ envShutdown env) `orElse` pure False)
+    stopping <- isShuttingDown (envTimer env)
     when stopping $ do
       modifyIORef' (envRef env) $ \s -> s { stShutdownSeen = True }
       feed env Shutdown

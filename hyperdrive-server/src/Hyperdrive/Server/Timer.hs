@@ -11,26 +11,27 @@
 -- looks at every connection once per tick, so a timeout fires up to a
 -- tick late.
 --
--- Shutdown is signalled through a 'TVar' per connection, set for each
--- in turn, rather than one shared 'TVar' that every waiting connection
--- reads: with thousands of connections waiting on one variable, STM's
--- bookkeeping for it (its queue of waiters, and the lock on it) became
--- a point of contention.
+-- A connection is woken by calling the action it registered with
+-- ('withTimer'), with a 'Wake' saying why. The connection then waits on
+-- one variable of its own for whatever wakes it first: its socket,
+-- its timer or shutdown. (A transaction over three 'TVar's, the first
+-- design, cost a tenth of the time of a small request, and one shared
+-- 'TVar' for shutdown was a point of contention.)
 module Hyperdrive.Server.Timer
   ( Timers
   , withTimers
   , Timer
+  , Wake(..)
   , withTimer
   , armRead
   , armWrite
   , disarm
   , deadlineIn
   , beginShutdown
-  , shutdownRequested
+  , isShuttingDown
   ) where
 
 import Control.Concurrent (forkIOWithUnmask, killThread, threadDelay)
-import Control.Concurrent.STM
 import Control.Exception (bracket, mask_)
 import Control.Monad (forM_, forever, when)
 import Data.IORef
@@ -44,14 +45,21 @@ data Timers = Timers
   , timersStopping :: !(IORef Bool)
   }
 
--- | A connection's timer: what it is armed for, until when (monotonic
--- nanoseconds), and which arming has fired.
+-- | Why a connection was woken.
+data Wake
+  = WakeReadable      -- ^ its socket has input (or the end of it)
+  | WakeTimer !Int    -- ^ the read arming with this generation expired
+  | WakeShutdown      -- ^ the server is shutting down
+  deriving (Eq, Show)
+
+-- | A connection's timer: what it is armed for, and until when
+-- (monotonic nanoseconds).
 data Timer = Timer
-  { timerState :: !(IORef Armed)
-  , timerGen   :: !(IORef Int)    -- ^ counts read armings, so that each is told apart
-  , timerFired :: !(TVar Int)     -- ^ the generation of the last read arming that expired
-  , timerAbort :: IO ()           -- ^ what to do when a write expires
-  , timerStop  :: !(TVar Bool)    -- ^ the server is shutting down
+  { timerState    :: !(IORef Armed)
+  , timerGen      :: !(IORef Int)   -- ^ counts read armings, so that each is told apart
+  , timerWake     :: Wake -> IO ()  -- ^ wakes the connection
+  , timerAbort    :: IO ()          -- ^ what to do when a write expires
+  , timerStopping :: !(IORef Bool)  -- ^ the server is shutting down
   }
 
 data Armed
@@ -69,7 +77,7 @@ withTimers resolution act = do
         registry <- readIORef (timersRegistry timers)
         forM_ registry $ \t -> do
           fire <- atomicModifyIORef' (timerState t) $ \case
-            Reading gen deadline | deadline <= now -> (Disarmed, atomically (writeTVar (timerFired t) gen))
+            Reading gen deadline | deadline <= now -> (Disarmed, timerWake t (WakeTimer gen))
             Writing deadline     | deadline <= now -> (Disarmed, timerAbort t)
             s                                      -> (s, pure ())
           fire
@@ -78,11 +86,13 @@ withTimers resolution act = do
           (const (act timers))
 
 -- | A timer for one connection, for the duration of the action. The
--- given action runs, on the ticker's thread, when a write expires; it
--- should make the blocked write fail, by shutting the socket down.
-withTimer :: Timers -> IO () -> (Timer -> IO a) -> IO a
-withTimer timers abort act = do
-  t <- Timer <$> newIORef Disarmed <*> newIORef 0 <*> newTVarIO 0 <*> pure abort <*> newTVarIO False
+-- first action wakes the connection; it is called on the ticker's
+-- thread, or the thread shutting the server down, so it must be quick
+-- and must not block. The second runs when a write expires, and should
+-- make the blocked write fail, by shutting the socket down.
+withTimer :: Timers -> (Wake -> IO ()) -> IO () -> (Timer -> IO a) -> IO a
+withTimer timers wake abort act = do
+  t <- Timer <$> newIORef Disarmed <*> newIORef 0 <*> pure wake <*> pure abort <*> newIORef False
   bracket (mask_ (register t)) unregister (const (act t))
   where
     register t = do
@@ -90,18 +100,18 @@ withTimer timers abort act = do
       atomicModifyIORef' (timersRegistry timers) (\m -> (IntMap.insert k t m, ()))
       -- either 'beginShutdown' sees this timer, or this sees its flag
       stopping <- atomicModifyIORef' (timersStopping timers) (\b -> (b, b))
-      when stopping (atomically (writeTVar (timerStop t) True))
+      when stopping (atomicWriteIORef (timerStopping t) True)
       pure k
     unregister k = atomicModifyIORef' (timersRegistry timers) (\m -> (IntMap.delete k m, ()))
 
 -- | Arm the timer for a wait for input that must end by the deadline,
--- and give the STM action that succeeds once it expires.
-armRead :: Timer -> Word64 -> IO (STM ())
+-- giving the generation its 'WakeTimer' will carry. A 'WakeTimer' with
+-- another generation belongs to an earlier wait, and is to be ignored.
+armRead :: Timer -> Word64 -> IO Int
 armRead t deadline = do
   gen <- atomicModifyIORef' (timerGen t) (\n -> (n + 1, n + 1))
   writeIORef (timerState t) (Reading gen deadline)
-  -- an expiry of an earlier arming has an earlier generation
-  pure (readTVar (timerFired t) >>= \fired -> when (fired /= gen) retry)
+  pure gen
 
 -- | Arm the timer for a write that must finish by the deadline.
 armWrite :: Timer -> Word64 -> IO ()
@@ -116,13 +126,17 @@ deadlineIn :: Int -> IO Word64
 deadlineIn micros = (+ fromIntegral micros * 1000) <$> getMonotonicTimeNSec
 
 -- | Tell every connection, present and future, that the server is
--- shutting down.
+-- shutting down, and wake each.
 beginShutdown :: Timers -> IO ()
 beginShutdown timers = do
   atomicModifyIORef' (timersStopping timers) (const (True, ()))
   registry <- readIORef (timersRegistry timers)
-  forM_ registry $ \t -> atomically (writeTVar (timerStop t) True)
+  forM_ registry $ \t -> do
+    atomicWriteIORef (timerStopping t) True
+    timerWake t WakeShutdown
 
--- | Succeeds once the server is shutting down.
-shutdownRequested :: Timer -> STM ()
-shutdownRequested t = readTVar (timerStop t) >>= check
+-- | Whether the server is shutting down. A connection checks this
+-- before it waits, so that it does not miss a shutdown that began
+-- before it registered its wake action.
+isShuttingDown :: Timer -> IO Bool
+isShuttingDown t = readIORef (timerStopping t)

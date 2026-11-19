@@ -3,7 +3,6 @@ module ServerTests (serverTests) where
 
 import Control.Concurrent
 import Control.Exception hiding (assert)
-import Control.Concurrent.STM (atomically, orElse)
 import Control.Monad (forM_, forever, unless)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -260,11 +259,20 @@ prop_shutdown = once $ monadicIO $ do
       serverShutdown srv
       recvAll s
     end <- getMonotonicSeconds
-    pure (idle, busy, killed, end - start)
-  let (idle, busy, killed, took) = results
+    -- a connection that begins after shutdown began closes at once,
+    -- rather than waiting out its idle timeout
+    late <- do
+      (t, _pipe) <- memoryTransport
+      withTimers 10000 $ \timers -> do
+        beginShutdown timers
+        timeout 1000000 (serveConnection settings { settingsTimeouts = defaultTimeouts { timeoutLinger = 100000 } } timers t
+                           (Context (SockAddrInet 0 0) (SockAddrInet 0 0) False) ok)
+    pure (idle, busy, killed, end - start, late)
+  let (idle, busy, killed, took, late) = results
   monitor (counterexample (show results))
   assert (idle == Just "")
   assert (statusOf busy == "200" && "connection: close" `B.isInfixOf` busy)
+  assert (late == Just ())
   assert (killed == "")
   assert (took < 2)
 
@@ -365,14 +373,18 @@ prop_timers :: Property
 prop_timers = once $ monadicIO $ do
   results <- run $ withTimers 5000 $ \timers -> do
     aborted <- newIORef False
-    withTimer timers (writeIORef aborted True) $ \t -> do
-      -- a read deadline already passed fires within a few ticks
+    wakes <- newIORef []
+    let wake w = atomicModifyIORef' wakes (\ws -> (w : ws, ()))
+        woken = reverse <$> readIORef wakes
+    withTimer timers wake (writeIORef aborted True) $ \t -> do
+      -- a read deadline already passed wakes the connection, with its generation
       first <- armRead t =<< deadlineIn 0
-      fired1 <- timeout 1000000 (atomically first)
-      -- re-armed far ahead: the earlier expiry does not count
+      threadDelay 50000
+      afterFirst <- woken
+      -- re-armed far ahead: nothing more, and a new generation
       second <- armRead t =<< deadlineIn 10000000
       threadDelay 50000
-      fired2 <- atomically ((True <$ second) `orElse` pure False)
+      afterSecond <- woken
       disarm t
       -- a write past its deadline is aborted
       armWrite t =<< deadlineIn 0
@@ -380,9 +392,11 @@ prop_timers = once $ monadicIO $ do
       wasAborted <- readIORef aborted
       -- shutdown reaches this connection, and one that starts afterwards
       beginShutdown timers
-      stopped <- timeout 1000000 (atomically (shutdownRequested t))
-      late <- withTimer timers (pure ()) $ \t' -> timeout 1000000 (atomically (shutdownRequested t'))
-      pure (fired1, fired2, wasAborted, stopped, late)
+      afterShutdown <- woken
+      stopping <- isShuttingDown t
+      late <- withTimer timers (const (pure ())) (pure ()) isShuttingDown
+      pure (first, second, afterFirst, afterSecond, wasAborted, afterShutdown, stopping, late)
   monitor (counterexample (show results))
-  let (fired1, fired2, wasAborted, stopped, late) = results
-  assert (fired1 == Just () && not fired2 && wasAborted && stopped == Just () && late == Just ())
+  let (first, second, afterFirst, afterSecond, wasAborted, afterShutdown, stopping, late) = results
+  assert (afterFirst == [WakeTimer first] && afterSecond == afterFirst && second /= first)
+  assert (wasAborted && afterShutdown == afterFirst ++ [WakeShutdown] && stopping && late)

@@ -19,12 +19,12 @@ why: the head timer runs from the start of the head, not from the last byte (slo
 + | fst (stTimer st) == ph, ph `elem` [DiscardingBody] = snd (stTimer st)
 
 why: an expired timer is fed to the core
-- TimerFired -> feed env TimedOut
-+ TimerFired -> pure ()
+- WakeTimer _ -> feed env TimedOut
++ WakeTimer _ -> pure ()
 
 why: shutdown is fed to the core once
-- (if stShutdownSeen st then retry else ShuttingDown <$ envShutdown env)
-+ retry
+- WakeShutdown | not forShutdown -> next
++ WakeShutdown -> next
 
 why: the end of input is PeerClosed, not empty data
 - received env bs = feed env (if B.null bs then PeerClosed else Received bs)
@@ -83,16 +83,16 @@ why: connections still running after the grace period are killed
 file: src/Hyperdrive/Server/Timer.hs
 
 why: an expired wait is woken
-- Reading gen deadline | deadline <= now -> (Disarmed, atomically (writeTVar (timerFired t) gen))
+- Reading gen deadline | deadline <= now -> (Disarmed, timerWake t (WakeTimer gen))
 + Reading gen deadline | deadline <= now -> (Disarmed, pure ())
 
 why: an expired write is aborted
 - Writing deadline     | deadline <= now -> (Disarmed, timerAbort t)
 + Writing deadline     | deadline <= now -> (Disarmed, pure ())
 
-why: only the current arming's expiry counts, not an earlier one's
-- pure (readTVar (timerFired t) >>= \fired -> when (fired /= gen) retry)
-+ pure (readTVar (timerFired t) >>= \fired -> when (fired == 0) retry)
+why: each read arming has a generation of its own
+- gen <- atomicModifyIORef' (timerGen t) (\n -> (n + 1, n + 1))
++ gen <- atomicModifyIORef' (timerGen t) (\n -> (n, n))
 
 file: src/Hyperdrive/Server/Connection.hs
 
@@ -101,15 +101,26 @@ why: writes have a deadline
 + pure ()
 
 why: input that is already there is used, not dropped
-- Just bs -> received env bs
-+ Just _ -> waitFor env st deadline
+- Just bs -> received env bs  -- already there
++ Just _ -> waitFor env (stShutdownSeen st) deadline
 
 file: src/Hyperdrive/Server/Timer.hs
 
 why: a connection that starts after shutdown began is told too
-- when stopping (atomically (writeTVar (timerStop t) True))
+- when stopping (atomicWriteIORef (timerStopping t) True)
 + pure ()
 
-why: shutdown reaches every connection
-- forM_ registry $ \t -> atomically (writeTVar (timerStop t) True)
+why: shutdown wakes every connection
+- timerWake t WakeShutdown
 + pure ()
+
+file: src/Hyperdrive/Server/Connection.hs
+
+why: a connection that waits after shutdown began is told at once
+- if forShutdown && stopping then disarm (envTimer env) >> pure WakeShutdown else do
++ if False then disarm (envTimer env) >> pure WakeShutdown else do
+
+# Not a mutant: wakeOn ignoring a WakeTimer of an earlier generation.
+# One only arrives if the ticker fires an arming just as the connection
+# ends that wait and begins the next, after the next has emptied its
+# variable; no test can make that happen reliably.
