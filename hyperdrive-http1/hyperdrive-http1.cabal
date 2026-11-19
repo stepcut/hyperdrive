@@ -20,6 +20,7 @@ library
   hs-source-dirs:   src
   default-language: GHC2021
   exposed-modules:  Hyperdrive.HTTP1.Chunked
+                    Hyperdrive.HTTP1.Connection
                     Hyperdrive.HTTP1.Framing
                     Hyperdrive.HTTP1.Head
                     Hyperdrive.HTTP1.Target
@@ -33,6 +34,7 @@ test-suite hyperdrive-http1-tests
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ChunkedTests
+                    ConnectionTests
                     FramingTests
                     HeadTests
                     TargetTests

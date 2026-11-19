@@ -305,3 +305,113 @@ why: a TE that is not a valid list says nothing
 why: an invalid member makes the whole TE invalid, rather than being skipped
 - case traverse (either (const Nothing) (traverse (either (const Nothing) Just . coding)) . splitList NoComments)
 + case traverse (either (const Nothing) (traverse (Just . either (const ("", False)) id . coding)) . splitList NoComments)
+
+file: src/Hyperdrive/HTTP1/Connection.hs
+
+why: HTTP/1.1 connections persist; HTTP/1.0 ones close (D5)
+- Right (h, body, expects100 && isJust body, version >= HTTP_1_1 && not closeRequested)
++ Right (h, body, expects100 && isJust body, not closeRequested)
+
+why: Connection: close closes the connection after the response (RFC 9112 Section 9.6)
+- Right (h, body, expects100 && isJust body, version >= HTTP_1_1 && not closeRequested)
++ Right (h, body, expects100 && isJust body, version >= HTTP_1_1)
+
+why: connection options are case-insensitive
+- if all (\o -> not (B.null o) && B.all isTChar o) options then Just ("close" `elem` map lower options) else Nothing
++ if all (\o -> not (B.null o) && B.all isTChar o) options then Just ("close" `elem` options) else Nothing
+
+why: a CONNECT request with a body is rejected (Q2)
+- if method == CONNECT && framing /= NoBody then Left BadRequest else Right ()
++ if False then Left BadRequest else Right ()
+
+why: other expectations get 417 (Q3)
+- | otherwise -> Left ExpectationFailed
++ | otherwise -> Right False
+
+why: 100-continue is ignored in HTTP/1.0 (RFC 9110 Section 10.1.1)
+- | all ((== "100-continue") . lower) (concat members) -> Right (version >= HTTP_1_1 && not (null (concat members)))
++ | all ((== "100-continue") . lower) (concat members) -> Right (not (null (concat members)))
+
+why: 100 (Continue) is sent only before a final response
+- let continue = exExpects100 ex && isAwaiting (exResponse ex)
++ let continue = exExpects100 ex
+
+why: a pipelined request is not read before the response is finished (D2)
+- RequestDone           -> (c, [])
++ RequestDone           -> readHead 0 c { cRequest = AwaitingHead 0 }
+
+why: body data is delivered only when the application asks (Q1)
+- InBody _ False        -> (c, [])
++ InBody body False     -> readBody body c
+
+why: the end of a Content-Length body comes with its last data
+- then requestDone c' [RequestData piece, RequestEnd emptyFields]
++ then (c' { cRequest = InBody (Remaining 0) False }, [RequestData piece])
+
+why: a body cut short by the client is aborted, not waited for
+- | cPeerClosed c' = aborted BadRequest c'
++ | False = aborted BadRequest c'
+
+why: an invalid chunked body aborts the request
+- DecodeError _ -> aborted BadRequest c
++ DecodeError _ -> (c, [NeedInput])
+
+why: a body longer than the discard limit closes the connection (D6)
+- | n > left -> close c []
++ | False -> close c []
+
+why: an unread body is discarded, not taken for the next request (D6)
+- | exKeepAlive ex -> discard body (configDiscardLimit (cConfig c)) c { cRequest = Discarding body (configDiscardLimit (cConfig c)) }
++ | exKeepAlive ex -> finishExchange c { cRequest = RequestDone }
+
+why: a client waiting for 100 (Continue) may never send the body, so the connection closes
+- keepAlive = exKeepAlive ex && not (cShutdown c) && not (bodyUnread && exExpects100 ex)
++ keepAlive = exKeepAlive ex && not (cShutdown c)
+
+why: a response on a closing connection says so
+- closeField = [ (hConnection, fromJust (either (const Nothing) Just (mkFieldValue "close"))) | not keepAlive ]
++ closeField = []
+
+why: the Trailer field announces declared trailers when chunked (RFC 9110 Section 6.6.2)
+- | framing == SendChunked, not (null (respTrailers h))
++ | False
+
+why: an empty write sends no chunk, since an empty chunk ends the body
+- _ | B.null bs  -> (c, [])
++ _ | False  -> (c, [])
+
+why: HEAD, 204 and 304 send no content
+- HeaderOnly _   -> (c', [])
++ HeaderOnly _   -> (c', [Send [bs]])
+
+why: content beyond the declared length is never sent
+- | written' > n -> close c []   -- more than declared: never sent (Abort)
++ | False -> close c []
+
+why: content short of the declared length is not ended normally
+- SendLength n | written < n -> close c []   -- less than declared: aborted
++ SendLength n | False -> close c []
+
+why: a chunked body ends with the last chunk and the trailer section
+- SendChunked    -> prefix [Send ["0\r\n" <> serializeFields (fieldsToList trailers) <> "\r\n"]] done
++ SendChunked    -> prefix [Send ["0\r\n\r\n"]] done
+
+why: chunk sizes are hexadecimal
+- SendChunked    -> (c', [Send [C.pack (showHex (B.length bs) "") <> "\r\n", bs, "\r\n"]])
++ SendChunked    -> (c', [Send [C.pack (show (B.length bs)) <> "\r\n", bs, "\r\n"]])
+
+why: shutdown closes after the current exchange
+- Just ex | exKeepAlive ex, not (cShutdown c) -> advance c { cRequest = AwaitingHead 0, cExchange = Nothing }
++ Just ex | exKeepAlive ex -> advance c { cRequest = AwaitingHead 0, cExchange = Nothing }
+
+why: a timeout mid-head is answered with 408
+- ReadingHead    -> reject RequestTimeout c
++ ReadingHead    -> close c []
+
+why: an aborted body gets an error response only if no response has started
+- Just ex | isAwaiting (exResponse ex) -> reject status c
++ Just _ -> reject status c
+
+why: a client that closes before its head is complete gets no response
+- | cPeerClosed c -> close c []
++ | cPeerClosed c -> reject BadRequest c

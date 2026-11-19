@@ -180,7 +180,26 @@ Section 7.4). A request with no `Host` (HTTP/1.0) or an empty one uses
 a configured default authority, or is rejected if there is none (RFC
 9112 Section 3.3).
 
-## `step`: state and transitions (draft for review, 2026-11-18)
+## `step`: state and transitions (Q1 to Q5 decided as recommended, 2026-11-18)
+
+Implemented in `Hyperdrive.HTTP1.Connection`. Details settled while
+implementing it:
+
+- The output announcing a request is `NewRequest RequestHead` (a
+  constructor `RequestHead` would clash with the record's).
+- A request without a body (`reqBodyLength = Just 0`) gets no
+  `RequestData` or `RequestEnd`: the driver answers `readChunk` itself.
+  After `RequestEnd` it does the same. `WantBody` then is misuse.
+- For a `Content-Length` body, `RequestEnd` comes with the last
+  `RequestData`; for chunked, on the `WantBody` after it.
+- A final response sent while a `100-continue` request's body is unread
+  and no 100 was sent closes the connection: the client may never send
+  the body, so the rest of the input cannot be told apart.
+- `Connection` options must be tokens; anything else is 400.
+
+Not yet done: the reference-model test described below (the session
+tests check served requests against what was sent, and the responses
+with an independent client-side reader, instead).
 
 Everything `step` needs underneath now exists: `parseRequestHead`,
 `requestFraming`, `reconstructTarget`, `acceptsTrailers`,

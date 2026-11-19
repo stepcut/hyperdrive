@@ -757,6 +757,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,exception]:    protected from an infinite request loop.
 
   SECTION: [Connection](#section-7.6.1)
+    TEXT[implementation]:      Connection        = #connection-option
+    TEXT[implementation]:      connection-option = token
     TEXT[!MUST]:    When a field aside from Connection is used to supply control
     TEXT[!MUST]:    information for or about the current connection, the sender MUST list
     TEXT[!MUST]:    the corresponding field name within the Connection header field.
@@ -1237,10 +1239,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST,exception]:    A client MUST NOT send content in a TRACE request.
 
   SECTION: [Expect](#section-10.1.1)
-    TEXT[!MAY]:    A server that receives an Expect field value containing a member
-    TEXT[!MAY]:    other than 100-continue MAY respond with a 417 (Expectation Failed)
-    TEXT[!MAY]:    status code to indicate that the unexpected expectation cannot be
-    TEXT[!MAY]:    met.
+    TEXT[!MAY,implementation]:    A server that receives an Expect field value containing a member
+    TEXT[!MAY,implementation]:    other than 100-continue MAY respond with a 417 (Expectation Failed)
+    TEXT[!MAY,implementation]:    status code to indicate that the unexpected expectation cannot be
+    TEXT[!MAY,implementation]:    met.
     TEXT[!MUST,exception]:    *  A client MUST NOT generate a 100-continue expectation in a request
     TEXT[!MUST,exception]:       that does not include content.
     TEXT[!MUST,exception]:    *  A client that will wait for a 100 (Continue) response before
@@ -1257,24 +1259,24 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,exception]:       repeat that request without a 100-continue expectation, since the
     TEXT[!SHOULD,exception]:       417 response merely indicates that the response chain does not
     TEXT[!SHOULD,exception]:       support expectations (e.g., it passes through an HTTP/1.0 server).
-    TEXT[!MUST]:    *  A server that receives a 100-continue expectation in an HTTP/1.0
-    TEXT[!MUST]:       request MUST ignore that expectation.
+    TEXT[!MUST,implementation,test]:    *  A server that receives a 100-continue expectation in an HTTP/1.0
+    TEXT[!MUST,implementation,test]:       request MUST ignore that expectation.
     TEXT[!MAY]:    *  A server MAY omit sending a 100 (Continue) response if it has
     TEXT[!MAY]:       already received some or all of the content for the corresponding
     TEXT[!MAY]:       request, or if the framing indicates that there is no content.
     TEXT[!MUST]:    *  A server that sends a 100 (Continue) response MUST ultimately send
     TEXT[!MUST]:       a final status code, once it receives and processes the request
     TEXT[!MUST]:       content, unless the connection is closed prematurely.
-    TEXT[!SHOULD]:    *  A server that responds with a final status code before reading the
-    TEXT[!SHOULD]:       entire request content SHOULD indicate whether it intends to close
-    TEXT[!SHOULD]:       the connection (e.g., see Section 9.6 of [HTTP/1.1]) or continue
-    TEXT[!SHOULD]:       reading the request content.
-    TEXT[!MUST]:    Upon receiving an HTTP/1.1 (or later) request that has a method,
-    TEXT[!MUST]:    target URI, and complete header section that contains a 100-continue
-    TEXT[!MUST]:    expectation and an indication that request content will follow, an
-    TEXT[!MUST]:    origin server MUST send either:
-    TEXT[!MUST]:    The origin server MUST NOT wait for the content before sending the
-    TEXT[!MUST]:    100 (Continue) response.
+    TEXT[!SHOULD,implementation,test]:    *  A server that responds with a final status code before reading the
+    TEXT[!SHOULD,implementation,test]:       entire request content SHOULD indicate whether it intends to close
+    TEXT[!SHOULD,implementation,test]:       the connection (e.g., see Section 9.6 of [HTTP/1.1]) or continue
+    TEXT[!SHOULD,implementation,test]:       reading the request content.
+    TEXT[!MUST,implementation,test]:    Upon receiving an HTTP/1.1 (or later) request that has a method,
+    TEXT[!MUST,implementation,test]:    target URI, and complete header section that contains a 100-continue
+    TEXT[!MUST,implementation,test]:    expectation and an indication that request content will follow, an
+    TEXT[!MUST,implementation,test]:    origin server MUST send either:
+    TEXT[!MUST,implementation,test]:    The origin server MUST NOT wait for the content before sending the
+    TEXT[!MUST,implementation,test]:    100 (Continue) response.
     TEXT[!MUST,exception]:    Upon receiving an HTTP/1.1 (or later) request that has a method,
     TEXT[!MUST,exception]:    target URI, and complete header section that contains a 100-continue
     TEXT[!MUST,exception]:    expectation and indicates a request content will follow, a proxy MUST
@@ -1977,6 +1979,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MAY,exception]:    Proxy-Authorization header field (Section 11.7.2).
 
   SECTION: [408 Request Timeout](#section-15.5.9)
+    TEXT[test]:    The 408 (Request Timeout) status code indicates that the server did
+    TEXT[test]:    not receive a complete request message within the time that it was
+    TEXT[test]:    prepared to wait.
     TEXT[!MAY,exception]:    If the client has an outstanding request in transit, it MAY repeat
     TEXT[!MAY,exception]:    that request.
 
@@ -2577,6 +2582,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
   SECTION: [Persistence](#section-9.3)
     TEXT[!SHOULD]: HTTP implementations SHOULD support persistent
     TEXT[!SHOULD]:    connections.
+    TEXT[implementation,test]: If the received protocol is HTTP/1.1 (or later), the connection
+    TEXT[implementation,test]:       will persist after the current response
     TEXT[!MUST,exception]:    A client that does not support persistent connections MUST send the
     TEXT[!MUST,exception]:    "close" connection option in every request message.
     TEXT[!MUST]:    A server that does not support persistent connections MUST send the
@@ -2661,9 +2668,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]:    requests on that connection (after the one containing the "close")
     TEXT[!MUST,exception]:    and MUST close the connection after reading the final response
     TEXT[!MUST,exception]:    message corresponding to this request.
-    TEXT[!MUST]:    A server that receives a "close" connection option MUST initiate
-    TEXT[!MUST]:    closure of the connection (see below) after it sends the final
-    TEXT[!MUST]:    response to the request that contained the "close" connection option.
+    TEXT[!MUST,implementation,test]:    A server that receives a "close" connection option MUST initiate
+    TEXT[!MUST,implementation,test]:    closure of the connection (see below) after it sends the final
+    TEXT[!MUST,implementation,test]:    response to the request that contained the "close" connection option.
     TEXT[!SHOULD]:    The server SHOULD send a "close" connection option in its final
     TEXT[!SHOULD]:    response on that connection.
     TEXT[!MUST]: The server MUST NOT process any further
