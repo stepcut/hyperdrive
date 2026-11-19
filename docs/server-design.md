@@ -1,4 +1,4 @@
-# The server: IO driver for HTTP/1.1 (draft for review, 2026-11-18)
+# The server: IO driver for HTTP/1.1 (S1 to S7 decided as recommended, 2026-11-18)
 
 The protocol core (`Hyperdrive.HTTP1.Connection.step`) is pure and
 done. This document proposes the IO around it: sockets, timers, running
@@ -92,9 +92,12 @@ atomically $ (Readable <$ readable) `orElse` (TimerFired <$ expired) `orElse` (S
 
 Then the driver calls `recv` (which does not block, since data or end
 of input is there), or feeds `TimedOut`, or feeds `Shutdown`. **S4:**
-no asynchronous exceptions are used for timeouts or shutdown, so they
-can never land in the middle of the application's code or of a
-`step`; they are only noticed where the driver waits. The cost is a
+protocol timeouts and the graceful stage of shutdown use no
+asynchronous exceptions, so they never land in the middle of the
+application's code or of a `step`; they are only noticed where the
+driver waits. Asynchronous exceptions are kept for the two cases
+where interrupting the application is the point: the end of the
+shutdown grace period, and the optional handler time limit (below). The cost is a
 transaction and a timer registration per wait, to be measured
 against `System.Timeout` and warp's timer manager once there are
 benchmarks.
@@ -114,10 +117,32 @@ A write cannot wait in the same transaction (sending blocks in
 `network`), so the write timeout is `System.Timeout.timeout` around
 each flush; on expiry the connection is closed.
 
-Shutdown (`runServer`'s stop action): stop accepting, set the
-`shutdown` TVar, and wait for the connections to finish, up to a
-grace period (default 30 s), then kill the rest. An idle connection
-closes at once; a busy one finishes its exchange and closes (D8).
+Shutdown (`runServer`'s stop action) has two stages:
+
+1. Graceful: stop accepting, set the `shutdown` TVar. An idle
+   connection closes at once; a busy one finishes its exchange and
+   closes (D8).
+2. Forced: when the grace period (default 30 s) ends, every connection
+   thread still running is killed (`throwTo`). Since the handler runs
+   in its connection's thread, this also stops a handler that is stuck
+   in a loop or waiting forever. The driver closes the socket, and
+   `runServer` returns, so the application can be restarted in-process
+   or by a supervisor.
+
+Two limits of GHC apply here, as for every Haskell server: a loop that
+never allocates never reaches a point where an asynchronous exception
+is delivered (compile the application with `-fno-omit-yields` to
+prevent that, at a small cost), and a thread blocked in a foreign call
+cannot be interrupted until the call returns. Ending the process is
+the remaining remedy for both, and works regardless.
+
+**Handler time limit** (optional, off by default): a setting that
+limits how long a handler may run. When it expires, the connection's
+thread is interrupted with an asynchronous exception: if the response
+has not started, a 503 (Service Unavailable) is sent and the
+connection closed; otherwise the response is aborted. It is opt-in
+because it interrupts application code at an arbitrary point, which an
+application must be written to tolerate (with `bracket` and the like).
 
 ## Writing
 
@@ -145,8 +170,9 @@ connections is a setting (default: none).
 - **TLS** (S5): the `Transport` record leaves room for it. HTTP/2 needs
   it in practice (ALPN), so it comes with HTTP/2.
 - **`sendfile`** (S6): files are read and written in 64 KiB pieces
-  first; a zero-copy path (our own FFI to `sendfile(2)`, not warp's
-  `simple-sendfile`) once benchmarks say it matters.
+  first; a zero-copy path once benchmarks say it matters, using
+  Happstack's `sendfile` package (https://github.com/Happstack/sendfile),
+  which we maintain and can change as needed.
 - **Benchmarks** against warp come right after: `wrk`-style small
   responses, pipelining, large bodies, many idle connections. No
   tuning before measuring.
