@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, PatternSynonyms, LambdaCase #-}
+{-# LANGUAGE OverloadedStrings, PatternSynonyms, LambdaCase, BangPatterns #-}
 -- | Serving one HTTP/1.1 connection: the IO around
 -- 'Hyperdrive.HTTP1.Connection.step' (docs/server-design.md).
 --
@@ -147,8 +147,13 @@ data St = St
   , stClosed       :: !Bool          -- ^ the core said Close
   , stBroken       :: !Bool          -- ^ a write failed: the client has gone
   , stShutdownSeen :: !Bool
-  , stTimer        :: !(Phase, Word64)  -- ^ the phase the timer is for, and its deadline (ns)
+  , stTimer        :: !TimerFor      -- ^ the phase the timer is for, and its deadline
   }
+
+-- | Strict, and the deadline evaluated before it is stored: a lazy
+-- deadline that referred to the previous state kept every earlier
+-- state alive for as long as the connection lasted.
+data TimerFor = TimerFor !Phase !Word64
 
 data BodyState = BodyOpen | BodyEnded !Fields | BodyFailed
 
@@ -168,7 +173,7 @@ serveConnection settings timers transport context app = do
     let config = settingsConfig settings
         target = configTarget config
         config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
-    ref <- newIORef (St (newConn config') [] [] 0 False False False (Closed, 0))
+    ref <- newIORef (St (newConn config') [] [] 0 False False False (TimerFor Closed 0))
     dates <- newDateCache
     let env = Env settings wake transport context app dates timer ref
     (do r <- try (mainLoop env)
@@ -253,10 +258,12 @@ waitInput env = do
         _              -> timeoutIdle ts
       -- the head and discarding timers run from the start of the phase;
       -- the others restart at each wait
-      deadline
-        | fst (stTimer st) == ph, ph `elem` [ReadingHead, DiscardingBody] = snd (stTimer st)
+      TimerFor ph' deadline'
+        = stTimer st
+      !deadline
+        | ph' == ph, ph `elem` [ReadingHead, DiscardingBody] = deadline'
         | otherwise = now + fromIntegral limit * 1000
-  writeIORef (envRef env) st { stTimer = (ph, deadline) }
+  writeIORef (envRef env) st { stTimer = TimerFor ph deadline }
   ready <- transportTryRecv (envTransport env)
   case ready of
     Just bs -> received env bs  -- already there

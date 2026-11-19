@@ -42,7 +42,7 @@ test-suite hyperdrive-server-tests
   other-modules:    MemoryTransport
                     ServerTests
   default-language: GHC2021
-  ghc-options:      -threaded
+  ghc-options:      -threaded -rtsopts "-with-rtsopts=-T"
   build-depends:    base
                   , bytestring
                   , hyperdrive-abnf

@@ -3,7 +3,7 @@ module ServerTests (serverTests) where
 
 import Control.Concurrent
 import Control.Exception hiding (assert)
-import Control.Monad (forM_, forever, unless)
+import Control.Monad (forM_, forever, unless, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
@@ -11,6 +11,8 @@ import Data.Int (Int64)
 import Data.IORef
 import Data.Maybe (fromJust)
 import GHC.Clock (getMonotonicTimeNSec)
+import GHC.Stats (gcdetails_live_bytes, getRTSStats, gc)
+import System.Mem (performMajorGC)
 import Hyperdrive.ABNF.HTTP (httpLibrary)
 import Hyperdrive.ABNF.Recognize (ListForm(..), matches)
 import Hyperdrive.ABNF.Types (mkRuleName)
@@ -43,6 +45,7 @@ serverTests = testGroup "hyperdrive-server"
   , testProperty "request bodies: 100 (Continue) on the wire, and bodies cut short" prop_bodies
   , testProperty "Date is an IMF-fixdate" prop_date
   , testProperty "coarse timers: expiries, re-arming, write aborts" prop_timers
+  , testProperty "a long keep-alive connection does not accumulate memory" prop_noLeak
   ]
 
 ------------------------------------------------------------------------------
@@ -400,3 +403,33 @@ prop_timers = once $ monadicIO $ do
   let (first, second, afterFirst, afterSecond, wasAborted, afterShutdown, stopping, late) = results
   assert (afterFirst == [WakeTimer first] && afterSecond == afterFirst && second /= first)
   assert (wasAborted && afterShutdown == afterFirst ++ [WakeShutdown] && stopping && late)
+
+-- | 60,000 requests on one connection, from a transport that makes them
+-- as they are read: the live heap after 10,000 and after 60,000 must be
+-- about the same. (A lazy deadline once kept every earlier state of the
+-- connection alive, about 170 bytes a request.)
+prop_noLeak :: Property
+prop_noLeak = once $ monadicIO $ do
+  results <- run $ do
+    left <- newIORef (60000 :: Int)
+    samples <- newIORef []
+    let request = "GET / HTTP/1.1\r\nHost: a\r\n\r\n"
+        next = atomicModifyIORef' left (\k -> if k == 0 then (0, B.empty) else (k - 1, B.copy request))
+        t = Transport
+          { transportRecv = next, transportTryRecv = Just <$> next
+          , transportSendMany = \_ -> pure (), transportOnReadable = \_ -> pure (pure ())
+          , transportShutdownWrite = pure (), transportAbort = pure (), transportClose = pure () }
+        sample _ req = do
+          k <- readIORef left
+          when (k == 50000 || k == 0) $ do
+            performMajorGC
+            live <- gcdetails_live_bytes . gc <$> getRTSStats
+            modifyIORef' samples (live :)
+          ok undefined req
+    withTimers 100000 $ \timers ->
+      serveConnection defaultSettings timers t (Context (SockAddrInet 0 0) (SockAddrInet 0 0) False) sample
+    reverse <$> readIORef samples
+  monitor (counterexample (show results))
+  case results of
+    [early, late] -> assert (late < early + 1000000)
+    _ -> assert False
