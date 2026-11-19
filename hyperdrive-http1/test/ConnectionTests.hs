@@ -5,22 +5,17 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Data.Char (toLower)
-import Data.List (sort)
 import Data.Maybe (fromJust)
-import Hyperdrive.HTTP1.Chunked
 import Hyperdrive.HTTP1.Connection
-import Hyperdrive.HTTP1.Framing (RequestFraming(..), framingErrorStatus, requestFraming)
-import Hyperdrive.HTTP1.Head (HeadResult(..), RawRequestHead, defaultLimits, headErrorStatus, parseRequestHead)
-import qualified Hyperdrive.HTTP1.Head as Head
-import Hyperdrive.HTTP1.Target (reconstructTarget, targetErrorStatus)
 import Hyperdrive.Semantics.Field
-import Hyperdrive.Semantics.FieldSyntax (Comments(..), splitList)
-import Hyperdrive.Semantics.Message (HttpVersion(..), isProtocolField)
+import Hyperdrive.Semantics.Message (HttpVersion(..))
 import Hyperdrive.Semantics.Method (methodBytes)
-import Hyperdrive.Semantics.Status (Status, mkStatus, statusCode, pattern BadRequest)
+import Hyperdrive.Semantics.Status (mkStatus)
 import Hyperdrive.Semantics.Target (Target(..))
 import Hyperdrive.Semantics.URI
-import Numeric (readHex, showHex)
+import Hyperdrive.Testing.Client
+import Hyperdrive.Testing.Model
+import Hyperdrive.Testing.Session
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
@@ -39,86 +34,6 @@ connectionTests = testGroup "Connection (step)"
   , testProperty "timeouts, shutdown and misuse" prop_events
   ]
 
-------------------------------------------------------------------------------
--- requests, as a client sends them
-------------------------------------------------------------------------------
-
-data Req = Req
-  { rMethod  :: ByteString
-  , rPath    :: ByteString
-  , rMinor   :: Int
-  , rFields  :: [(ByteString, ByteString)]  -- ^ fields the application sees
-  , rExpect  :: Bool
-  , rClose   :: Bool                         -- ^ Connection: close
-  , rBody    :: BodySpec
-  } deriving (Show)
-
-data BodySpec = NoBodySpec | LengthBody ByteString | ChunkedBody [ByteString] [(ByteString, ByteString)]
-  deriving (Show)
-
-bodyBytes :: BodySpec -> ByteString
-bodyBytes NoBodySpec          = ""
-bodyBytes (LengthBody b)      = b
-bodyBytes (ChunkedBody cs _)  = B.concat cs
-
-render :: Req -> ByteString
-render r = B.concat $
-  [ rMethod r, " ", rPath r, " HTTP/1.", C.pack (show (rMinor r)), "\r\n", "Host: a.example\r\n" ]
-  ++ [ n <> ": " <> v <> "\r\n" | (n, v) <- rFields r ]
-  ++ [ "Expect: 100-continue\r\n" | rExpect r ]
-  ++ [ "Connection: close\r\n" | rClose r ]
-  ++ case rBody r of
-       NoBodySpec -> ["\r\n"]
-       LengthBody b -> ["Content-Length: ", C.pack (show (B.length b)), "\r\n\r\n", b]
-       ChunkedBody cs ts ->
-         ["Transfer-Encoding: chunked\r\n\r\n"]
-         ++ concat [ [C.pack (showHex (B.length c) ""), "\r\n", c, "\r\n"] | c <- cs, not (B.null c) ]
-         ++ ["0\r\n"] ++ [ n <> ": " <> v <> "\r\n" | (n, v) <- ts ] ++ ["\r\n"]
-
-genReq :: Gen Req
-genReq = do
-  minor <- frequency [(5, pure 1), (1, pure 0)]
-  method <- elements ["GET", "POST", "PUT", "HEAD", "DELETE", "X-Custom"]
-  path <- elements ["/", "/a/b", "/x?y=1", "/%41"]
-  fs <- listOf (elements [("Accept", "*/*"), ("X-A", "1"), ("Cookie", "a=b"), ("X-Empty", "")])
-  expect <- frequency [(5, pure False), (1, pure True)]
-  close <- frequency [(6, pure False), (1, pure True)]
-  body <- frequency
-    [ (3, pure NoBodySpec)
-    , (2, LengthBody <$> bytes)
-    , (if minor == 1 then 2 else 0, ChunkedBody <$> listOf bytes <*> elements [[], [("X-T", "1")]]) ]
-  pure (Req method path minor fs (expect && minor == 1) close body)
-  where bytes = resize 40 (B.pack <$> listOf arbitrary)
-
--- | The input as the network delivers it: in pieces.
-splitInput :: ByteString -> Gen [ByteString]
-splitInput s = do
-  cuts <- sort <$> listOf (choose (0, B.length s))
-  pure (filter (not . B.null) (zipWith (\a b -> B.take (b - a) (B.drop a s)) (0 : cuts) (cuts ++ [B.length s])))
-
-------------------------------------------------------------------------------
--- the application, as a script
-------------------------------------------------------------------------------
-
-data Script = Script
-  { sReads    :: Maybe Int   -- ^ Nothing: read the whole body; Just k: ask for at most k chunks
-  , sStatus   :: Int
-  , sContent  :: [ByteString]
-  , sDeclared :: Bool        -- ^ give the length in advance
-  , sTrailers :: [(ByteString, ByteString)]
-  } deriving (Show)
-
-genScript :: Gen Script
-genScript = do
-  reads' <- frequency [(4, pure Nothing), (1, Just <$> choose (0, 2))]
-  status <- elements [200, 200, 201, 204, 304, 404, 500]
-  content <- if status `elem` [204, 304] then pure [] else listOf (resize 40 (B.pack <$> listOf arbitrary))
-  declared <- arbitrary
-  trailers <- if status `elem` [204, 304] then pure [] else frequency [(3, pure []), (1, pure [("X-Checksum", "abc")])]
-  pure (Script reads' status content declared trailers)
-
-readAll :: Script
-readAll = Script Nothing 200 ["ok"] True []
 
 ------------------------------------------------------------------------------
 -- the driver, simulated
@@ -232,68 +147,6 @@ respondWith sc s =
       s2 = foldl (\s' c -> stepSim (WriteBody c) s') s1 (sContent sc)
   in stepSim (EndBody (fields (sTrailers sc))) s2
 
-fields :: [(ByteString, ByteString)] -> Fields
-fields fs = fieldsFromList [ (name n, either (error . show) id (mkFieldValue v)) | (n, v) <- fs ]
-
-name :: ByteString -> FieldName
-name = fromJust . mkFieldName
-
-------------------------------------------------------------------------------
--- a client reading the responses
-------------------------------------------------------------------------------
-
-data Resp = Resp
-  { rsStatus   :: Int
-  , rsFields   :: [(ByteString, ByteString)]  -- ^ names in lower case
-  , rsBody     :: ByteString
-  , rsTrailers :: [(ByteString, ByteString)]
-  , rsInterim  :: Int                          -- ^ 100 (Continue) responses before it
-  } deriving (Eq, Show)
-
--- | Read responses as RFC 9112 Section 6.3 tells a client to, given
--- whether each answers a HEAD request. Written without the server's
--- code.
-readResponses :: [Bool] -> ByteString -> Either String [Resp]
-readResponses heads = go heads 0
-  where
-    go hs interim s
-      | B.null s = Right []
-      | otherwise = do
-          (status, fs, rest) <- readHead s
-          if status == 100 then go hs (interim + 1) rest else do
-            let isHead = case hs of { (x : _) -> x; [] -> False }
-                header n = lookup n fs
-            (body, ts, rest') <-
-              if isHead || status `elem` [204, 304] then Right ("", [], rest)
-              else if fmap (map toLower . C.unpack) (header "transfer-encoding") == Just "chunked" then chunked rest
-              else case header "content-length" of
-                Just n | [(len, "")] <- reads (C.unpack n) ->
-                  if B.length rest < len then Left "short body" else Right (B.take len rest, [], B.drop len rest)
-                Just _ -> Left "bad Content-Length"
-                Nothing -> Right (rest, [], "")
-            (Resp status fs body ts interim :) <$> go (drop 1 hs) 0 rest'
-    readHead s = case B.breakSubstring "\r\n\r\n" s of
-      (_, r) | B.null r -> Left ("no end of head: " ++ show s)
-      (h, r) -> case C.lines (C.filter (/= '\r') h) of
-        (line : fls) | Just st <- statusOf line -> Right (st, map field fls, B.drop 4 r)
-        _ -> Left ("bad status line: " ++ show h)
-    statusOf line = case C.words line of
-      ("HTTP/1.1" : code : _) | [(n, "")] <- reads (C.unpack code), " " `B.isPrefixOf` B.drop 12 line -> Just n
-      _ -> Nothing
-    field l = let (n, v) = C.break (== ':') l in (C.map toLower n, C.dropWhile (== ' ') (B.drop 1 v))
-    chunked s = case B.breakSubstring "\r\n" s of
-      (line, r) | B.null r -> Left "no chunk size"
-                | [(n, "")] <- readHex (C.unpack line) ->
-                    if n == 0 then trailers (B.drop 2 r) []
-                    else let d = B.drop 2 r in
-                      if B.take 2 (B.drop n d) /= "\r\n" then Left "bad chunk end"
-                      else (\(b, ts, rest) -> (B.take n d <> b, ts, rest)) <$> chunked (B.drop (n + 2) d)
-                | otherwise -> Left ("bad chunk size " ++ show line)
-    trailers s acc = case B.breakSubstring "\r\n" s of
-      (_, r) | B.null r -> Left "no end of trailers"
-      ("", r) -> Right ("", reverse acc, B.drop 2 r)
-      (l, r) -> trailers (B.drop 2 r) (field l : acc)
-
 ------------------------------------------------------------------------------
 -- sessions
 ------------------------------------------------------------------------------
@@ -384,10 +237,6 @@ checkResponse (r, sc) rs =
            (rsInterim rs == 0 || rExpect r && sReads sc /= Just 0)
        ]
 
--- | How much a script that reads part of a body gets depends on how the
--- body arrived, so these compare scripts that read all or none of it.
-allOrNone :: Script -> Script
-allOrNone sc = sc { sReads = fmap (const 0) (sReads sc) }
 
 prop_splitting :: Property
 prop_splitting = withMaxSuccess 1000 $
@@ -427,20 +276,6 @@ prop_damaged = withMaxSuccess 1000 $
              Right rs -> property (length rs == length (runServed run) || length rs == length (runServed run) + 1)
          ]
 
--- | Up to three bytes changed, inserted or removed.
-damage :: ByteString -> Gen ByteString
-damage s0 = do
-  k <- choose (0, 3 :: Int)
-  foldr (\_ g -> g >>= once') (pure s0) [1 .. k]
-  where
-    once' s = do
-      i <- choose (0, max 0 (B.length s - 1))
-      b <- elements (B.unpack "\r\n :;0aG\t\0\128")
-      op <- elements [0, 1, 2 :: Int]
-      pure $ case op of
-        0 -> B.take i s <> B.singleton b <> B.drop (i + 1) s
-        1 -> B.take i s <> B.singleton b <> B.drop i s
-        _ -> B.take i s <> B.drop (i + 1) s
 
 ------------------------------------------------------------------------------
 -- examples
@@ -667,137 +502,11 @@ prop_events = once $ conjoin
     post = "POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 5\r\n\r\n"
     phases is = phase (foldl (\c i -> fst (step i c)) (newConn defaultConfig) is)
 
-------------------------------------------------------------------------------
--- the reference model
-------------------------------------------------------------------------------
-
--- | What the application sees of a request: method, target, version,
--- fields, body length; the body read, its trailers, and whether it was
--- aborted.
-type Seen = (ByteString, String, HttpVersion, [(ByteString, ByteString)], Maybe Integer, ByteString, Maybe [(ByteString, ByteString)], Bool)
 
 seen :: Served -> Seen
 seen v = let h = srvHead v in
   ( methodBytes (reqMethod h), show (reqTarget h), reqVersion h, pairs (reqFields h), fromIntegral <$> reqBodyLength h
   , srvBody v, pairs <$> srvEnd v, srvAborted v )
-
-pairs :: Fields -> [(ByteString, ByteString)]
-pairs fs = [ (fieldNameBytes k, fieldValueBytes v) | (k, v) <- fieldsToList fs ]
-
--- | The requests the application should see and the responses a client
--- should read, for the whole input at once, followed by the end of the
--- input, with scripts that read all of a body or none of it.
---
--- Each request is taken from the start of what is left: its head with
--- 'parseRequestHead', its framing, target and fields with the functions
--- that are tested on their own, and its body all at once (a
--- Content-Length body is the next n octets; a chunked one is decoded
--- in one go). The rest follows RFC 9112 Section 9 and the design (D2,
--- D3, D5 to D7, Q2, Q3), written out case by case.
-model :: [Script] -> ByteString -> ([Seen], [Resp])
-model = go
-  where
-    limit = toInteger (configDiscardLimit defaultConfig)
-    go scripts input = case parseRequestHead defaultLimits 0 input of
-      HeadIncomplete _ -> ([], [])                                   -- the client closed
-      HeadError e -> ([], [rejection (headErrorStatus e)])
-      HeadComplete raw used -> case check raw of
-        Left st -> ([], [rejection st])
-        Right (method, target, version, fs, framing, expects100, closeAsked) ->
-          let (sc, scripts') = case scripts of { (x : xs) -> (x, xs); [] -> (readAll, []) }
-              rest = B.drop used input
-              hasBody = framing /= NoBody && framing /= ContentLength 0
-              len = case framing of { NoBody -> Just 0; ContentLength n -> Just (toInteger n); Chunked -> Nothing }
-              seenAs body end aborted = (method, show target, version, fs, len, body, end, aborted)
-              respondThen = respond sc method version closeAsked expects100 scripts'
-          in if not hasBody
-               then add (seenAs "" Nothing False) (respondThen False (Just rest))
-             else if sReads sc == Nothing
-               -- reading the body sends 100 (Continue) first, if expected (D7)
-               then case wholeBody framing rest of
-                 -- the data before the body was found to be cut short or invalid has been read
-                 (partial, Nothing) -> ([seenAs partial Nothing True], [(rejection BadRequest) { rsInterim = fromEnum expects100 }])
-                 (body, Just (trailers, k)) ->
-                   firstInterim expects100 (add (seenAs body (Just trailers) False) (respondThen False (Just (B.drop k rest))))
-               -- D6: a body nobody read is dropped after the response, if
-               -- all of it arrives within the limit
-               else add (seenAs "" Nothing False) (respondThen True (discarded framing rest))
-    add v (served, resps) = (v : served, resps)
-    firstInterim e (served, r : rs) = (served, r { rsInterim = fromEnum e } : rs)
-    firstInterim _ x = x
-
-    -- the response, then the next request if the connection is kept
-    respond sc method version closeAsked expects100 scripts' unread next =
-      let code = sStatus sc
-          noContent = code `elem` [204, 304]
-          isHead = method == "HEAD"
-          len = sum (map B.length (sContent sc))
-          trailers = not noContent && not (null (sTrailers sc))
-          -- framing, as RFC 9112 Section 6 and design note M2 have it
-          (framingFs, chunked)
-            | noContent = ([], False)
-            | isHead = (if sDeclared sc then [("content-length", C.pack (show len))] else [], False)
-            | version == HttpVersion 1 1 && (not (sDeclared sc) || trailers) = ([("transfer-encoding", "chunked")], True)
-            | sDeclared sc = ([("content-length", C.pack (show len))], False)
-            | otherwise = ([], False)
-          -- D5, RFC 9112 Section 9.3; and a client waiting for 100 may never send its body
-          keepAlive = version == HttpVersion 1 1 && not closeAsked && not (unread && expects100)
-          fs = [("x-test", "1")] ++ framingFs
-               ++ [ ("trailer", B.intercalate ", " [ C.map toLower n | (n, _) <- sTrailers sc ]) | chunked, trailers ]
-               ++ [ ("connection", "close") | not keepAlive ]
-          resp = Resp code fs (if noContent || isHead then "" else B.concat (sContent sc))
-                      (if chunked then [ (C.map toLower n, v) | (n, v) <- sTrailers sc ] else []) 0
-          (served, resps) = case next of
-            Just rest | keepAlive -> go scripts' rest
-            _                     -> ([], [])
-      in (served, resp : resps)
-
-    discarded framing rest = case wholeBody framing rest of
-      (body, Just (_, k))
-        | toInteger (B.length body) <= limit, toInteger k <= limit || framing /= Chunked -> Just (B.drop k rest)
-      _ -> Nothing
-
-    -- the checks on a request head, in the order they are made
-    check :: RawRequestHead -> Either Status (ByteString, Target, HttpVersion, [(ByteString, ByteString)], RequestFraming, Bool, Bool)
-    check raw = do
-      let version = Head.headVersion raw
-          method = Head.headMethod raw
-          hfs = Head.headFields raw
-          lowerAll = map (C.map toLower)
-          members n = fmap concat (traverse (either (const Nothing) Just . splitList NoComments) (lookupAll (name n) hfs))
-      framing <- either (Left . framingErrorStatus) Right (requestFraming version hfs)
-      (target, fields') <- either (Left . targetErrorStatus) Right
-                             (reconstructTarget (configTarget defaultConfig) version method (Head.headTarget raw) hfs)
-      if methodBytes method == "CONNECT" && framing /= NoBody then Left BadRequest else Right ()
-      expects <- case members "Expect" of
-        Just ms | all (== "100-continue") (lowerAll ms) -> Right (not (null ms))
-        _ -> Left (status 417)
-      closeAsked <- case members "Connection" of
-        Just os | all (\o -> not (B.null o) && C.all (`elem` tchars) o) os -> Right ("close" `elem` lowerAll os)
-        _ -> Left BadRequest
-      let hasBody = framing /= NoBody && framing /= ContentLength 0
-          fields'' = [ p | p@(k, _) <- pairs fields', not (isProtocolField (name k)) ]
-      Right ( methodBytes method, target, version, fields'', framing
-            , expects && version == HttpVersion 1 1 && hasBody, closeAsked )
-    tchars = "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" :: String
-
-    -- the body's content, and its trailers and length on the wire, or
-    -- Nothing if it is cut short or invalid (the content is then what
-    -- came before that)
-    wholeBody framing rest = case framing of
-      ContentLength n | toInteger (B.length rest) >= toInteger n -> (B.take (fromIntegral n) rest, Just ([], fromIntegral n))
-                      | otherwise -> (rest, Nothing)
-      Chunked -> dechunk startDecoder rest 0 ""
-      NoBody -> ("", Just ([], 0))
-    dechunk d s used acc = case decodeChunked defaultChunkedLimits d s of
-      Data b k d' -> dechunk d' (B.drop k s) (used + k) (acc <> b)
-      NeedMore k d' | k > 0 -> dechunk d' (B.drop k s) (used + k) acc
-      Finished t k -> (acc, Just (pairs t, used + k))
-      _ -> (acc, Nothing)
-
-    rejection st = Resp (statusCode st) [("content-length", "0"), ("connection", "close")] "" [] 0
-    status = fromJust . mkStatus
-
 prop_model :: Property
 prop_model = withMaxSuccess 2000 $
   forAll (resize 4 (listOf1 ((,) <$> genReq <*> (allOrNone <$> genScript)))) $ \session ->

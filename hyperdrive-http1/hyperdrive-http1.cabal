@@ -28,6 +28,23 @@ library
                   , bytestring           >= 0.11 && < 0.13
                   , hyperdrive-semantics
 
+-- Generators of HTTP/1.1 sessions, a client-side response reader and a
+-- reference model of a connection, shared by this package's tests and
+-- hyperdrive-server's. Not for use outside hyperdrive's tests.
+library testing
+  import:           warnings
+  visibility:       public
+  hs-source-dirs:   testing
+  default-language: GHC2021
+  exposed-modules:  Hyperdrive.Testing.Client
+                    Hyperdrive.Testing.Model
+                    Hyperdrive.Testing.Session
+  build-depends:    base
+                  , bytestring
+                  , hyperdrive-http1
+                  , hyperdrive-semantics
+                  , QuickCheck       >= 2.14 && < 2.18
+
 test-suite hyperdrive-http1-tests
   import:           warnings
   type:             exitcode-stdio-1.0
@@ -44,6 +61,7 @@ test-suite hyperdrive-http1-tests
                   , hyperdrive-abnf
                   , hyperdrive-http1
                   , hyperdrive-semantics
+                  , hyperdrive-http1:testing
                   , QuickCheck       >= 2.14 && < 2.18
                   , tasty            >= 1.4  && < 1.6
                   , tasty-quickcheck >= 0.10 && < 0.12
