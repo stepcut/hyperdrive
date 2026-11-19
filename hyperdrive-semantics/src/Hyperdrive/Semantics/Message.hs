@@ -28,6 +28,8 @@ module Hyperdrive.Semantics.Message
   , requestTarget
   , requestHeaders
   , requestBody
+  , requestAcceptsTrailers
+  , setAcceptsTrailers
   , RequestBody(..)
   , IncompleteBody(..)
   , bytesBody
@@ -177,7 +179,32 @@ data Request = Request
   , requestTarget  :: !Target
   , requestHeaders :: !Fields
   , requestBody    :: !RequestBody
+    -- | Whether the client said it will not discard trailer fields in
+    -- the response: @TE: trailers@ in HTTP/1.1, HTTP/2 and HTTP/3.
+    -- Declared trailers are sent either way; an application whose
+    -- trailers are necessary to the client should not rely on them
+    -- when this is 'False'. 'mkRequest' sets it to 'False'; the
+    -- protocol layer sets it with 'setAcceptsTrailers'.
+  , requestAcceptsTrailers :: !Bool
   }
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-6.5.1
+-- # The presence of the keyword "trailers" in the TE header field
+-- # (Section 10.1.4) of a request indicates that the client is willing to
+-- # accept trailer fields, on behalf of itself and any downstream
+-- # clients.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-6.5.1
+-- # Because of the potential for trailer fields to be discarded in
+-- # transit, a server SHOULD NOT generate trailer fields that it believes
+-- # are necessary for the user agent to receive.
+
+-- | Record whether the client accepts trailer fields. Only the
+-- application knows whether its trailers are necessary to the client,
+-- so the protocol layer tells it, rather than dropping them
+-- (docs/http1-core-design.md, D9).
+setAcceptsTrailers :: Bool -> Request -> Request
+setAcceptsTrailers b r = r { requestAcceptsTrailers = b }
 
 data RequestError
   = TargetNotValidForMethod     -- ^ the CONNECT or asterisk form used with another method, or an
@@ -218,7 +245,7 @@ mkRequest version method target fields body
   | method == CONNECT, version < HTTP_2, not (isConnectForm target) = Left TargetNotValidForMethod
   | Just n <- firstProtocolField fields  = Left (RequestProtocolField n)
   | not (null (lookupAll hHost fields))  = Left (RequestProtocolField hHost)
-  | otherwise = Right (Request version method (normalizeEmptyPath method target) fields body)
+  | otherwise = Right (Request version method (normalizeEmptyPath method target) fields body False)
   where
     isConnectForm TargetConnect{} = True
     isConnectForm _               = False

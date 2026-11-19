@@ -291,3 +291,17 @@ why: IPvFuture hosts are not served (design notes, P3)
 why: Host is removed from the fields given to the application
 - Right (target, fieldsFromList [ f | f@(n, _) <- fieldsToList fields, n /= hHost ])
 + Right (target, fields)
+
+file: src/Hyperdrive/HTTP1/Framing.hs
+
+why: only the trailers member counts, not a transfer coding named trailers with parameters
+- Just members -> ("trailers", False) `elem` concat members
++ Just members -> any ((== "trailers") . fst) (concat members)
+
+why: a TE that is not a valid list says nothing
+- Nothing      -> False
++ Nothing      -> True
+
+why: an invalid member makes the whole TE invalid, rather than being skipped
+- case traverse (either (const Nothing) (traverse (either (const Nothing) Just . coding)) . splitList NoComments)
++ case traverse (either (const Nothing) (traverse (Just . either (const ("", False)) id . coding)) . splitList NoComments)

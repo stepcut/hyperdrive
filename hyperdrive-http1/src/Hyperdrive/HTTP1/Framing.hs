@@ -14,6 +14,7 @@ module Hyperdrive.HTTP1.Framing
   , FramingError(..)
   , requestFraming
   , framingErrorStatus
+  , acceptsTrailers
     -- * Responses
   , Payload(..)
   , ResponseFraming(..)
@@ -25,7 +26,8 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Data.Word (Word64)
-import Hyperdrive.Semantics.Field (FieldName, FieldValue, Fields, hContentLength, hTransferEncoding, lookupAll, mkFieldValue)
+import Hyperdrive.Semantics.Field (FieldName, FieldValue, Fields, hContentLength, hTransferEncoding, lookupAll, mkFieldName, mkFieldValue)
+import Data.Maybe (fromJust)
 import Hyperdrive.Semantics.FieldSyntax (Comments(..), parseQuotedString, splitList)
 import Hyperdrive.Semantics.Message (HttpVersion, pattern HTTP_1_1)
 import Hyperdrive.Semantics.Method (Method, pattern CONNECT, pattern HEAD)
@@ -120,6 +122,32 @@ requestFraming version fields
           | ((c, _) : _) <- reverse earlier  -> Left (UnsupportedTransferCoding c)
           | otherwise                       -> Right Chunked
         _ -> Left ChunkedNotFinal
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-10.1.4
+-- # As described in Section 6.5, a TE field with a "trailers" member sent
+-- # in a request indicates that the client will not discard trailer
+-- # fields.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-10.1.4
+-- # TE                 = #t-codings
+-- # t-codings          = "trailers" / ( transfer-coding [ weight ] )
+
+-- | Whether the request's @TE@ has a @trailers@ member, for
+-- 'Hyperdrive.Semantics.Message.setAcceptsTrailers'.
+--
+-- A @TE@ that is not a valid list counts as not having one: it says
+-- nothing about the response's framing, so there is no need to reject
+-- the request. A weight (@;q=0.5@) has the syntax of a
+-- transfer-parameter, so 'coding' reads both, and @trailers;q=1@ is a
+-- transfer coding named trailers, not the @trailers@ member. The
+-- @Connection: TE@ its sender must also send is not required.
+acceptsTrailers :: Fields -> Bool
+acceptsTrailers fields =
+  case traverse (either (const Nothing) (traverse (either (const Nothing) Just . coding)) . splitList NoComments)
+                (lookupAll hTE fields) of
+    Just members -> ("trailers", False) `elem` concat members
+    Nothing      -> False
+  where hTE = fromJust (mkFieldName "TE")
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-10.1.4
 -- # transfer-coding    = token *( OWS ";" OWS transfer-parameter )

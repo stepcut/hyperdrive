@@ -345,3 +345,13 @@ file: src/Hyperdrive/Semantics/URI.hs
 why: only IPv4-mapped addresses use mixed notation; RFC 2765's IPv4-translated prefix is obsolete
 - | lo `shiftR` 32 == 0x0000FFFF = "::ffff:" <> renderIPv4 (fromIntegral lo)
 + | lo `shiftR` 32 == 0x0000FFFF || lo `shiftR` 32 == 0xFFFF0000 = "::ffff:" <> renderIPv4 (fromIntegral lo)
+
+file: src/Hyperdrive/Semantics/Message.hs
+
+why: a request accepts trailers only if the protocol layer says so
+- | otherwise = Right (Request version method (normalizeEmptyPath method target) fields body False)
++ | otherwise = Right (Request version method (normalizeEmptyPath method target) fields body True)
+
+why: setAcceptsTrailers sets what it is given
+- setAcceptsTrailers b r = r { requestAcceptsTrailers = b }
++ setAcceptsTrailers _ r = r { requestAcceptsTrailers = True }

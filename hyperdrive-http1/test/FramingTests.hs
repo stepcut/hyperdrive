@@ -4,10 +4,12 @@ module FramingTests (framingTests) where
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C
 import Data.Maybe (fromJust)
+import qualified Data.ByteString as B
+import Hyperdrive.ABNF.Generate (nearMisses, validStrings)
 import Hyperdrive.ABNF.Grammar (mkGrammar)
 import Hyperdrive.ABNF.HTTP (rfc3986, rfc9110, rfc9110Errata, withErrata)
 import Hyperdrive.ABNF.QQ (abnf)
-import Hyperdrive.ABNF.Recognize (ListForm(..), library, matches)
+import Hyperdrive.ABNF.Recognize (Library, ListForm(..), library, matches)
 import Hyperdrive.ABNF.Types (mkRuleName)
 import Hyperdrive.HTTP1.Framing
 import Hyperdrive.Semantics.Field
@@ -27,6 +29,7 @@ framingTests = testGroup "Framing (RFC 9112 Section 6)"
   , testProperty "responses: a client reads exactly the body sent (exhaustive)" prop_responseReadBack
   , testProperty "responses: the RFC's MUST NOTs and SHOULDs (exhaustive)" prop_responseRules
   , testProperty "responses: the framing fields for each kind of framing" prop_framingFields
+  , testProperty "TE: trailers, against RFC 9110's grammar" prop_acceptsTrailers
   ]
 
 ------------------------------------------------------------------------------
@@ -283,3 +286,73 @@ prop_framingFields = once $ conjoin
   , framingFields SendChunked === [(hTransferEncoding, value "chunked")]
   , framingFields SendUntilClose === []
   ]
+
+------------------------------------------------------------------------------
+-- TE
+------------------------------------------------------------------------------
+
+-- | TE from RFC 9110, and a TE whose members include "trailers" itself,
+-- written with the RFC's t-codings and the list syntax recipients
+-- accept (RFC 9110 Section 5.6.1.2).
+teLibrary :: Library
+teLibrary = library
+  [ ("L", grammar [abnf|
+      ; RFC 9110 Appendix A has the sender form of the list; this is #t-codings
+      ; as recipients accept it (Section 5.6.1.2)
+      TE          = #t-codings
+      t-codings   = <t-codings, see [HTTP], Section 10.1.4>
+      OWS         = <OWS, see [HTTP], Section 5.6.3>
+      te-trailers = *( [ t-codings ] OWS "," OWS ) "trailers" *( OWS "," OWS [ t-codings ] )
+      |])
+  , ("HTTP", grammar (withErrata rfc9110Errata rfc9110)), ("URI", grammar rfc3986) ]
+  where grammar = either (error . show) id . mkGrammar
+
+isTE, hasTrailersMember :: ByteString -> Bool
+isTE = teMatcher "TE"
+hasTrailersMember = teMatcher "te-trailers"
+
+teMatcher :: String -> ByteString -> Bool
+teMatcher r = let m = matches Recipient teLibrary "L" (fromJust (mkRuleName (C.pack r)))
+              in either (error . show) id . m
+
+genTE :: Gen ByteString
+genTE = resize 8 $ oneof (map (either (error . show) id)
+  [ validStrings Recipient teLibrary "L" (rule "TE"), validStrings Recipient teLibrary "L" (rule "te-trailers")
+  , nearMisses Recipient teLibrary "L" (rule "TE"), nearMisses Recipient teLibrary "L" (rule "te-trailers") ])
+  where rule = fromJust . mkRuleName
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-10.1.4
+-- # As described in Section 6.5, a TE field with a "trailers" member sent
+-- # in a request indicates that the client will not discard trailer
+-- # fields.
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-6.5.1
+-- # The presence of the keyword "trailers" in the TE header field
+-- # (Section 10.1.4) of a request indicates that the client is willing to
+-- # accept trailer fields, on behalf of itself and any downstream
+-- # clients.
+
+-- | One or two TE field lines, read as their combination: a valid TE
+-- with a trailers member.
+prop_acceptsTrailers :: Property
+prop_acceptsTrailers = checkCoverage $ withMaxSuccess 2000 $
+  forAll (resize 2 (listOf1 (genTE `suchThat` validValue))) $ \lines' ->
+    let values = [ fieldValueBytes v | Right v <- map mkFieldValue lines' ]
+        combined = B.intercalate ", " values
+        want = isTE combined && hasTrailersMember combined
+        fields = fieldsFromList [ (fromJust (mkFieldName "te"), v) | Right v <- map mkFieldValue lines' ]
+    in cover 25 want "trailers" $ cover 15 (not want && isTE combined) "valid, no trailers" $
+       cover 10 (not (isTE combined)) "invalid" $
+       counterexample (show values) $
+         acceptsTrailers fields === want
+     .&&. once (map (\v -> acceptsTrailers (te v)) examples === map snd teExamples)
+  where
+    validValue v = either (const False) (const True) (mkFieldValue v)
+    te v = fieldsFromList [(fromJust (mkFieldName "TE"), either (error . show) id (mkFieldValue v))]
+    examples = map fst teExamples
+
+teExamples :: [(ByteString, Bool)]
+teExamples =
+  [ ("trailers", True), ("Trailers", True), ("TRAILERS, deflate;q=0.5", True), ("gzip, trailers", True)
+  , (",trailers,", True), ("trailers;q=1", False), ("trailers ;q=1", False), ("deflate", False)
+  , ("", False), ("\"trailers\"", False), ("trailers, x;", False), ("trailer", False), ("trailers x", False) ]

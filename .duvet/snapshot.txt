@@ -668,9 +668,13 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!MUST]:    section unless the recipient understands the corresponding header
     TEXT[!MUST]:    field definition and that definition explicitly permits and defines
     TEXT[!MUST]:    how trailer field values can be safely merged.
-    TEXT[!SHOULD]:    Because of the potential for trailer fields to be discarded in
-    TEXT[!SHOULD]:    transit, a server SHOULD NOT generate trailer fields that it believes
-    TEXT[!SHOULD]:    are necessary for the user agent to receive.
+    TEXT[implementation,test]:    The presence of the keyword "trailers" in the TE header field
+    TEXT[implementation,test]:    (Section 10.1.4) of a request indicates that the client is willing to
+    TEXT[implementation,test]:    accept trailer fields, on behalf of itself and any downstream
+    TEXT[implementation,test]:    clients.
+    TEXT[!SHOULD,implementation]:    Because of the potential for trailer fields to be discarded in
+    TEXT[!SHOULD,implementation]:    transit, a server SHOULD NOT generate trailer fields that it believes
+    TEXT[!SHOULD,implementation]:    are necessary for the user agent to receive.
 
   SECTION: [Processing Trailer Fields](#section-6.5.2)
     TEXT[!MUST,exception]: Trailer fields that might be generated more
@@ -1318,6 +1322,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,exception]:    URI.
 
   SECTION: [TE](#section-10.1.4)
+    TEXT[implementation,test]:    As described in Section 6.5, a TE field with a "trailers" member sent
+    TEXT[implementation,test]:    in a request indicates that the client will not discard trailer
+    TEXT[implementation,test]:    fields.
+    TEXT[implementation]:      TE                 = #t-codings
+    TEXT[implementation]:      t-codings          = "trailers" / ( transfer-coding [ weight ] )
     TEXT[implementation,test]:      transfer-coding    = token *( OWS ";" OWS transfer-parameter )
     TEXT[implementation,test]:      transfer-parameter = token BWS "=" BWS ( token / quoted-string )
     TEXT[!MUST,exception]:    A sender of TE MUST also send a "TE" connection option within the

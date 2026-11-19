@@ -149,6 +149,12 @@ application knows whether its trailers are necessary; the core does
 not. HTTP/2 and HTTP/3 carry the same signal (`TE: trailers` is the
 one `TE` value they allow).
 
+Implemented: `requestAcceptsTrailers` and `setAcceptsTrailers` on
+`Request` (`mkRequest` leaves it `False`), and `acceptsTrailers` in
+`Hyperdrive.HTTP1.Framing`, which reads it from `TE`. A `TE` that is
+not a valid list counts as no `trailers` member rather than an error,
+and `Connection: TE` is not required.
+
 **D10. Upgrade and CONNECT.** Recommended for now: `Upgrade` in a
 request is ignored (the response is a normal one), and CONNECT gets
 whatever the application responds except 2xx, which `checkResponseFor`

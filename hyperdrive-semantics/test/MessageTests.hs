@@ -22,6 +22,7 @@ messageTests = testGroup "Message"
     , testProperty "protocol fields are rejected"              prop_requestProtocolFields
     , testProperty "Host is rejected: the authority is in the target" prop_requestHost
     , testProperty "bytesBody reads its bytes, then the end"   prop_bytesBody
+    , testProperty "trailers accepted: off until set, and nothing else changes" prop_acceptsTrailers
     ]
   , testGroup "Responses"
     [ testProperty "content rules for every status (exhaustive)" prop_responseContent
@@ -193,6 +194,18 @@ prop_requestHost = once $ monadicIO $ do
   assert (results' results)
   where
     results' rs = and [ either (== RequestProtocolField hHost) (const False) r | r <- rs ]
+
+prop_acceptsTrailers :: Property
+prop_acceptsTrailers = once $ monadicIO $ do
+  r <- run (request GET (uriTarget "/a") (fields [("Accept", "*/*")]))
+  case r of
+    Left e -> fail (show e)
+    Right req -> do
+      let summary q = (requestVersion q, requestMethod q, requestTarget q, requestHeaders q)
+      assert (not (requestAcceptsTrailers req))
+      assert (requestAcceptsTrailers (setAcceptsTrailers True req))
+      assert (not (requestAcceptsTrailers (setAcceptsTrailers False (setAcceptsTrailers True req))))
+      assert (summary (setAcceptsTrailers True req) == summary req)
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-8.3
 -- # Recipients often
