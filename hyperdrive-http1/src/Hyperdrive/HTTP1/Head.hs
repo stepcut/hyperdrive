@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE BangPatterns, OverloadedStrings, PatternSynonyms #-}
 -- | Parsing the head of an HTTP/1.1 request: the request line and the
 -- header section (RFC 9112, Sections 2 to 5).
 --
@@ -18,18 +18,21 @@ module Hyperdrive.HTTP1.Head
     -- * Field lines, also used for trailer sections
   , parseFieldLine
   , checkLine
+  , scanFieldLines
   ) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Unsafe as BU
 import Data.Maybe (fromJust)
+import qualified Data.Sequence as Seq
 import Data.Word (Word8)
-import Hyperdrive.Semantics.Field (FieldName, FieldValue, FieldValueError, Fields, fieldsFromList, mkFieldName, mkFieldValue)
+import Hyperdrive.Semantics.Field (FieldName, FieldValue, FieldValueError, Fields, emptyFields, fieldsFromList, mkFieldName, mkFieldValue)
+import Hyperdrive.Semantics.Internal (FieldName(..), FieldValue(..), Fields(..))
 import Hyperdrive.Semantics.Message (HttpVersion(..))
 import Hyperdrive.Semantics.Method (Method, mkMethod)
 import Hyperdrive.Semantics.Status (Status, mkStatus, pattern BadRequest, pattern HTTPVersionNotSupported, pattern NotImplemented, pattern URITooLong)
-import Hyperdrive.Semantics.Syntax (isTChar)
+import Hyperdrive.Semantics.Syntax (isOWS, isTChar)
 
 -- | A request head as received. The request target is checked only for
 -- its characters here; it is turned into a 'Hyperdrive.Semantics.Target.Target',
@@ -158,16 +161,17 @@ parseRequestHead limits searched input =
           -- A head that parses has no CR or LF in it (names are tokens,
           -- values are checked by mkFieldValue, the request line is
           -- visible characters), so the line checks are skipped when it
-          -- does; any failure takes the full path, which finds the error
-          -- that comes first.
+          -- does, and the field lines are read by scanFieldLines
+          -- without splitting them first; any failure takes the full path, which finds
+          -- the error that comes first.
           withinLimits = B.length requestLine <= maxRequestLine limits
             && B.length head' + 4 - B.length requestLine - 2 <= maxFieldSection limits
-            && length fieldLines <= maxFields limits
+          fast | B.null rest = Just emptyFields
+               | otherwise   = scanFieldLines (maxFields limits) (B.drop 2 rest)
       in if not withinLimits then full requestLine fieldLines else
          case parseRequestLine requestLine of
-           Right (method, target, 1, minor) -> case mapM parseFieldLine fieldLines of
-             Right fields -> HeadComplete (RawRequestHead method target (HttpVersion 1 minor) (fieldsFromList fields)) consumed
-             Left _ -> full requestLine fieldLines
+           Right (method, target, 1, minor)
+             | Just fields <- fast -> HeadComplete (RawRequestHead method target (HttpVersion 1 minor) fields) consumed
            _ -> full requestLine fieldLines
       where
        full requestLine fieldLines = either HeadError (\h -> HeadComplete h consumed) $ do
@@ -193,6 +197,41 @@ splitLines :: ByteString -> [ByteString]
 splitLines bs = case B.breakSubstring "\r\n" bs of
   (line, rest) | B.null rest -> [line]
                | otherwise   -> line : splitLines (B.drop 2 rest)
+
+-- | The field lines of a header section (without the CRLF CRLF that
+-- ends it), if every line is a valid field line and there are at most
+-- this many; 'Nothing' otherwise, for the full path to report. Each
+-- line is found with one search for CR (memchr) and checked with one
+-- scan of its value. It accepts exactly what 'splitLines', 'checkLine' and
+-- 'parseFieldLine' do and gives the same fields: a name of tchars
+-- (lower-cased), a colon, and a value of field-vchars, SP and HTAB
+-- with the whitespace at either end left out.
+scanFieldLines :: Int -> ByteString -> Maybe Fields
+scanFieldLines limit section0 = line 0 [] section0
+  where
+    line :: Int -> [(FieldName, FieldValue)] -> ByteString -> Maybe Fields
+    line !count acc s
+      | count >= limit = Nothing
+      | otherwise =
+          -- the line ends at the end of the section, or at a CRLF
+          let (l, more) = case B.elemIndex 0x0D s of
+                Nothing -> (s, Nothing)
+                Just k  -> (BU.unsafeTake k s, Just (BU.unsafeDrop (k + 1) s))
+              name = B.takeWhile isTChar l
+              afterName = BU.unsafeDrop (B.length name) l
+              raw = BU.unsafeTail afterName
+          in if B.null name || B.null afterName || BU.unsafeHead afterName /= 0x3A
+                || not (B.all isValueOctet raw) then Nothing else
+             let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
+                 !field = (FieldName (if B.any isUpper name then B.map toLower name else name), FieldValue v)
+             in case more of
+                  Nothing -> Just (Fields (Seq.fromList (reverse (field : acc))))
+                  Just r | not (B.null r), BU.unsafeHead r == 0x0A -> line (count + 1) (field : acc) (BU.unsafeTail r)
+                         | otherwise -> Nothing
+    -- field-vchar, SP or HTAB
+    isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
+    isUpper w = w >= 0x41 && w <= 0x5A
+    toLower w = if isUpper w then w + 0x20 else w
 
 -- = https://www.rfc-editor.org/rfc/rfc9112#section-2.2
 -- # A recipient of such a bare CR MUST consider that element to be

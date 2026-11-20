@@ -207,3 +207,29 @@ Timings need a quiet machine (ask first); allocation counts do not.
   readable. Without that, `strace -c -f` on a server started as its
   child (`ptrace_scope` 1 forbids attaching) counts system calls, at
   the cost of slowing it down.
+
+## 2026-11-20: field lines without the line-by-line parse
+
+The fast path for a valid head split the field section into lines and
+ran each through `parseFieldLine`, which went over it about seven times
+(the CRLF search, the tchar span, `isToken` again in `mkFieldName`, the
+upper-case check, OWS stripped from each end, and `mkFieldValue`'s
+scan), building a tuple and slices at each step. `scanFieldLines`
+finds each line's end with one search for CR (memchr), takes the name
+with one tchar span, and checks the value with one scan of plain
+comparisons; anything it does not accept goes to the full path, as
+before. Against abff6b4 on a quiet machine (`bench-driver 300000`,
+alternating runs on one core, means of 5; allocation exact):
+
+| | minimal request | browser request |
+|---|---|---|
+| abff6b4 | 2.436 µs, 9000 bytes | 9.019 µs, 18639 bytes |
+| a single pass over each section, classifying octets with a 256-entry table | 2.403 µs, 8976 bytes | 9.121 µs, 14711 bytes |
+| memchr for line ends and range checks for values (kept) | 2.262 µs, 8928 bytes | 7.306 µs, 15975 bytes |
+
+The table version allocated least but was slower than before (its
+times are from a round against abff6b4 at 2.373 and 8.816 µs): a
+lookup and a mask for every octet lose to memchr and two comparisons.
+A first draft of it, whose loop carried the field it would build as a
+`where` binding, allocated 37600 bytes for the browser request: the
+binding was rebuilt for every octet of the value.

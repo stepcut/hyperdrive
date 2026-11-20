@@ -455,5 +455,41 @@ why: a head over the limits takes the full path, which rejects it
 + in if False then full requestLine fieldLines else
 
 why: a version other than 1 takes the full path, which answers 505
-- Right (method, target, 1, minor) -> case mapM parseFieldLine fieldLines of
-+ Right (method, target, _, minor) -> case mapM parseFieldLine fieldLines of
+- Right (method, target, 1, minor)
++ Right (method, target, _, minor)
+
+why: the one-pass scan stops at the limit on field lines
+- | count >= limit = Nothing
++ | count > limit = Nothing
+
+why: a field name is not empty
+- if B.null name || B.null afterName
++ if B.null afterName
+
+why: a line ends only at CRLF, not at a bare CR
+- Just r | not (B.null r), BU.unsafeHead r == 0x0A -> line
++ Just r | not (B.null r) -> line
+
+why: field names are lower-cased
+- !field = (FieldName (if B.any isUpper name then B.map toLower name else name), FieldValue v)
++ !field = (FieldName name, FieldValue v)
+
+why: whitespace at the end of a value is not part of it
+- let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
++ let !v = B.dropWhile isOWS raw
+
+why: whitespace after the colon is not part of the value
+- let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
++ let !v = B.dropWhileEnd isOWS raw
+
+why: a value may contain HTAB
+- isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
++ isValueOctet w = (w >= 0x20 && w /= 0x7F)
+
+why: DEL is a control character, not allowed in a value
+- isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
++ isValueOctet w = w >= 0x20 || w == 0x09
+
+why: obs-text is allowed in a value
+- isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
++ isValueOctet w = (w >= 0x20 && w < 0x7F) || w == 0x09

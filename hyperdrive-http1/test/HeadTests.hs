@@ -27,6 +27,7 @@ headTests = testGroup "Request head (RFC 9112 Sections 2 to 5)"
   , testProperty "reading in pieces gives the same result as reading at once" prop_incremental
   , testProperty "what is parsed is what was sent" prop_contents
   , testProperty "limits, at their boundaries" prop_limits
+  , testProperty "the one-pass field lines agree with the line-by-line parse" prop_scanFieldLines
   , testProperty "each rule, by example" prop_examples
   , testProperty "the status for each error" prop_statuses
   ]
@@ -149,6 +150,39 @@ prop_contents = withMaxSuccess 500 $
                     === [ (C.map toLower' k, v) | (k, v) <- fs ]
          r -> counterexample (show (wire, r)) False
   where toLower' c = if c >= 'A' && c <= 'Z' then toEnum (fromEnum c + 32) else c
+
+-- | The fast path's 'scanFieldLines' accepts exactly the sections that
+-- splitting into lines, 'checkLine' and 'parseFieldLine' accept, within
+-- the limit on lines, and gives the same fields.
+prop_scanFieldLines :: Property
+prop_scanFieldLines = checkCoverage $ withMaxSuccess 5000 $
+  forAll (elements [0, 1, 2, 3, 100]) $ \limit ->
+  forAll genSection $ \s ->
+    let ls = splitOn s
+        reference = do
+          mapM_ checkLine ls
+          if length ls > limit then Left TooManyFields else Right ()
+          fieldsFromList <$> mapM parseFieldLine ls
+    in counterexample (show (s, ls)) $
+         cover 30 (either (const False) (const True) reference) "valid" $
+         scanFieldLines limit s === either (const Nothing) Just reference
+  where
+    -- lines of names, colons, whitespace and value octets, and now and
+    -- then an octet that does not belong
+    genSection = B.intercalate "\r\n" <$> resize 6 (listOf1 genLine)
+    genLine = frequency
+      [ (30, (\n ws1 v ws2 -> n <> ":" <> ws1 <> v <> ws2) <$> part1 nameOctets <*> part ows <*> part valueOctets <*> part ows)
+      , (1, B.pack <$> listOf (elements (B.unpack (nameOctets <> ows <> valueOctets <> odd'))))
+      ]
+    part cs = B.pack <$> resize 4 (listOf (elements (B.unpack cs)))
+    part1 cs = B.pack <$> resize 4 (listOf1 (elements (B.unpack cs)))
+    nameOctets = "aZ-!~09"
+    ows = " \t"
+    valueOctets = "aZ\"(,;=\x80\xFF"
+    odd' = ":\r\n\x00\x7F\x1F \t"
+    splitOn bs = case B.breakSubstring "\r\n" bs of
+      (l, rest) | B.null rest -> [l]
+                | otherwise   -> l : splitOn (B.drop 2 rest)
 
 ------------------------------------------------------------------------------
 -- limits
