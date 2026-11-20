@@ -19,7 +19,26 @@ executable bench-hyperdrive
   main-is:          Hyperdrive.hs
   build-depends:    hyperdrive-semantics, hyperdrive-server
 
+-- Off in bench/local.project, which builds the others with cabal in
+-- the ordinary dev shell (where warp is not available).
+flag warp
+  description: build bench-warp
+  default:     True
+  manual:      True
+
 executable bench-warp
   import:           server
   main-is:          Warp.hs
-  build-depends:    http-types, wai, warp
+  if flag(warp)
+    build-depends:  http-types, wai, warp
+  else
+    buildable:      False
+
+-- The driver and the core in process, one connection, no sockets
+-- (Driver.hs). Not built with the threaded RTS's parallel GC settings
+-- above: it runs on one core.
+executable bench-driver
+  default-language: GHC2021
+  main-is:          Driver.hs
+  ghc-options:      -Wall -O2 -threaded -rtsopts "-with-rtsopts=-A32m"
+  build-depends:    base >= 4.18 && < 5, bytestring, network, hyperdrive-semantics, hyperdrive-server

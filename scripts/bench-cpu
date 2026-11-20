@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# CPU per request: requests a second, and microseconds of user and
+# kernel CPU and page faults per request, for hyperdrive and warp on
+# small responses (100 connections). Steadier than requests a second
+# alone, and says where the time goes.
+#
+#   nix develop .#bench -c scripts/bench-cpu
+#
+# The server runs on cores 0-7 and wrk on 8-15 (separate CCDs on a
+# 16-core Ryzen). Timings: ask for a quiet machine first. RUNS (default
+# 2) runs of each, DURATION (default 5) seconds each.
+set -euo pipefail
+
+RUNS=${RUNS:-2}
+DURATION=${DURATION:-5}
+PORT=18095
+
+for server in hyperdrive warp; do
+  for _ in $(seq "$RUNS"); do
+    taskset -c 0-7 "bench-$server" "$PORT" +RTS -N8 -RTS &
+    pid=$!
+    trap 'kill $pid 2>/dev/null || true' EXIT
+    for _ in $(seq 50); do
+      (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break
+      sleep 0.1
+    done
+    # fields 10, 14 and 15 of /proc/PID/stat: minor faults, user and
+    # kernel time in clock ticks (100 a second)
+    read -r f0 u0 s0 < <(awk '{print $10, $14, $15}' /proc/$pid/stat)
+    rps=$(taskset -c 8-15 wrk -t8 -c100 -d"${DURATION}s" "http://127.0.0.1:$PORT/" | awk '/Requests\/sec/ {print $2}')
+    read -r f1 u1 s1 < <(awk '{print $10, $14, $15}' /proc/$pid/stat)
+    awk -v n="$server" -v r="$rps" -v d="$DURATION" -v u=$((u1 - u0)) -v s=$((s1 - s0)) -v f=$((f1 - f0)) \
+      'BEGIN { printf "%-10s %8.0f req/s: user %.2f us, kernel %.2f us, %.3f page faults per request\n",
+               n, r, u * 10000 / (r * d), s * 10000 / (r * d), f / (r * d) }'
+    kill "$pid"; wait "$pid" 2>/dev/null || true
+    trap - EXIT
+    sleep 1
+  done
+done

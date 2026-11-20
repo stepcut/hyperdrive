@@ -171,3 +171,39 @@ The first saves the eight lookups a request makes from scanning every
 field (and one rebuild of the fields); the second relies on a head that
 parses having no CR or LF in it, and falls back to the full checks,
 whose errors and their order are unchanged, when it does not.
+
+## How to measure (tools kept from this work)
+
+Timings need a quiet machine (ask first); allocation counts do not.
+
+- `nix develop .#bench -c scripts/bench`: the comparison with warp
+  over sockets (the tables above).
+- `nix develop .#bench -c scripts/bench-cpu`: requests a second, and
+  user and kernel CPU and page faults per request, for both servers.
+- `bench-driver [N] [browser]` (in the bench shell, or built with
+  `bench/local.project`): the driver and core in process, one
+  connection, no sockets; time and bytes allocated per request, for
+  wrk's request or a browser's. Pin it to a core
+  (`taskset -c 2 bench-driver 300000 browser`). The quickest and
+  steadiest measure of the server's own work.
+- Comparing two commits: `git worktree add /tmp/before <commit>`, a copy
+  of `bench/local.project` there, build `bench-driver` in each, and run
+  them alternately several times (single runs vary by a few per cent).
+- Allocation and GC: add `+RTS -s` to a run. Heap by closure type (no
+  profiling build needed): `+RTS -hT -i0.2`, then read the `.hp` file;
+  this is how the space leak was found (live heap growing with the
+  number of requests).
+- Where allocation and time go by function: a profiling build
+  (`bench/local.project`, `--enable-profiling
+  --profiling-detail=all-functions --builddir=dist-prof`), run with
+  `+RTS -p`. Proportions only: profiling stops small functions from
+  being inlined, so predicates like `isFieldVChar` show allocation they
+  do not have in a normal build.
+- CPU profiles: `nix shell nixpkgs#perf`, then `perf record -F 4000 -p
+  PID -- sleep 4` while `wrk` runs, and `perf report --sort symbol`.
+  Kernel symbols need `sudo sysctl kernel.perf_event_paranoid=1
+  kernel.kptr_restrict=0` (restore with 2 and 1 afterwards); counting
+  system calls with perf tracepoints also needs `/sys/kernel/tracing`
+  readable. Without that, `strace -c -f` on a server started as its
+  child (`ptrace_scope` 1 forbids attaching) counts system calls, at
+  the cost of slowing it down.

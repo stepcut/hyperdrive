@@ -1,0 +1,21 @@
+-- Builds the hyperdrive benchmarks with cabal in the ordinary dev shell,
+-- against the working tree, for quick runs and profiling builds:
+--
+--   cabal build --project-file=bench/local.project --builddir=dist-bench bench-driver
+--   cabal build --project-file=bench/local.project --builddir=dist-prof bench-driver \
+--     --enable-profiling --profiling-detail=all-functions
+--
+-- (a build directory of their own, so that the main project's is not
+-- reconfigured each time)
+--
+-- (bench-warp needs warp, which only the bench dev shell has.)
+packages: hyperdrive-semantics/
+          hyperdrive-abnf/
+          hyperdrive-http1/
+          hyperdrive-server/
+          bench/
+
+tests: False
+
+package hyperdrive-bench
+  flags: -warp
