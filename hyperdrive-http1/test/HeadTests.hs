@@ -171,12 +171,17 @@ prop_scanFieldLines = checkCoverage $ withMaxSuccess 5000 $
     -- then an octet that does not belong
     genSection = B.intercalate "\r\n" <$> resize 6 (listOf1 genLine)
     genLine = frequency
-      [ (30, (\n ws1 v ws2 -> n <> ":" <> ws1 <> v <> ws2) <$> part1 nameOctets <*> part ows <*> part valueOctets <*> part ows)
+      [ (30, (\n ws1 v ws2 -> n <> ":" <> ws1 <> v <> ws2) <$> oneof [part1 nameOctets, commonName] <*> part ows <*> part valueOctets <*> part ows)
       , (1, B.pack <$> listOf (elements (B.unpack (nameOctets <> ows <> valueOctets <> odd'))))
       ]
     part cs = B.pack <$> resize 4 (listOf (elements (B.unpack cs)))
+    -- common names and near misses, in any mixture of cases
+    commonName = do
+      n <- elements ["host", "user-agent", "accept-encoding", "sec-fetch-mode", "te", "x-requested-with", "hosts", "user_agent", "accept-encodinf", "~ost", "^ost"]
+      B.pack <$> mapM (\w -> elements [w, upper w]) (B.unpack n)
+    upper w = if w >= 0x61 && w <= 0x7A then w - 0x20 else w
     part1 cs = B.pack <$> resize 4 (listOf1 (elements (B.unpack cs)))
-    nameOctets = "aZ-!~09"
+    nameOctets = "aZ-!~^09"
     ows = " \t"
     valueOctets = "aZ\"(,;=\x80\xFF"
     odd' = ":\r\n\x00\x7F\x1F \t"
@@ -282,6 +287,9 @@ prop_examples = once $ conjoin
   , result "GET / HTTP/1.1\r\nHost a\r\n\r\n" === "InvalidFieldLine"
   , result "GET / HTTP/1.1\r\n: a\r\n\r\n" === "InvalidFieldLine"
   , result "GET / HTTP/1.1\r\nHost: a\0b\r\n\r\n" === "InvalidFieldValue ContainsCRLFNUL"
+  , result "GET / HTTP/1.1\r\nHost: a\DELb\r\n\r\n" === "InvalidFieldValue ContainsCTL"
+  , result "GET / HTTP/1.1\r\nHost: a\x1F\&b\r\n\r\n" === "InvalidFieldValue ContainsCTL"
+  , result "GET / HTTP/1.1\r\nHost: a\tb \x80\xFF\r\n\r\n" === "complete 32"
   , result "GET  / HTTP/1.1\r\n\r\n" === "InvalidRequestLine"
   , result "GET\t/ HTTP/1.1\r\n\r\n" === "InvalidRequestLine"
   , result "GET / HTTP/1.1 \r\n\r\n" === "InvalidRequestLine"

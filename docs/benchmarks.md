@@ -233,3 +233,13 @@ lookup and a mask for every octet lose to memchr and two comparisons.
 A first draft of it, whose loop carried the field it would build as a
 `where` binding, allocated 37600 bytes for the browser request: the
 binding was rebuilt for every octet of the value.
+
+Sharing common field names rather than copying them to lower case (a
+table of 38 names by length, compared ignoring case; a name with no
+capitals was already a slice, not a copy) saved 80 bytes per request on
+the minimal request and 1055 on the browser's, but was slower against
+91e894d (means of 5): minimal 2.268 to 2.376 µs, browser 7.265 to
+7.659 µs; with the lookup kept out of line, 2.302 to 2.407 and 7.420 to
+7.918. Not kept: copying a short name costs less than finding it. A
+first version that searched with `filter` saved almost nothing, as
+boxing the name for its closure cost what the copy did.
