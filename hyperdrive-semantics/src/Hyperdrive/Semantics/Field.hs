@@ -17,6 +17,7 @@ module Hyperdrive.Semantics.Field
   , fieldsFromList
   , fieldsToList
   , appendField
+  , partitionFields
   , lookupSingleton
   , RepeatedField(..)
   , lookupFirst
@@ -181,6 +182,12 @@ fieldsToList (Fields fs) = toList fs
 -- | add a field line after all existing field lines. /O(1)/
 appendField :: FieldName -> FieldValue -> Fields -> Fields
 appendField n v (Fields fs) = Fields (fs |> (n, v))
+
+-- | The field lines whose names satisfy the predicate, and the others,
+-- each in their original order. /O(n)/
+partitionFields :: (FieldName -> Bool) -> Fields -> (Fields, Fields)
+partitionFields p (Fields fs) = case Seq.partition (p . fst) fs of
+  (yes, no) -> (Fields yes, Fields no)
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-8.3
 -- # Although Content-Type is defined as a singleton field, it is

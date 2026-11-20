@@ -26,6 +26,10 @@ why: DELETE is idempotent
 
 file: src/Hyperdrive/Semantics/Field.hs
 
+why: partitionFields puts each line on the side its name belongs to
+- (yes, no) -> (Fields yes, Fields no)
++ (yes, no) -> (Fields no, Fields yes)
+
 why: field names are case-insensitive, and normalized to lower case
 - | isUpper w = w + 0x20
 + | isUpper w = w

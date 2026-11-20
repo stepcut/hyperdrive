@@ -154,3 +154,20 @@ manager's registration path (`sock_poll` 2.0%, `do_epoll_ctl` 1.4%,
 connections its non-blocking receive often finds nothing and it
 registers with epoll to wait, more often than warp does. Counting the
 calls needs the tracing file system readable, which it is not here.
+
+## 2026-11-19 (night): the cost of header fields
+
+A browser's request (13 fields) cost four times wrk's (one field). Two
+changes, timed in process against ec75509 on a quiet machine
+(alternating runs on one core; means):
+
+| | minimal request | browser request |
+|---|---|---|
+| ec75509 | 2.31 µs | 9.88 µs |
+| fields split once into Host and the protocol fields, which every lookup needs, and the rest, which the application gets (3 runs) | 2.38 µs | 9.12 µs |
+| and valid heads skip the per-line CR/LF scans (5 runs against the line above: 2.26 to 2.22, 8.88 to 8.55) | 2.22 µs | 8.55 µs |
+
+The first saves the eight lookups a request makes from scanning every
+field (and one rebuild of the fields); the second relies on a head that
+parses having no CR or LF in it, and falls back to the full checks,
+whose errors and their order are unchanged, when it does not.

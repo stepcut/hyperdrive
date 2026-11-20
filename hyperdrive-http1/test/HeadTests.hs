@@ -177,6 +177,8 @@ prop_limits = once $ conjoin
     -- the number of field lines
   , property (ok (head' (replicate 100 "a: b")))
   , err (head' (replicate 101 "a: b")) === Just TooManyFields
+    -- exactly the limit, with one line malformed: that is the error
+  , err (head' (replicate 99 "a: b" ++ ["a b"])) === Just InvalidFieldLine
   ]
   where
     -- a request line of n octets

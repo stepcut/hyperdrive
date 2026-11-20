@@ -155,7 +155,22 @@ parseRequestHead limits searched input =
     parseHead head' consumed =
       let (requestLine, rest) = B.breakSubstring "\r\n" head'
           fieldLines = if B.null rest then [] else splitLines (B.drop 2 rest)
-      in either HeadError (\h -> HeadComplete h consumed) $ do
+          -- A head that parses has no CR or LF in it (names are tokens,
+          -- values are checked by mkFieldValue, the request line is
+          -- visible characters), so the line checks are skipped when it
+          -- does; any failure takes the full path, which finds the error
+          -- that comes first.
+          withinLimits = B.length requestLine <= maxRequestLine limits
+            && B.length head' + 4 - B.length requestLine - 2 <= maxFieldSection limits
+            && length fieldLines <= maxFields limits
+      in if not withinLimits then full requestLine fieldLines else
+         case parseRequestLine requestLine of
+           Right (method, target, 1, minor) -> case mapM parseFieldLine fieldLines of
+             Right fields -> HeadComplete (RawRequestHead method target (HttpVersion 1 minor) (fieldsFromList fields)) consumed
+             Left _ -> full requestLine fieldLines
+           _ -> full requestLine fieldLines
+      where
+       full requestLine fieldLines = either HeadError (\h -> HeadComplete h consumed) $ do
            checkLine requestLine
            mapM_ checkLine fieldLines
            if B.length requestLine > maxRequestLine limits then Left (lineTooLong requestLine) else Right ()

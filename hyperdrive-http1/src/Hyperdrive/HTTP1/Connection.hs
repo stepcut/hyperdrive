@@ -289,22 +289,26 @@ startRequest :: Config -> RawRequestHead -> Either Status (RequestHead, Maybe Bo
 startRequest config raw = do
   let version = headVersion raw
       method = headMethod raw
-      fields = headFields raw
-  framing <- either (Left . framingErrorStatus) Right (requestFraming version fields)
-  (target, fields') <- either (Left . targetErrorStatus) Right
-                         (reconstructTarget (configTarget config) version method (headTarget raw) fields)
+      -- One pass splits the fields: Host and the protocol fields, which
+      -- the core interprets and which are all its lookups need, and the
+      -- rest, which is what the application gets. A request with a dozen
+      -- fields usually has one to three of the first kind, so the
+      -- lookups below scan those rather than every field.
+      (connectionLevel, fields) = partitionFields (\n -> n == hHost || isProtocolField n) (headFields raw)
+  framing <- either (Left . framingErrorStatus) Right (requestFraming version connectionLevel)
+  (target, _) <- either (Left . targetErrorStatus) Right
+                   (reconstructTarget (configTarget config) version method (headTarget raw) connectionLevel)
   -- Q2: CONNECT has no content (RFC 9110 Section 9.3.6, M10)
   if method == CONNECT && framing /= NoBody then Left BadRequest else Right ()
+  -- Expect is not a protocol field: the application sees it too
   expects100 <- expectation version fields
-  closeRequested <- maybe (Left BadRequest) Right (connectionClose fields)
+  closeRequested <- maybe (Left BadRequest) Right (connectionClose connectionLevel)
   let (body, len) = case framing of
         NoBody          -> (Nothing, Just 0)
         ContentLength 0 -> (Nothing, Just 0)
         ContentLength n -> (Just (Remaining n), Just n)
         Chunked         -> (Just (ChunkedBody startDecoder), Nothing)
-      h = RequestHead version method target
-            (fieldsFromList [ f | f@(n, _) <- fieldsToList fields', not (isProtocolField n) ])
-            len (acceptsTrailers fields)
+      h = RequestHead version method target fields len (acceptsTrailers connectionLevel)
   -- = https://www.rfc-editor.org/rfc/rfc9112#section-9.3
   -- # If the received protocol is HTTP/1.1 (or later), the connection
   -- # will persist after the current response

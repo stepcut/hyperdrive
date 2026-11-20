@@ -35,6 +35,9 @@ fieldSyntaxTests = testGroup "FieldSyntax"
     , testProperty "split then join is the identity"           prop_splitJoin
     , testProperty "each field line is split separately"        prop_fieldLines
     ]
+  , testGroup "Fields"
+    [ testProperty "partitionFields keeps every line once, in order, on the right side" prop_partitionFields
+    ]
   , testGroup "Entity tags"
     [ testProperty "splitEntityTags agrees with #entity-tag (exhaustive)" prop_entityTagsExhaustive
     , testProperty "examples"                                         prop_entityTagExamples
@@ -380,3 +383,14 @@ prop_entityTagExamples = conjoin
   , splitEntityTags (value "\"a b\"") === Left InvalidEntityTag
   , splitEntityTags (value "\"caf\xE9\"") === Right ["\"caf\xE9\""]
   ]
+
+prop_partitionFields :: Property
+prop_partitionFields =
+  forAll (listOf ((,) <$> elements ["host", "a", "b", "Content-Length", "x-y"] <*> elements ["1", "", "v w"])) $ \ls ->
+  forAll (sublistOf ["host", "a", "content-length"]) $ \chosen ->
+    let fs = fieldsFromList [ (n, v) | (n', v') <- ls, Just n <- [mkFieldName n'], Right v <- [mkFieldValue v'] ]
+        p n = fieldNameBytes n `elem` chosen
+        pairs = map (\(n, v) -> (fieldNameBytes n, fieldValueBytes v)) . fieldsToList
+        (yes, no) = partitionFields p fs
+    in (pairs yes, pairs no)
+         === ( [ x | x@(n, _) <- pairs fs, n `elem` chosen ], [ x | x@(n, _) <- pairs fs, n `notElem` chosen ] )

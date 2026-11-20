@@ -437,3 +437,23 @@ why: Content-Length is the decimal number of octets
 why: a length of zero is "0", not empty
 - decimalBytes 0 = "0"
 + decimalBytes 0 = ""
+
+file: src/Hyperdrive/HTTP1/Connection.hs
+
+why: Host and the protocol fields are the core's; the application gets the rest
+- (connectionLevel, fields) = partitionFields (\n -> n == hHost || isProtocolField n) (headFields raw)
++ (connectionLevel, fields) = partitionFields isProtocolField (headFields raw)
+
+why: Expect is the application's too, and is looked up among its fields
+- expects100 <- expectation version fields
++ expects100 <- expectation version connectionLevel
+
+file: src/Hyperdrive/HTTP1/Head.hs
+
+why: a head over the limits takes the full path, which rejects it
+- in if not withinLimits then full requestLine fieldLines else
++ in if False then full requestLine fieldLines else
+
+why: a version other than 1 takes the full path, which answers 505
+- Right (method, target, 1, minor) -> case mapM parseFieldLine fieldLines of
++ Right (method, target, _, minor) -> case mapM parseFieldLine fieldLines of
