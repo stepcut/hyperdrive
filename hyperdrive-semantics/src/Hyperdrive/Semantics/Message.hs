@@ -104,12 +104,15 @@ pattern HTTP_3   = HttpVersion 3 0
 -- @Upgrade@ and @Content-Length@. They are interpreted and generated
 -- by the protocol layer, and never appear in a 'Request' or 'Response'.
 isProtocolField :: FieldName -> Bool
-isProtocolField (FieldName n) = n `elem` protocolFields
-
-protocolFields :: [ByteString]
-protocolFields =
-  [ "connection", "keep-alive", "proxy-connection", "te"
-  , "transfer-encoding", "upgrade", "content-length" ]
+-- by length first: most names are then ruled out by one comparison
+isProtocolField (FieldName n) = case B.length n of
+  2  -> n == "te"
+  7  -> n == "upgrade"
+  10 -> n == "connection" || n == "keep-alive"
+  14 -> n == "content-length"
+  16 -> n == "proxy-connection"
+  17 -> n == "transfer-encoding"
+  _  -> False
 
 firstProtocolField :: Fields -> Maybe FieldName
 firstProtocolField (Fields fs) = fst <$> find (isProtocolField . fst) fs

@@ -20,6 +20,7 @@ messageTests = testGroup "Message"
     [ testProperty "the target form must suit the method"      prop_requestTargetForms
     , testProperty "an empty path is normalized"               prop_requestEmptyPath
     , testProperty "protocol fields are rejected"              prop_requestProtocolFields
+    , testProperty "isProtocolField is exactly the seven names" prop_isProtocolField
     , testProperty "Host is rejected: the authority is in the target" prop_requestHost
     , testProperty "bytesBody reads its bytes, then the end"   prop_bytesBody
     , testProperty "trailers accepted: off until set, and nothing else changes" prop_acceptsTrailers
@@ -105,6 +106,22 @@ prop_requestProtocolFields = once $ monadicIO $ do
   assert (all isLeft rejected)
   assert (isRight accepted)
   assert (map isProtocolField [field "Host", field "Content-Type", field "Trailer"] == [False, False, False])
+
+-- | The seven names and no others, including names of the same lengths
+-- that differ in one octet.
+prop_isProtocolField :: Property
+prop_isProtocolField = conjoin
+  [ once $ conjoin [ isProtocolField (field n) === True | n <- seven ]
+  , once $ conjoin [ counterexample (show n') (isProtocolField (field n') === False)
+                   | n <- seven, i <- [0 .. C.length n - 1]
+                   , let n' = C.take i n <> "x" <> C.drop (i + 1) n, n' `notElem` seven ]
+  , forAll (elements (seven ++ ["host", "accept", "user-agent", "trailer", "content-type", "x"])) $ \n ->
+      forAll (C.pack <$> sublistOf (C.unpack n)) $ \n' ->
+        not (C.null n') ==> isProtocolField (field n') === (n' `elem` seven)
+  ]
+  where
+    seven = [ "connection", "keep-alive", "proxy-connection", "te"
+            , "transfer-encoding", "upgrade", "content-length" ]
 
 prop_bytesBody :: Property
 prop_bytesBody = once $ monadicIO $ do

@@ -243,3 +243,23 @@ the minimal request and 1055 on the browser's, but was slower against
 7.918. Not kept: copying a short name costs less than finding it. A
 first version that searched with `filter` saved almost nothing, as
 boxing the name for its closure cost what the copy did.
+
+## 2026-11-20: protocol fields by length
+
+Every field of a request is classified as a protocol field or not up to
+three times (splitting off the core's fields, and `mkRequest`'s check
+of the application's), and `isProtocolField` compared the name with a
+list of seven. It now switches on the name's length first, so most
+names are ruled out by one comparison. Against 91e894d (alternating
+runs on one core, means; quiet machine for the browser request):
+
+| | minimal request | browser request |
+|---|---|---|
+| 91e894d | 2.337 µs, 8928 bytes | 7.395 µs, 15975 bytes |
+| by length | 2.403 µs, 8928 bytes | 5.960 µs, 15711 bytes |
+
+The minimal request, which makes only one or two of these checks,
+looked 3 to 4% slower in the first twelve pairs; an A/A comparison
+(the same code built in both trees) showed no difference from where
+it was built, and seven more pairs after a rebuild gave 2.402 and
+2.411 µs, with the machine busier. Taken as noise.
