@@ -212,22 +212,29 @@ scanFieldLines limit section0 = line 0 [] section0
     line :: Int -> [(FieldName, FieldValue)] -> ByteString -> Maybe Fields
     line !count acc s
       | count >= limit = Nothing
+      -- the line ends at the end of the section, or at a CRLF
+      | otherwise = case B.elemIndex 0x0D s of
+          Nothing -> case fieldLine s of
+            Just field -> Just (Fields (Seq.fromList (reverse (field : acc))))
+            Nothing    -> Nothing
+          Just k
+            | k + 1 < B.length s, BU.unsafeIndex s (k + 1) == 0x0A -> case fieldLine (BU.unsafeTake k s) of
+                Just field -> line (count + 1) (field : acc) (BU.unsafeDrop (k + 2) s)
+                Nothing    -> Nothing
+            | otherwise -> Nothing
+    fieldLine :: ByteString -> Maybe (FieldName, FieldValue)
+    fieldLine l
+      | B.null name || B.null afterName || BU.unsafeHead afterName /= 0x3A
+        || not (B.all isValueOctet raw) = Nothing
       | otherwise =
-          -- the line ends at the end of the section, or at a CRLF
-          let (l, more) = case B.elemIndex 0x0D s of
-                Nothing -> (s, Nothing)
-                Just k  -> (BU.unsafeTake k s, Just (BU.unsafeDrop (k + 1) s))
-              name = B.takeWhile isTChar l
-              afterName = BU.unsafeDrop (B.length name) l
-              raw = BU.unsafeTail afterName
-          in if B.null name || B.null afterName || BU.unsafeHead afterName /= 0x3A
-                || not (B.all isValueOctet raw) then Nothing else
-             let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
-                 !field = (FieldName (if B.any isUpper name then B.map toLower name else name), FieldValue v)
-             in case more of
-                  Nothing -> Just (Fields (Seq.fromList (reverse (field : acc))))
-                  Just r | not (B.null r), BU.unsafeHead r == 0x0A -> line (count + 1) (field : acc) (BU.unsafeTail r)
-                         | otherwise -> Nothing
+          let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
+              !n = if B.any isUpper name then B.map toLower name else name
+          in Just (FieldName n, FieldValue v)
+      where
+        name = B.takeWhile isTChar l
+        afterName = BU.unsafeDrop (B.length name) l
+        raw = BU.unsafeTail afterName
+    {-# INLINE fieldLine #-}
     -- field-vchar, SP or HTAB
     isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
     isUpper w = w >= 0x41 && w <= 0x5A

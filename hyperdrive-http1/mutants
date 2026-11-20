@@ -463,16 +463,16 @@ why: the one-pass scan stops at the limit on field lines
 + | count > limit = Nothing
 
 why: a field name is not empty
-- if B.null name || B.null afterName
-+ if B.null afterName
+- | B.null name || B.null afterName || BU.unsafeHead afterName /= 0x3A
++ | B.null afterName || BU.unsafeHead afterName /= 0x3A
 
 why: a line ends only at CRLF, not at a bare CR
-- Just r | not (B.null r), BU.unsafeHead r == 0x0A -> line
-+ Just r | not (B.null r) -> line
+- | k + 1 < B.length s, BU.unsafeIndex s (k + 1) == 0x0A -> case fieldLine
++ | k + 1 < B.length s -> case fieldLine
 
 why: field names are lower-cased
-- !field = (FieldName (if B.any isUpper name then B.map toLower name else name), FieldValue v)
-+ !field = (FieldName name, FieldValue v)
+- !n = if B.any isUpper name then B.map toLower name else name
++ !n = name
 
 why: whitespace at the end of a value is not part of it
 - let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)

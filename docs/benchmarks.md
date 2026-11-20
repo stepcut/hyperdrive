@@ -263,3 +263,20 @@ looked 3 to 4% slower in the first twelve pairs; an A/A comparison
 (the same code built in both trees) showed no difference from where
 it was built, and seven more pairs after a rebuild gave 2.402 and
 2.411 µs, with the machine busier. Taken as noise.
+
+## 2026-11-20: fewer scans and less per field line
+
+Two changes, timed in rotation with 0c85355 on a quiet machine
+(medians of 5; allocation exact):
+
+| | minimal request | browser request |
+|---|---|---|
+| 0c85355 | 2.380 µs, 8931 bytes | 6.101 µs, 15713 bytes |
+| `mkRequest` checks for protocol fields and Host in one scan | 2.413 µs, 8931 bytes | 6.063 µs, 15681 bytes |
+| `scanFieldLines` builds no tuple or `Maybe` per line | 2.376 µs, 8883 bytes | 5.945 µs, 14481 bytes |
+
+Each was faster than the line above in every round on the browser
+request; the minimal request's runs (2.24 to 2.58 µs) show no
+difference. Building `partitionFields`' two sequences from lists rather
+than with `Seq.partition` saved 144 bytes on the browser request and
+cost 48 on the minimal one; not kept.
