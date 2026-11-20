@@ -308,3 +308,44 @@ much as in process (5.95 against 2.38 µs). Part of that is checking
 that warp does not do. 1 MiB responses went from ahead of warp
 yesterday (13.1k against 11.3k) to behind (12.7k against 13.6k) with no
 change to that path; most of the swing is warp's, so take them as even.
+
+## 2026-11-20 (evening): yield before receiving
+
+System calls per request under wrk (hello, 100 connections), counted
+with perf tracepoints (`syscalls:sys_enter_*`, and `sys_exit_recvfrom`
+filtered on `ret == -11`; needs `/sys/kernel/tracing` readable):
+
+| per request | hyperdrive before | hyperdrive after | warp |
+|---|---|---|---|
+| `recvfrom` | 2.000 | 1.015 | 1.035 |
+| of which found nothing (EAGAIN) | 0.999 | 0.015 | 0.035 |
+| `epoll_ctl` | 1.000 | 0.015 | 0.035 |
+| `epoll_wait` | 0.143 | 0.022 | 0.033 |
+| `writev` / `sendto` | 1.000 | 1.000 | 1.000 |
+| `futex` | 0.026 | 0.051 | 0.064 |
+
+So warp did not wait more cheaply: it rarely waited. After sending a
+response it calls `yield` (warp 3.4.9, `Network/Wai/Handler/Warp/HTTP1.hs`),
+so the capability's other connections run first and the client's next
+request has usually arrived when it receives. Hyperdrive's receive
+straight after the response nearly always found nothing, and waiting
+cost an `epoll_ctl` and a wake-up through the event manager. Now
+`waitInput` yields when something was written since the last wait.
+
+`scripts/bench` and `scripts/bench-cpu` on a quiet machine:
+
+| | before (afternoon) | after | warp (this run) |
+|---|---|---|---|
+| small responses, 100 connections | 604k req/s | 656k (p50 0.13 ms, p99 3.0 ms) | 744k (0.10 ms, 2.7 ms) |
+| browser fields, 100 connections | 464k | 491k (0.18 ms, 3.1 ms) | 632k (0.13 ms, 2.6 ms) |
+| small responses, 1000 connections | 578k (p99 13 ms) | 637k (1.3 ms, 44 ms) | 773k (1.1 ms, 124 ms) |
+| pipelined 16 deep | 905k | 910k | 955k |
+| 1 MiB responses, 32 connections | 12.7k | 12.7k | 11.7k |
+| 1 MiB uploads, 32 connections | 11.4k | 11.2k | 6.9k |
+| `bench-cpu`: req/s, user + kernel µs per request | 607k, 3.3 + 5.9 | 674k, 2.6 + 5.1 | 745k, 1.7 + 4.7 |
+
+Small responses go from 81% of warp to 88% (90% in `bench-cpu`). The
+p99 at 1000 connections rose from 13 to 44 ms; a thread that yields can
+queue behind 125 others on its capability. Warp's own p99 there was
+124 ms in this run and 9 ms in the last, so it is noisy for both;
+worth watching.

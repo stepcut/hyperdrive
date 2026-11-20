@@ -20,6 +20,7 @@ module Hyperdrive.Server.Connection
   , ServerError(..)
   ) where
 
+import Control.Concurrent (yield)
 import Control.Concurrent.MVar
 import Control.Exception
 import Control.Monad (unless, void, when)
@@ -144,6 +145,7 @@ data St = St
   , stPending      :: ![Output]      -- ^ outputs not yet acted on, oldest first
   , stOut          :: ![ByteString]  -- ^ to write, newest first
   , stOutBytes     :: !Int
+  , stWrote        :: !Bool          -- ^ something was written since the last wait for input
   , stClosed       :: !Bool          -- ^ the core said Close
   , stBroken       :: !Bool          -- ^ a write failed: the client has gone
   , stShutdownSeen :: !Bool
@@ -173,7 +175,7 @@ serveConnection settings timers transport context app = do
     let config = settingsConfig settings
         target = configTarget config
         config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
-    ref <- newIORef (St (newConn config') [] [] 0 False False False (TimerFor Closed 0))
+    ref <- newIORef (St (newConn config') [] [] 0 False False False False (TimerFor Closed 0))
     dates <- newDateCache
     let env = Env settings wake transport context app dates timer ref
     (do r <- try (mainLoop env)
@@ -227,7 +229,7 @@ flush env = do
   st <- readIORef (envRef env)
   when (stBroken st) (throwIO ConnectionClosed)
   unless (null (stOut st)) $ do
-    writeIORef (envRef env) st { stOut = [], stOutBytes = 0 }
+    writeIORef (envRef env) st { stOut = [], stOutBytes = 0, stWrote = True }
     -- a write that does not finish in time is made to fail by the
     -- ticker, which aborts the transport
     armWrite (envTimer env) =<< deadlineIn (timeoutWrite (settingsTimeouts (envSettings env)))
@@ -246,6 +248,15 @@ flush env = do
 waitInput :: Env -> IO ()
 waitInput env = do
   flush env  -- what is buffered goes out before waiting
+  -- After a response the client's next request takes a round trip, so
+  -- a receive straight away nearly always finds nothing, and waiting
+  -- for the socket costs an epoll_ctl and a wake-up through the event
+  -- manager. Letting this capability's other connections run first
+  -- usually gives it time to arrive (warp does the same): with 100
+  -- connections, receives that found nothing fell from one per request
+  -- to under two per hundred (docs/benchmarks.md).
+  wrote <- stWrote <$> readIORef (envRef env)
+  when wrote yield
   st <- readIORef (envRef env)
   now <- getMonotonicTimeNSec
   let ph = phase (stConn st)
@@ -263,7 +274,7 @@ waitInput env = do
       !deadline
         | ph' == ph, ph `elem` [ReadingHead, DiscardingBody] = deadline'
         | otherwise = now + fromIntegral limit * 1000
-  writeIORef (envRef env) st { stTimer = TimerFor ph deadline }
+  writeIORef (envRef env) st { stTimer = TimerFor ph deadline, stWrote = False }
   ready <- transportTryRecv (envTransport env)
   case ready of
     Just bs -> received env bs  -- already there
