@@ -280,3 +280,31 @@ request; the minimal request's runs (2.24 to 2.58 µs) show no
 difference. Building `partitionFields`' two sequences from lists rather
 than with `Seq.partition` saved 144 bytes on the browser request and
 cost 48 on the minimal one; not kept.
+
+## 2026-11-20 (afternoon): over sockets, after 136c6b6
+
+`scripts/bench` on a quiet machine (wrk on cores 8-15, the servers on
+0-7; p50 and p99):
+
+| | hyperdrive | warp |
+|---|---|---|
+| small responses, 100 connections | 604k req/s (p50 0.14 ms, p99 0.71 ms) | 748k (0.10 ms, 2.9 ms) |
+| small responses, browser fields, 100 connections | 464k (0.17 ms, 1.8 ms) | 627k (0.13 ms, 2.9 ms) |
+| small responses, 1000 connections | 578k (0.85 ms, 13 ms) | 765k (1.1 ms, 9.1 ms) |
+| small responses, pipelined 16 deep | 905k (1.3 ms) | 967k (0.9 ms) |
+| 1 MiB responses, 32 connections | 12.7k (2.4 ms, 4.6 ms) | 13.6k (2.3 ms, 5.8 ms) |
+| 1 MiB uploads, 32 connections | 11.4k (2.4 ms, 7.6 ms) | 7.0k (3.7 ms, 73 ms) |
+| memory per idle connection (10,000) | 24 KB | 22 KB |
+
+`scripts/bench-cpu`: hyperdrive 3.3 µs user and 5.9 µs kernel per
+request, warp 1.7 and 4.7.
+
+wrk's own request (only Host) did not change: the day's gains were per
+header field. The browser-fields row (added to `scripts/bench`; the 12
+fields of `bench-driver`'s browser request, sent with wrk's `-H`) shows
+them: over eight server cores the fields cost hyperdrive about 4 µs of
+CPU per request (8 cores / 464k against 8 / 604k) and warp about 2,
+much as in process (5.95 against 2.38 µs). Part of that is checking
+that warp does not do. 1 MiB responses went from ahead of warp
+yesterday (13.1k against 11.3k) to behind (12.7k against 13.6k) with no
+change to that path; most of the swing is warp's, so take them as even.

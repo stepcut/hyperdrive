@@ -19,6 +19,15 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 
 ulimit -n 65536 2>/dev/null || true
 
+# the 12 header fields a browser sends besides Host (bench-driver's
+# browser request), to measure the cost of fields over sockets
+browser=(-H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
+         -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+         -H "Accept-Language: en-US,en;q=0.5" -H "Accept-Encoding: gzip, deflate, br, zstd"
+         -H "Connection: keep-alive" -H "Upgrade-Insecure-Requests: 1" -H "Sec-Fetch-Dest: document"
+         -H "Sec-Fetch-Mode: navigate" -H "Sec-Fetch-Site: none" -H "Sec-Fetch-User: ?1"
+         -H "Priority: u=0, i" -H "Cookie: session=0123456789abcdef; theme=dark")
+
 wrk_run() {  # name, wrk arguments...
   local name=$1; shift
   local out
@@ -51,6 +60,7 @@ for server in hyperdrive warp; do
   start "$server"
   url=http://127.0.0.1:$PORT
   wrk_run "hello, 100 connections"     -c100  "$url/"
+  wrk_run "hello, browser fields"      -c100  "${browser[@]}" "$url/"
   wrk_run "hello, 1000 connections"    -c1000 "$url/"
   wrk_run "hello, pipelined x16"       -c100  -s "$here/bench/wrk/pipeline.lua" "$url/"
   wrk_run "1 MiB responses, 32 conns"  -c32   "$url/large"
