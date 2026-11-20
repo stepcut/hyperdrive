@@ -1,5 +1,8 @@
 # Deliberate bugs that the test suite must catch. See scripts/mutation-test.
 
+# The tests measure time (timeouts, shutdown), so these run alone.
+parallel: no
+
 file: src/Hyperdrive/Server/Connection.hs
 
 why: the connection's scheme comes from whether it is secured

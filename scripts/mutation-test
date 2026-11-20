@@ -21,7 +21,7 @@ The working tree is never modified.
 
 Usage (from the repository root, inside `nix develop`):
 
-  scripts/mutation-test [--only FILE ...] [PACKAGE-DIR ...]
+  scripts/mutation-test [-j N] [--only FILE ...] [PACKAGE-DIR ...]
 
 PACKAGE-DIR defaults to every directory with a `mutants` file.
 
@@ -32,14 +32,27 @@ the other mutants cannot have changed result, so running the changed
 files' mutants is enough. After changing existing code broadly, or
 removing or weakening tests, run them all.
 
-To see
-how strong one part of the test suite is on its own, pass options to
-the test runner through MUTATION_TEST_OPTIONS, for example
+-j N runs N mutants at once, each in its own copy of the project. Each
+copy is built from scratch first (a copied build directory still points
+at the original's paths), so a few mutants are quicker with fewer
+copies; the default is one copy per four mutants, at most 6.
+
+A package whose `mutants` file says `parallel: no` (one with tests
+that measure time) has its mutants run one at a time, after all the
+others, with nothing else running.
+
+A test suite is stopped at its first failing test: that is enough to
+know the mutant is caught. Test binaries are run directly, from the
+package's directory, as `cabal test` would.
+
+To see how strong one part of the test suite is on its own, pass
+options to the test runner through MUTATION_TEST_OPTIONS, for example
 MUTATION_TEST_OPTIONS='-p Exhaustive'.
 
 Format of the `mutants` file:
 
   # comments and blank lines are ignored
+  parallel: no        (optional, anywhere)
   file: src/Hyperdrive/Semantics/URI.hs
   why: an IPv6 address with "::" has at most 7 explicit pieces
   - guard (n <= 7)
@@ -52,23 +65,24 @@ must be followed by a `+` line with its replacement.
 
 import argparse
 import os
+import queue
+import re
+import shlex
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-CABAL = ["cabal", "--offline"]
-TEST_OPTIONS = os.environ.get("MUTATION_TEST_OPTIONS")
-
-
-def test_command(targets):
-    cmd = CABAL + ["test"] + targets
-    if TEST_OPTIONS:
-        cmd.append("--test-options=" + TEST_OPTIONS)
-    return cmd
+# every dependency comes from the Nix package database, so the package
+# index is not needed; reading it from several copies at once lets them
+# overwrite one another's regenerated index cache
+CABAL = ["cabal", "--offline", "--active-repositories=:none"]
+TEST_OPTIONS = shlex.split(os.environ.get("MUTATION_TEST_OPTIONS", ""))
+FAIL_LINE = re.compile(r":\s+FAIL\b")
 
 
 @dataclass
@@ -81,12 +95,15 @@ class Mutant:
 
 
 def parse_mutants(path):
-    mutants, file, why, old = [], None, "", None
+    """The mutants in a file, and whether they may run in parallel."""
+    mutants, file, why, old, parallel = [], None, "", None, True
     for n, raw in enumerate(path.read_text().splitlines(), start=1):
         line = raw.rstrip()
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        if line.startswith("file:"):
+        if line.startswith("parallel:"):
+            parallel = line[len("parallel:"):].strip() != "no"
+        elif line.startswith("file:"):
             file = line[len("file:"):].strip()
         elif line.startswith("why:"):
             why = line[len("why:"):].strip()
@@ -101,7 +118,7 @@ def parse_mutants(path):
             sys.exit(f"{path}:{n}: cannot parse: {line}")
     if old is not None:
         sys.exit(f"{path}:{old[1]}: '-' line without a following '+' line")
-    return mutants
+    return mutants, parallel
 
 
 def run(cmd, cwd):
@@ -112,15 +129,81 @@ def selected(m, only):
     return not only or any(m.file == f or m.file.endswith("/" + f) for f in only)
 
 
+def test_suites(pkg_dir):
+    """The names of a package's test suites, from its .cabal file."""
+    names = []
+    for cabal in pkg_dir.glob("*.cabal"):
+        names += re.findall(r"^test-suite\s+(\S+)", cabal.read_text(), re.MULTILINE)
+    return names
+
+
+class Copy:
+    """One copy of the project, in which mutants are built and tested."""
+
+    def __init__(self, root, tmp, index):
+        self.work = Path(tmp) / f"repo-{index}"
+        shutil.copytree(root, self.work, ignore=shutil.ignore_patterns("dist-newstyle", ".git", ".duvet"))
+        self.binaries = {}
+
+    def build(self, pkg):
+        return run(CABAL + ["build", str(pkg)], self.work)
+
+    def test(self, pkg, stop_at_first_failure=True):
+        """Run the package's test suites; True if they all pass. Each is
+        stopped at its first failing test."""
+        for suite in test_suites(self.work / pkg):
+            key = (str(pkg), suite)
+            if key not in self.binaries:
+                found = run(CABAL + ["list-bin", "-v0", f"{pkg}:test:{suite}"], self.work)
+                if found.returncode != 0:
+                    return False, found.stdout + found.stderr
+                self.binaries[key] = found.stdout.strip().splitlines()[-1]
+            proc = subprocess.Popen([self.binaries[key], "--color", "never", "--hide-successes"] + TEST_OPTIONS,
+                                    cwd=self.work / pkg, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            output = []
+            failed = False
+            for line in proc.stdout:
+                output.append(line)
+                if stop_at_first_failure and FAIL_LINE.search(line):
+                    failed = True
+                    proc.kill()
+                    break
+            proc.wait()
+            if failed or proc.returncode != 0:
+                return False, "".join(output)
+        return True, ""
+
+
+def try_mutant(copy, pkg, m):
+    target = copy.work / pkg / m.file
+    original = target.read_text()
+    count = original.count(m.old)
+    if count != 1:
+        return "STALE", f"original code found {count} times"
+    target.write_text(original.replace(m.old, m.new))
+    try:
+        build = copy.build(pkg)
+        if build.returncode != 0:
+            if "In the quasi-quotation" in build.stdout + build.stderr:
+                return "CAUGHT", "at compile time, by a quasiquoter"
+            return "INVALID", ""
+        passed, _ = copy.test(pkg)
+        return ("SURVIVED" if passed else "CAUGHT"), ""
+    finally:
+        target.write_text(original)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Check that the test suite catches deliberate bugs.")
     parser.add_argument("--only", action="append", default=[], metavar="FILE",
                         help="only run the mutants of this source file (repeatable)")
+    parser.add_argument("-j", "--jobs", type=int, default=None,
+                        help="mutants to run at once, each in its own copy (default: one per four mutants, at most 6)")
     parser.add_argument("packages", nargs="*", metavar="PACKAGE-DIR")
     args = parser.parse_args()
 
-    # turn SIGTERM into an exception, so that the temporary copy is
-    # removed and a running build or test is killed on the way out
+    # turn SIGTERM into an exception, so that the temporary copies are
+    # removed and running builds or tests are killed on the way out
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit("terminated"))
 
     root = Path(__file__).resolve().parent.parent
@@ -128,60 +211,97 @@ def main():
     if not packages:
         sys.exit("no mutants files found")
 
-    mutants = [ (pkg, m) for pkg in packages for m in parse_mutants(root / pkg / "mutants")
-                if selected(m, args.only) ]
+    parallel_mutants, serial_mutants = [], []
+    for pkg in packages:
+        ms, parallel = parse_mutants(root / pkg / "mutants")
+        (parallel_mutants if parallel else serial_mutants).extend((pkg, m) for m in ms if selected(m, args.only))
+    mutants = parallel_mutants + serial_mutants
     if not mutants:
-        files = sorted({ m.file for pkg in packages for m in parse_mutants(root / pkg / "mutants") })
+        files = sorted({ m.file for pkg in packages for m in parse_mutants(root / pkg / "mutants")[0] })
         sys.exit("no mutants for " + ", ".join(args.only) + "; files with mutants:\n  " + "\n  ".join(files))
-    print(f"{len(mutants)} mutants to run", flush=True)
+    jobs = args.jobs or max(1, min(6, len(parallel_mutants) // 4))
+    jobs = max(1, min(jobs, len(parallel_mutants) or 1))
+    print(f"{len(mutants)} mutants to run, {jobs} at a time"
+          + (f" ({len(serial_mutants)} of them one at a time, at the end)" if serial_mutants else ""), flush=True)
 
     with tempfile.TemporaryDirectory(prefix="mutation-test-") as tmp:
-        work = Path(tmp) / "repo"
-        # copy the project, minus build products and version control
-        shutil.copytree(root, work, ignore=shutil.ignore_patterns("dist-newstyle", ".git", ".duvet"))
+        # A cabal directory of our own, with no package index in it: the
+        # shared one's index cache is rewritten by any cabal-install of
+        # another version, and the copies, rebuilding it at once,
+        # corrupted it. Every dependency is in the Nix package database.
+        os.environ["CABAL_DIR"] = str(Path(tmp) / "cabal")
+        # its default config is written once, before the copies use it
+        run(["cabal", "user-config", "init"], tmp)
+        print("copying, building and testing the unmodified project ...", flush=True)
+        copies = [Copy(root, tmp, i) for i in range(jobs)]
+        targets = sorted({ pkg for pkg, _ in mutants }, key=str)
 
-        print("building and testing the unmodified project ...", flush=True)
-        # the packages whose mutants are run; a mutant can only affect
-        # the tests of its own package, so only those are run
-        targets = sorted({ str(pkg) for pkg, _ in mutants })
-        baseline = run(test_command(targets), work)
-        if baseline.returncode != 0:
-            lines = baseline.stdout.splitlines()
-            failing = [i for i, l in enumerate(lines) if "FAIL" in l or "error" in l]
-            for i in failing[:10]:
-                print("\n".join(lines[i:i + 8]))
-            print(baseline.stderr[-3000:])
-            sys.exit("the unmodified project does not pass its tests; fix that first")
+        # the first copy checks the unmodified project; the others only
+        # need building, which they do at the same time
+        errors = []
 
-        results = []
-        for pkg, m in mutants:
-            target = work / pkg / m.file
-            original = target.read_text()
+        def prepare(copy, check):
+            for pkg in targets:
+                b = copy.build(pkg)
+                if b.returncode != 0:
+                    errors.append(b.stdout[-3000:] + b.stderr[-3000:])
+                    return
+                if check:
+                    passed, output = copy.test(pkg, stop_at_first_failure=False)
+                    if not passed:
+                        errors.append(output[-5000:])
+                        return
+
+        # one build alone first, so that cabal sets up its store and
+        # package database before several copies use them at once
+        first = copies[0].build(targets[0])
+        if first.returncode != 0:
+            print(first.stdout[-3000:] + first.stderr[-3000:])
+            sys.exit("the unmodified project does not build; fix that first")
+        threads = [threading.Thread(target=prepare, args=(c, i == 0)) for i, c in enumerate(copies)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if errors:
+            print(errors[0])
+            sys.exit("the unmodified project does not build or pass its tests; fix that first")
+
+        results = {}
+        lock = threading.Lock()
+
+        def report(pkg, m, status, note):
             where = f"{pkg}/mutants:{m.line} {pkg}/{m.file}"
-            count = original.count(m.old)
-            if count != 1:
-                results.append(("STALE", where, m, f"original code found {count} times"))
-                print(f"STALE     {where}", flush=True)
-                continue
-            target.write_text(original.replace(m.old, m.new))
-            note = ""
-            try:
-                build = run(CABAL + ["build", str(pkg)], work)
-                if build.returncode != 0:
-                    if "In the quasi-quotation" in build.stdout + build.stderr:
-                        status, note = "CAUGHT", "at compile time, by a quasiquoter"
-                    else:
-                        status = "INVALID"
-                else:
-                    test = run(test_command([str(pkg)]), work)
-                    status = "CAUGHT" if test.returncode != 0 else "SURVIVED"
-            finally:
-                target.write_text(original)
-            results.append((status, where, m, note))
-            print(f"{status:9} {where}" + (f" ({note})" if note else ""), flush=True)
+            with lock:
+                results[(str(pkg), m.line)] = (status, where, m, note)
+                print(f"{status:9} {where}" + (f" ({note})" if note else ""), flush=True)
 
-    bad = [r for r in results if r[0] != "CAUGHT"]
-    print(f"\n{len(results) - len(bad)} of {len(results)} mutants caught")
+        def work(copy, todo):
+            while True:
+                try:
+                    pkg, m = todo.get_nowait()
+                except queue.Empty:
+                    return
+                status, note = try_mutant(copy, pkg, m)
+                report(pkg, m, status, note)
+
+        # the mutants that may run together, then the others alone
+        todo = queue.Queue()
+        for item in parallel_mutants:
+            todo.put(item)
+        threads = [threading.Thread(target=work, args=(c, todo)) for c in copies]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        todo = queue.Queue()
+        for item in serial_mutants:
+            todo.put(item)
+        work(copies[0], todo)
+
+    ordered = [results[k] for k in sorted(results)]
+    bad = [r for r in ordered if r[0] != "CAUGHT"]
+    print(f"\n{len(ordered) - len(bad)} of {len(ordered)} mutants caught")
     for status, where, m, note in bad:
         print(f"\n{status}: {where}")
         print(f"  - {m.old}\n  + {m.new}")
