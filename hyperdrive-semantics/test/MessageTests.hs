@@ -208,7 +208,11 @@ prop_setCookie =
 prop_requestHost :: Property
 prop_requestHost = once $ monadicIO $ do
   results <- run $ mapM (\n -> request GET (uriTarget "/") (fields [(n, "evil.example")])) ["Host", "HOST", "host"]
+  -- with a protocol field as well, before or after it, that is reported
+  both <- run $ mapM (request GET (uriTarget "/") . fields)
+            [[("Host", "a"), ("TE", "trailers")], [("TE", "trailers"), ("Host", "a")]]
   assert (results' results)
+  assert (all (either (== RequestProtocolField (field "te")) (const False)) both)
   where
     results' rs = and [ either (== RequestProtocolField hHost) (const False) r | r <- rs ]
 

@@ -57,6 +57,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Foldable (find)
 import Data.IORef (atomicModifyIORef', newIORef)
+import Data.Maybe (fromMaybe)
 import Data.Word (Word64, Word8)
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.Internal (FieldName(..), Fields(..))
@@ -246,10 +247,12 @@ mkRequest :: HttpVersion -> Method -> Target -> Fields -> RequestBody -> Either 
 mkRequest version method target fields body
   | not (validForMethod method target)   = Left TargetNotValidForMethod
   | method == CONNECT, version < HTTP_2, not (isConnectForm target) = Left TargetNotValidForMethod
-  | Just n <- firstProtocolField fields  = Left (RequestProtocolField n)
-  | not (null (lookupAll hHost fields))  = Left (RequestProtocolField hHost)
+  -- one pass finds either; a protocol field is reported before Host
+  | Just n <- fst <$> find ((\n -> n == hHost || isProtocolField n) . fst) fs
+  = Left (RequestProtocolField (if n == hHost then fromMaybe hHost (firstProtocolField fields) else n))
   | otherwise = Right (Request version method (normalizeEmptyPath method target) fields body False)
   where
+    Fields fs = fields
     isConnectForm TargetConnect{} = True
     isConnectForm _               = False
 

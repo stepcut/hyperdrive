@@ -329,8 +329,12 @@ why: after the end of the body, readChunk keeps returning an empty chunk
 + let next = atomicModifyIORef' ref (\c -> (c, c))
 
 why: Host must not be left in a request's fields, where it could disagree with the target
-- | not (null (lookupAll hHost fields))  = Left (RequestProtocolField hHost)
-+ | False  = Left (RequestProtocolField hHost)
+- | Just n <- fst <$> find ((\n -> n == hHost || isProtocolField n) . fst) fs
++ | Just n <- fst <$> find ((\n -> isProtocolField n) . fst) fs
+
+why: with both, the protocol field is reported, as it always was
+- = Left (RequestProtocolField (if n == hHost then fromMaybe hHost (firstProtocolField fields) else n))
++ = Left (RequestProtocolField n)
 
 why: a second line of a singleton field makes clients and caches disagree
 - repeated = [ n | n <- singletonResponseFields, length (take 2 (lookupAll n fields)) > 1 ]
