@@ -386,3 +386,24 @@ alternating, means of 5; faster in every pair):
 |---|---|---|
 | 385356c | 2.337 µs, 9024 bytes | 5.667 µs, 14623 bytes |
 | strict state, IPv4 loop and head parser | 2.087 µs, 7416 bytes | 5.414 µs, 13647 bytes |
+
+## 2026-11-20 (night): over sockets, after 0077c1c
+
+`scripts/bench` and `scripts/bench-cpu` on a quiet machine:
+
+| | hyperdrive | warp | hyperdrive this morning |
+|---|---|---|---|
+| small responses, 100 connections | 704k req/s (p50 0.12 ms, p99 2.8 ms) | 755k (0.10 ms, 3.1 ms) | 607k |
+| browser fields, 100 connections | 516k (0.17 ms, 2.9 ms) | 627k (0.13 ms, 3.1 ms) | 464k (afternoon) |
+| small responses, 1000 connections | 685k (1.2 ms, 32 ms) | 761k (1.1 ms, 63 ms) | 564k |
+| pipelined 16 deep | 967k (1.1 ms, 18 ms) | 951k (0.9 ms) | 885k |
+| 1 MiB responses, 32 connections | 12.0k (2.6 ms, 5.8 ms) | 12.5k (2.4 ms, 6.0 ms) | 13.1k |
+| 1 MiB uploads, 32 connections | 11.3k (2.6 ms, 6.8 ms) | 6.4k (3.9 ms, 446 ms) | 10.8k |
+| memory per idle connection (10,000) | 24 KB | 22 KB | 24 KB |
+| `bench-cpu`: req/s, user + kernel µs per request | 707k, 2.25 + 4.94 | 730k, 1.73 + 4.74 | 607k, 3.4 + 5.8 |
+
+Small responses are at 93% of warp (97% in `bench-cpu`), pipelined
+ones slightly ahead; with a browser's fields 82%. The remaining gap is
+mostly user time (0.5 µs a request), and the browser row says much of
+it is per field. 1 MiB responses move a few per cent either way between
+runs for both servers.
