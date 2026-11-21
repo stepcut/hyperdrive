@@ -288,7 +288,7 @@ parseIPv4 bs = go 0 (0 :: Int) 0 (0 :: Int) (0 :: Int)
     -- the octets finished, acc their value, n and len the current
     -- octet's value and number of digits
     end = B.length bs
-    go i k acc n len
+    go !i !k !acc !n !len
       -- exactly four: a fifth octet fails here
       | i == end = if k == 3 && len > 0 && n <= 255 then Just ((acc `shiftL` 8) .|. fromIntegral n) else Nothing
       | otherwise = case BU.unsafeIndex bs i of
