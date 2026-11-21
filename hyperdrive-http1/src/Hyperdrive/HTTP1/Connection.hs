@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE BangPatterns, OverloadedStrings, PatternSynonyms #-}
 -- | The HTTP/1.1 connection, without IO: 'step' folds what happens on a
 -- connection ('Input') into its state ('Conn') and says what to do
 -- about it ('Output'). An IO driver reads and writes the socket, runs
@@ -206,7 +206,7 @@ phase c
 ------------------------------------------------------------------------------
 
 step :: Input -> Conn -> (Conn, [Output])
-step _ c | cClosed c = (c, [])
+step _ c | cClosed c = result c []
 step input c = case input of
   Received bs -> advance c { cBuffer = if B.null (cBuffer c) then bs else cBuffer c <> bs }
   PeerClosed -> case cRequest c of
@@ -214,7 +214,7 @@ step input c = case input of
     _              -> advance c { cPeerClosed = True }
   Shutdown -> case phase c of
     Idle -> close c []
-    _    -> (c { cShutdown = True }, [])
+    _    -> result c { cShutdown = True } []
   TimedOut -> case phase c of
     Idle           -> close c []
     ReadingHead    -> reject RequestTimeout c
@@ -238,7 +238,7 @@ step input c = case input of
       -- body, which sends 100 (Continue) at once, before any of it is
       -- waited for.
       let continue = exExpects100 ex && isAwaiting (exResponse ex)
-          c' = c { cRequest = InBody body True, cExchange = Just ex { exExpects100 = False } }
+          c' = c { cRequest = InBody body True, cExchange = Just $! ex { exExpects100 = False } }
       in prefix [Send ["HTTP/1.1 100 Continue\r\n\r\n"] | continue] (advance c')
     _ -> misuse WantBodyWithoutBody c
   Respond h -> case cExchange c of
@@ -258,9 +258,9 @@ advance :: Conn -> (Conn, [Output])
 advance c = case cRequest c of
   AwaitingHead searched -> readHead searched c
   InBody body True      -> readBody body c
-  InBody _ False        -> (c, [])
+  InBody _ False        -> result c []
   Discarding body left  -> discard body left c
-  RequestDone           -> (c, [])
+  RequestDone           -> result c []
 
 ------------------------------------------------------------------------------
 -- Request heads
@@ -271,16 +271,16 @@ readHead searched c =
   case parseRequestHead (configHeadLimits (cConfig c)) searched (cBuffer c) of
     HeadIncomplete n
       | cPeerClosed c -> close c []
-      | otherwise     -> (c { cRequest = AwaitingHead n }, [NeedInput])
+      | otherwise     -> result c { cRequest = AwaitingHead n } [NeedInput]
     HeadError e -> reject (headErrorStatus e) c
     HeadComplete raw used -> case startRequest (cConfig c) raw of
       Left status -> reject status c
       Right (h, body, expects100, keepAlive) ->
-        let ex = Exchange (reqVersion h) (reqMethod h) keepAlive expects100 AwaitingResponse
-        in ( c { cBuffer = B.drop used (cBuffer c)
-               , cRequest = maybe RequestDone (\b -> InBody b False) body
-               , cExchange = Just ex }
-           , [NewRequest h] )
+        let !ex = Exchange (reqVersion h) (reqMethod h) keepAlive expects100 AwaitingResponse
+        in result c { cBuffer = B.drop used (cBuffer c)
+                    , cRequest = maybe RequestDone (\b -> InBody b False) body
+                    , cExchange = Just ex }
+                  [NewRequest h]
 
 -- | Everything about a request head that can make it unacceptable,
 -- giving the head, its body, whether it expects 100 (Continue), and
@@ -370,9 +370,9 @@ readBody body c = case body of
             c' = c { cBuffer = B.drop (B.length piece) buf }
         in if left == 0
              then requestDone c' [RequestData piece, RequestEnd emptyFields]
-             else (c' { cRequest = InBody (Remaining left) False }, [RequestData piece])
+             else result c' { cRequest = InBody (Remaining left) False } [RequestData piece]
   ChunkedBody d -> case decodeChunked (configChunkLimits (cConfig c)) d buf of
-    Data piece used d' -> (c { cBuffer = B.drop used buf, cRequest = InBody (ChunkedBody d') False }, [RequestData piece])
+    Data piece used d' -> result c { cBuffer = B.drop used buf, cRequest = InBody (ChunkedBody d') False } [RequestData piece]
     NeedMore used d' -> readBodyMore c { cBuffer = B.drop used buf, cRequest = InBody (ChunkedBody d') True }
     Finished trailers used -> requestDone c { cBuffer = B.drop used buf } [RequestEnd trailers]
     DecodeError _ -> aborted BadRequest c
@@ -381,13 +381,13 @@ readBody body c = case body of
     needInput = readBodyMore c
     readBodyMore c'
       | cPeerClosed c' = aborted BadRequest c'
-      | otherwise      = (c', [NeedInput])
+      | otherwise      = result c' [NeedInput]
 
 -- | The request body has been read in full.
 requestDone :: Conn -> [Output] -> (Conn, [Output])
 requestDone c outs = case cExchange c of
   Just ex | ResponseDone <- exResponse ex -> prefix outs (finishExchange c { cRequest = RequestDone })
-  _ -> (c { cRequest = RequestDone }, outs)
+  _ -> result c { cRequest = RequestDone } outs
 
 -- | Read and drop the rest of a body after its response (D6), up to the
 -- limit.
@@ -418,7 +418,7 @@ discard body left c = case body of
       Just left' -> discard body' left' c { cBuffer = B.drop used buf }
     more c'
       | cPeerClosed c' = close c' []
-      | otherwise      = (c', [NeedInput])
+      | otherwise      = result c' [NeedInput]
 
 ------------------------------------------------------------------------------
 -- Responses
@@ -447,21 +447,21 @@ respond h ex c =
       closeField = [ (hConnection, closeValue) | not keepAlive ]
       headBytes = renderHead (statusLine (respStatus h))
                     (fieldsToList (respFields h) ++ framingFields framing ++ trailerField ++ closeField)
-      ex' = ex { exKeepAlive = keepAlive, exResponse = Sending framing 0 }
-  in (c { cExchange = Just ex' }, [Send [headBytes]])
+      !ex' = ex { exKeepAlive = keepAlive, exResponse = Sending framing 0 }
+  in result c { cExchange = Just ex' } [Send [headBytes]]
 
 writeBody :: ByteString -> ResponseFraming -> Word64 -> Exchange -> Conn -> (Conn, [Output])
 writeBody bs framing written ex c =
   let written' = written + fromIntegral (B.length bs)
-      c' = c { cExchange = Just ex { exResponse = Sending framing written' } }
+      c' = c { cExchange = Just $! ex { exResponse = Sending framing written' } }
   in case framing of
-       _ | B.null bs  -> (c, [])
-       HeaderOnly _   -> (c', [])
+       _ | B.null bs  -> result c []
+       HeaderOnly _   -> result c' []
        SendLength n
          | written' > n -> close c []   -- more than declared: never sent (Abort)
-         | otherwise    -> (c', [Send [bs]])
-       SendChunked    -> (c', [Send [C.pack (showHex (B.length bs) "") <> "\r\n", bs, "\r\n"]])
-       SendUntilClose -> (c', [Send [bs]])
+         | otherwise    -> result c' [Send [bs]]
+       SendChunked    -> result c' [Send [C.pack (showHex (B.length bs) "") <> "\r\n", bs, "\r\n"]]
+       SendUntilClose -> result c' [Send [bs]]
 
 endBody :: Fields -> ResponseFraming -> Word64 -> Exchange -> Conn -> (Conn, [Output])
 endBody trailers framing written ex c = case framing of
@@ -470,7 +470,7 @@ endBody trailers framing written ex c = case framing of
   SendUntilClose -> close c []
   _              -> done
   where
-    done = responseDone c { cExchange = Just ex { exResponse = ResponseDone } }
+    done = responseDone c { cExchange = Just $! ex { exResponse = ResponseDone } }
 
 -- | The response has been sent in full.
 responseDone :: Conn -> (Conn, [Output])
@@ -563,10 +563,17 @@ misuse :: Misuse -> Conn -> (Conn, [Output])
 misuse m c = close c [ProtocolMisuse m]
 
 close :: Conn -> [Output] -> (Conn, [Output])
-close c outs = (c { cClosed = True }, outs ++ [Close])
+close c outs = result c { cClosed = True } (outs ++ [Close])
 
 prefix :: [Output] -> (Conn, [Output]) -> (Conn, [Output])
-prefix outs (c, outs') = (c, outs ++ outs')
+prefix outs (c, outs') = result c (outs ++ outs')
+
+-- | The new state, evaluated, and the outputs. Built lazily, each state
+-- was a thunk that the driver ran at once (ticky counted about twenty
+-- a request).
+result :: Conn -> [Output] -> (Conn, [Output])
+result !c outs = (c, outs)
+{-# INLINE result #-}
 
 isAwaiting :: ResponseSide -> Bool
 isAwaiting AwaitingResponse = True

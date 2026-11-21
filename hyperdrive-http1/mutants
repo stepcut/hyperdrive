@@ -337,11 +337,11 @@ why: 100 (Continue) is sent only before a final response
 + let continue = exExpects100 ex
 
 why: a pipelined request is not read before the response is finished (D2)
-- RequestDone           -> (c, [])
+- RequestDone           -> result c []
 + RequestDone           -> readHead 0 c { cRequest = AwaitingHead 0 }
 
 why: body data is delivered only when the application asks (Q1)
-- InBody _ False        -> (c, [])
+- InBody _ False        -> result c []
 + InBody body False     -> readBody body c
 
 why: the end of a Content-Length body comes with its last data
@@ -377,12 +377,12 @@ why: the Trailer field announces declared trailers when chunked (RFC 9110 Sectio
 + | False
 
 why: an empty write sends no chunk, since an empty chunk ends the body
-- _ | B.null bs  -> (c, [])
-+ _ | False  -> (c, [])
+- _ | B.null bs  -> result c []
++ _ | False  -> result c []
 
 why: HEAD, 204 and 304 send no content
-- HeaderOnly _   -> (c', [])
-+ HeaderOnly _   -> (c', [Send [bs]])
+- HeaderOnly _   -> result c' []
++ HeaderOnly _   -> result c' [Send [bs]]
 
 why: content beyond the declared length is never sent
 - | written' > n -> close c []   -- more than declared: never sent (Abort)
@@ -397,8 +397,8 @@ why: a chunked body ends with the last chunk and the trailer section
 + SendChunked    -> prefix [Send ["0\r\n\r\n"]] done
 
 why: chunk sizes are hexadecimal
-- SendChunked    -> (c', [Send [C.pack (showHex (B.length bs) "") <> "\r\n", bs, "\r\n"]])
-+ SendChunked    -> (c', [Send [C.pack (show (B.length bs)) <> "\r\n", bs, "\r\n"]])
+- SendChunked    -> result c' [Send [C.pack (showHex (B.length bs) "") <> "\r\n", bs, "\r\n"]]
++ SendChunked    -> result c' [Send [C.pack (show (B.length bs)) <> "\r\n", bs, "\r\n"]]
 
 why: shutdown closes after the current exchange
 - Just ex | exKeepAlive ex, not (cShutdown c) -> advance c { cRequest = AwaitingHead 0, cExchange = Nothing }

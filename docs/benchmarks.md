@@ -407,3 +407,19 @@ ones slightly ahead; with a browser's fields 82%. The remaining gap is
 mostly user time (0.5 µs a request), and the browser row says much of
 it is per field. 1 MiB responses move a few per cent either way between
 runs for both servers.
+
+The core's states, next: `step` returned its new state inside a lazy
+pair, and an `Exchange` inside `Just` was lazy although the field
+holding the `Maybe` is strict, so each new state was a thunk that the
+driver ran at once. A helper, `result !c outs = (c, outs)`, builds the
+pairs, and the exchanges are built evaluated. Thunks evaluated per
+request 41 to 28 (ticky); against 0077c1c (means of 5, faster in every
+pair):
+
+| | minimal request | browser request |
+|---|---|---|
+| 0077c1c | 2.070 µs, 7416 bytes | 5.352 µs, 13647 bytes |
+| states built evaluated | 1.946 µs, 6856 bytes | 5.245 µs, 13087 bytes |
+
+The 28 left are single thunks of 24 to 96 bytes across the core,
+`parseAuthority`, `mkRequest` and the driver.
