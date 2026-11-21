@@ -11,8 +11,8 @@ why: "=" is a sub-delim, allowed in reg-names, paths and queries
 + isSubDelim w = B.elem w "!$&'()*+,;"
 
 why: "~" is a tchar
-- || B.elem w "!#$%&'*+-.^_`|~"
-+ || B.elem w "!#$%&'*+-.^_`|"
+- | w < 128   = testBit (0x57ffffffc7fffffe :: Word64) (fromIntegral w - 64)
++ | w < 128   = testBit (0x17ffffffc7fffffe :: Word64) (fromIntegral w - 64)
 
 why: OWS includes HTAB
 - isOWS w = w == 0x20 || w == 0x09

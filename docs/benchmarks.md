@@ -423,3 +423,27 @@ pair):
 
 The 28 left are single thunks of 24 to 96 bytes across the core,
 `parseAuthority`, `mkRequest` and the driver.
+
+## 2026-11-21: the browser request, profiled
+
+perf on `bench-driver` (a cabal build is not stripped), the browser
+request against the minimal one, each symbol's share scaled to µs per
+request. Of the 3.7 µs difference, about 0.8 went to `breakSubstring`
+finding the head's end (for a short pattern it rolls a word through the
+input an octet at a time; perf showed it as unnamed addresses, file
+offsets inside `bytestring`), 0.44 to `isTChar` (out of line, and
+`B.elem` on a string, a memchr call, for each symbol such as "-"), and
+about 1 to `scanFieldLines`' own loops. Rotating against 9bf994a on a
+quiet machine (means of 5):
+
+| | minimal request | browser request |
+|---|---|---|
+| 9bf994a | 2.050 µs, 6863 bytes | 5.550 µs, 13093 bytes |
+| CRLF found with memchr, CR to CR | 2.001 µs, 6519 bytes | 4.625 µs, 12749 bytes |
+| and `isTChar` as two 64-bit masks | 1.862 µs, 6503 bytes | 4.285 µs, 12734 bytes |
+
+The browser request was faster at each step in every round; the
+minimal one at the second step in every round, and at the first in
+three of five. What remains of the difference is mostly
+`scanFieldLines`' three loops (the value check, the tchar span, the
+lower-casing copy), at about seven instructions an octet each.

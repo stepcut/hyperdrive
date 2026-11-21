@@ -18,7 +18,8 @@ module Hyperdrive.Semantics.Syntax
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import Data.Word (Word8)
+import Data.Bits (testBit)
+import Data.Word (Word64, Word8)
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-5.6.2
 -- # Tokens are short textual identifiers that do not include whitespace
@@ -28,13 +29,15 @@ import Data.Word (Word8)
 -- # / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
 -- # / DIGIT / ALPHA
 
--- | @tchar@
+-- | @tchar@: a bit for each of the 77 octets, in two words. Field
+-- names are read an octet at a time with this, and the symbols, looked
+-- up in a string, made a call to memchr for every "-".
 isTChar :: Word8 -> Bool
-isTChar w =
-     (w >= 0x30 && w <= 0x39)   -- DIGIT
-  || (w >= 0x41 && w <= 0x5A)   -- ALPHA (upper)
-  || (w >= 0x61 && w <= 0x7A)   -- ALPHA (lower)
-  || B.elem w "!#$%&'*+-.^_`|~"
+isTChar w
+  | w < 64    = testBit (0x03ff6cfa00000000 :: Word64) (fromIntegral w)
+  | w < 128   = testBit (0x57ffffffc7fffffe :: Word64) (fromIntegral w - 64)
+  | otherwise = False
+{-# INLINE isTChar #-}
 
 -- | @token = 1*tchar@
 isToken :: ByteString -> Bool
