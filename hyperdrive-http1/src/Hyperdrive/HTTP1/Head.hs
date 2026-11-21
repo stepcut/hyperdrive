@@ -139,12 +139,12 @@ parseRequestHead limits searched input =
       | otherwise         -> HeadIncomplete (B.length input)
   where
     -- the empty lines before the request line
-    start = skipEmptyLines 0
+    !start = skipEmptyLines 0
     skipEmptyLines i
       | B.take 2 (B.drop i input) == "\r\n" = skipEmptyLines (i + 2)
       | otherwise                          = i
     -- the index of the CRLF CRLF that ends the head, at or after i
-    findEnd i = case B.breakSubstring "\r\n\r\n" (B.drop i input) of
+    findEnd !i = case B.breakSubstring "\r\n\r\n" $! B.drop i input of
       (before, after) | B.null after -> Nothing
                       | otherwise    -> Just (i + B.length before)
     -- what can be rejected before the head is complete: a request line
@@ -264,15 +264,24 @@ checkLine line
 -- visible ASCII characters here; its grammar is checked when it is
 -- turned into a target.
 parseRequestLine :: ByteString -> Either HeadError (Method, ByteString, Int, Word8)
-parseRequestLine line = case B.split 0x20 line of
-  [m, target, v]
+parseRequestLine line = case parts of
+  Just (m, target, v)
     | Just method <- mkMethod m
     , not (B.null target), B.all (\w -> w >= 0x21 && w <= 0x7E) target
     , B.length v == 8, B.take 5 v == "HTTP/", BU.unsafeIndex v 6 == 0x2E  -- "HTTP/" DIGIT "." DIGIT
     , digit (BU.unsafeIndex v 5), digit (BU.unsafeIndex v 7)
     -> Right (method, target, fromIntegral (BU.unsafeIndex v 5 - 0x30), BU.unsafeIndex v 7 - 0x30)
   _ -> Left InvalidRequestLine
-  where digit w = w >= 0x30 && w <= 0x39
+  where
+    digit w = w >= 0x30 && w <= 0x39
+    -- the parts before the first space, between it and the second, and
+    -- after that; a third space can only be in the version, which is
+    -- then rejected for its form
+    parts = do
+      i <- B.elemIndex 0x20 line
+      let rest = BU.unsafeDrop (i + 1) line
+      j <- B.elemIndex 0x20 rest
+      Just (BU.unsafeTake i line, BU.unsafeTake j rest, BU.unsafeDrop (j + 1) rest)
 
 -- = https://www.rfc-editor.org/rfc/rfc9112#section-5
 -- # field-line   = field-name ":" OWS field-value OWS

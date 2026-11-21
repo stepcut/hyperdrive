@@ -349,3 +349,40 @@ p99 at 1000 connections rose from 13 to 44 ms; a thread that yields can
 queue behind 125 others on its capability. Warp's own p99 there was
 124 ms in this run and 9 ms in the last, so it is noisy for both;
 worth watching.
+
+## 2026-11-20 (night): where the rest of the user time goes, and laziness
+
+A CPU profile of each server under wrk (hello, 100 connections; perf
+on builds made with `haskell.lib.dontStrip`, outside the flake), with
+`bench-cpu`'s 7.7 µs (hyperdrive) and 6.4 µs (warp) of CPU per request
+to scale the shares:
+
+| µs per request | hyperdrive | warp |
+|---|---|---|
+| in the server binary | 2.3 | 1.5 |
+| the HTTP code (hyperdrive's packages; warp, wai, http-types and the rest) | ~0.49 | ~0.34 |
+| GHC's runtime (updates, scheduler, generic application, GC entry) | ~1.22 | ~0.82 |
+| the kernel | ~3.8 | ~3.6 |
+
+The largest single difference was `stg_upd_frame_info`, 1.79% of
+samples against warp's 0.58%: thunks being evaluated and updated. About
+6% of both servers' samples are loopback firewall tracking
+(`nf_tables`, `nf_conntrack`).
+
+Ticky-ticky (`bench-driver` built with `-ticky -ticky-allocd
+-ticky-dyn-thunk`, plus `-ddump-stg-final` to find each thunk) counted
+about 62 thunks evaluated per request, the same for both requests. The
+causes fixed here: the driver's state written with `writeIORef`
+unevaluated (each write left a thunk for the next read), `parseIPv4`'s
+loop counters, and in the head parser the start offset, the search
+slice, and `B.split`'s list for the request line. About 35 remain, most
+from the core's `step` returning a lazy pair (each new `Conn` is built
+as a thunk) and `respond`'s bindings.
+
+Timed against 385356c on a quiet machine (`bench-driver 300000`,
+alternating, means of 5; faster in every pair):
+
+| | minimal request | browser request |
+|---|---|---|
+| 385356c | 2.337 µs, 9024 bytes | 5.667 µs, 14623 bytes |
+| strict state, IPv4 loop and head parser | 2.087 µs, 7416 bytes | 5.414 µs, 13647 bytes |
