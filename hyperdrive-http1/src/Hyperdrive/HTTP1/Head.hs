@@ -22,14 +22,19 @@ module Hyperdrive.HTTP1.Head
   , indexCRLFCRLF
   , indexCRLF
   , breakCRLF
+  , allValueOctets
   ) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
 import Data.Maybe (fromJust)
 import qualified Data.Sequence as Seq
-import Data.Word (Word8)
+import Data.Bits (complement, xor, (.&.))
+import Data.Word (Word64, Word8)
+import Foreign.Ptr (Ptr)
+import Foreign.Storable (peekByteOff)
 import Hyperdrive.Semantics.Field (FieldName, FieldValue, FieldValueError, Fields, emptyFields, fieldsFromList, mkFieldName, mkFieldValue)
 import Hyperdrive.Semantics.Internal (FieldName(..), FieldValue(..), Fields(..))
 import Hyperdrive.Semantics.Message (HttpVersion(..))
@@ -249,7 +254,7 @@ scanFieldLines limit section0 = line 0 [] section0
     fieldLine :: ByteString -> Maybe (FieldName, FieldValue)
     fieldLine l
       | B.null name || B.null afterName || BU.unsafeHead afterName /= 0x3A
-        || not (B.all isValueOctet raw) = Nothing
+        || not (allValueOctets raw) = Nothing
       | otherwise =
           let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
               !n = if B.any isUpper name then B.map toLower name else name
@@ -259,10 +264,47 @@ scanFieldLines limit section0 = line 0 [] section0
         afterName = BU.unsafeDrop (B.length name) l
         raw = BU.unsafeTail afterName
     {-# INLINE fieldLine #-}
-    -- field-vchar, SP or HTAB
-    isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
     isUpper w = w >= 0x41 && w <= 0x5A
     toLower w = if isUpper w then w + 0x20 else w
+
+-- | Whether every octet is a field-vchar, SP or HTAB, eight at a time:
+-- a word with no octet below 0x20 and none equal to 0x7F is all valid
+-- (both tests are exact for "any octet"); a word with one goes to the
+-- octet loop, which allows HTAB and finds what is wrong.
+allValueOctets :: ByteString -> Bool
+allValueOctets (BI.BS fp len) = BI.accursedUnutterablePerformIO $ BI.unsafeWithForeignPtr fp $ \p ->
+  valueWords p len 0
+{-# INLINE allValueOctets #-}
+
+-- (top level, rather than local to allValueOctets, where the loops were
+-- closures allocated on every call)
+valueWords :: Ptr Word8 -> Int -> Int -> IO Bool
+valueWords !p !len = go
+  where
+    go !i
+      | i + 8 <= len = do
+          w <- peekByteOff p i :: IO Word64
+          if suspicious w then valueOctets p i (i + 8) >>= \ok -> if ok then go (i + 8) else pure False
+          else go (i + 8)
+      | otherwise = valueOctets p i len
+    ones = 0x0101010101010101 :: Word64
+    highs = 0x8080808080808080 :: Word64
+    -- some octet below n (exact for n <= 0x80), or equal to zero
+    below n x = (x - ones * n) .&. complement x .&. highs /= 0
+    suspicious w = below 0x20 w || below 1 (w `xor` (ones * 0x7F))
+
+valueOctets :: Ptr Word8 -> Int -> Int -> IO Bool
+valueOctets !p = go
+  where
+    go !i !j
+      | i >= j = pure True
+      | otherwise = do
+          o <- peekByteOff p i :: IO Word8
+          if isValueOctet o then go (i + 1) j else pure False
+
+-- | field-vchar, SP or HTAB
+isValueOctet :: Word8 -> Bool
+isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
 
 -- = https://www.rfc-editor.org/rfc/rfc9112#section-2.2
 -- # A recipient of such a bare CR MUST consider that element to be

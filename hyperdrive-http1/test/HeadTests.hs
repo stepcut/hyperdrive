@@ -29,6 +29,7 @@ headTests = testGroup "Request head (RFC 9112 Sections 2 to 5)"
   , testProperty "limits, at their boundaries" prop_limits
   , testProperty "the one-pass field lines agree with the line-by-line parse" prop_scanFieldLines
   , testProperty "searching for CRLF and CRLF CRLF agrees with breakSubstring" prop_indexCRLF
+  , testProperty "checking values eight octets at a time agrees with one at a time" prop_allValueOctets
   , testProperty "each rule, by example" prop_examples
   , testProperty "the status for each error" prop_statuses
   ]
@@ -189,6 +190,20 @@ prop_scanFieldLines = checkCoverage $ withMaxSuccess 5000 $
     splitOn bs = case B.breakSubstring "\r\n" bs of
       (l, rest) | B.null rest -> [l]
                 | otherwise   -> l : splitOn (B.drop 2 rest)
+
+-- | Values of any length, mostly valid, with an octet that may not be
+-- (or HTAB, which may) at any position: the eight-at-a-time check
+-- agrees with checking each octet.
+prop_allValueOctets :: Property
+prop_allValueOctets = checkCoverage $ withMaxSuccess 5000 $
+  forAll (choose (0, 40)) $ \n ->
+  forAll (B.pack <$> vectorOf n (elements [0x61, 0x20, 0x7E, 0x80, 0xFF, 0x21])) $ \base ->
+  forAll (choose (0, max 0 (n - 1))) $ \i ->
+  forAll (elements [0x09, 0x00, 0x0A, 0x0D, 0x1F, 0x7F, 0x20, 0x7E, 0x80, 0x8F]) $ \w ->
+    let s = if n == 0 then base else B.take i base <> B.singleton w <> B.drop (i + 1) base
+        expected = B.all (\o -> (o >= 0x20 && o /= 0x7F) || o == 0x09) s
+    in cover 30 expected "valid" $ cover 30 (not expected) "invalid" $ cover 20 (n >= 16) "two words or more" $
+         allValueOctets s === expected
 
 -- | The searches by memchr find what breakSubstring finds, on strings
 -- dense in CR and LF.

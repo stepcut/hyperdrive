@@ -497,3 +497,15 @@ why: obs-text is allowed in a value
 why: the search for CRLF resumes just after a CR that does not start one (CR CR LF)
 - | otherwise -> go (i + k + 1)
 + | otherwise -> go (i + k + 2)
+
+why: eight at a time, a word with an octet below 0x20 (not just below 0x1F) goes to the octet loop
+- suspicious w = below 0x20 w || below 1 (w `xor` (ones * 0x7F))
++ suspicious w = below 0x1F w || below 1 (w `xor` (ones * 0x7F))
+
+why: eight at a time, a word with DEL goes to the octet loop
+- suspicious w = below 0x20 w || below 1 (w `xor` (ones * 0x7F))
++ suspicious w = below 0x20 w
+
+why: the octets after the last whole word are checked too
+- | otherwise = valueOctets p i len
++ | otherwise = pure True

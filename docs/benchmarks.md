@@ -475,3 +475,21 @@ line and for the trailer section. With the same memchr searches
 alternating, means of 5, faster in every pair): 6.136 to 5.505 µs and
 39699 to 36131 bytes a request. wrk's uploads send a Content-Length, so
 `scripts/bench` does not see this.
+
+Field values checked eight octets at a time (`allValueOctets`: a word
+with no octet below 0x20 and none equal to 0x7F is valid; any other
+goes to the octet loop, which allows HTAB). Against 8a21a45 on a quiet
+machine (alternating, means of 5):
+
+| | minimal request | browser request |
+|---|---|---|
+| 8a21a45 | 1.889 µs | 4.305 µs |
+| eight octets at a time | 1.903 µs (slower in 4 of 5 pairs) | 4.157 µs (faster in every pair) |
+
+Kept, by the user's decision: the minimal request's one short value
+(15 octets) loses about 15 ns, the browser's twelve fields gain 150,
+and longer values (cookies, user agents) gain more. A first version
+allocated 624 bytes more a request: its loops were closures allocated
+on every call, its argument a boxed slice, and its pointer boxed for
+the worker (it was used only inside the loop, so GHC did not unbox it
+without a bang).
