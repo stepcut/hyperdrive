@@ -19,6 +19,8 @@ module Hyperdrive.HTTP1.Head
   , parseFieldLine
   , checkLine
   , scanFieldLines
+  , indexCRLFCRLF
+  , indexCRLF
   ) where
 
 import Data.ByteString (ByteString)
@@ -144,19 +146,17 @@ parseRequestHead limits searched input =
       | B.take 2 (B.drop i input) == "\r\n" = skipEmptyLines (i + 2)
       | otherwise                          = i
     -- the index of the CRLF CRLF that ends the head, at or after i
-    findEnd !i = case B.breakSubstring "\r\n\r\n" $! B.drop i input of
-      (before, after) | B.null after -> Nothing
-                      | otherwise    -> Just (i + B.length before)
+    findEnd !i = (+ i) <$> indexCRLFCRLF (B.drop i input)
     -- what can be rejected before the head is complete: a request line
     -- too long, or more after it than a header section may hold
-    tooLong = case B.breakSubstring "\r\n" (B.drop start input) of
+    tooLong = case breakCRLF (B.drop start input) of
       (line, rest)
         | B.length line > maxRequestLine limits -> Just (lineTooLong line)
         | not (B.null rest), B.length rest - 2 > maxFieldSection limits -> Just FieldSectionTooLarge
         | otherwise -> Nothing
 
     parseHead head' consumed =
-      let (requestLine, rest) = B.breakSubstring "\r\n" head'
+      let (requestLine, rest) = breakCRLF head'
           fieldLines = if B.null rest then [] else splitLines (B.drop 2 rest)
           -- A head that parses has no CR or LF in it (names are tokens,
           -- values are checked by mkFieldValue, the request line is
@@ -191,6 +191,29 @@ parseRequestHead limits searched input =
     lineTooLong line
       | not (B.elem 0x20 line) = MethodTooLong
       | otherwise              = RequestTargetTooLong
+
+-- | The index of the first CRLF CRLF, or CRLF. A short pattern made
+-- breakSubstring roll a word through the input an octet at a time,
+-- which for a browser's head of 500 octets cost more than parsing its
+-- fields; jumping from CR to CR with memchr passes over the rest.
+indexCRLFCRLF, indexCRLF :: ByteString -> Maybe Int
+indexCRLFCRLF = indexFromCR "\r\n\r\n"
+indexCRLF = indexFromCR "\r\n"
+
+-- | The index of the first occurrence of a pattern that starts with CR.
+indexFromCR :: ByteString -> ByteString -> Maybe Int
+indexFromCR pat bs = go 0
+  where
+    go !i = case B.elemIndex 0x0D (BU.unsafeDrop i bs) of
+      Nothing -> Nothing
+      Just k | pat `B.isPrefixOf` BU.unsafeDrop (i + k) bs -> Just (i + k)
+             | otherwise -> go (i + k + 1)
+
+-- | As @B.breakSubstring "\r\n"@.
+breakCRLF :: ByteString -> (ByteString, ByteString)
+breakCRLF bs = case indexCRLF bs of
+  Just k  -> (BU.unsafeTake k bs, BU.unsafeDrop k bs)
+  Nothing -> (bs, B.empty)
 
 -- | Split on CRLF.
 splitLines :: ByteString -> [ByteString]

@@ -28,6 +28,7 @@ headTests = testGroup "Request head (RFC 9112 Sections 2 to 5)"
   , testProperty "what is parsed is what was sent" prop_contents
   , testProperty "limits, at their boundaries" prop_limits
   , testProperty "the one-pass field lines agree with the line-by-line parse" prop_scanFieldLines
+  , testProperty "searching for CRLF and CRLF CRLF agrees with breakSubstring" prop_indexCRLF
   , testProperty "each rule, by example" prop_examples
   , testProperty "the status for each error" prop_statuses
   ]
@@ -188,6 +189,17 @@ prop_scanFieldLines = checkCoverage $ withMaxSuccess 5000 $
     splitOn bs = case B.breakSubstring "\r\n" bs of
       (l, rest) | B.null rest -> [l]
                 | otherwise   -> l : splitOn (B.drop 2 rest)
+
+-- | The searches by memchr find what breakSubstring finds, on strings
+-- dense in CR and LF.
+prop_indexCRLF :: Property
+prop_indexCRLF = withMaxSuccess 5000 $
+  forAll (B.pack <$> listOf (elements [0x0D, 0x0A, 0x0D, 0x0A, 0x61, 0x20])) $ \s ->
+    (indexCRLFCRLF s, indexCRLF s) === (index "\r\n\r\n" s, index "\r\n" s)
+  where
+    index p s = case B.breakSubstring p s of
+      (before, after) | B.null after -> Nothing
+                      | otherwise    -> Just (B.length before)
 
 ------------------------------------------------------------------------------
 -- limits

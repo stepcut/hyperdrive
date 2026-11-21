@@ -493,3 +493,7 @@ why: DEL is a control character, not allowed in a value
 why: obs-text is allowed in a value
 - isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
 + isValueOctet w = (w >= 0x20 && w < 0x7F) || w == 0x09
+
+why: the search for CRLF resumes just after a CR that does not start one (CR CR LF)
+- | otherwise -> go (i + k + 1)
++ | otherwise -> go (i + k + 2)
