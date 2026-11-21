@@ -447,3 +447,24 @@ minimal one at the second step in every round, and at the first in
 three of five. What remains of the difference is mostly
 `scanFieldLines`' three loops (the value check, the tchar span, the
 lower-casing copy), at about seven instructions an octet each.
+
+## 2026-11-21: over sockets, after 309fcbc
+
+`scripts/bench` and `scripts/bench-cpu` on a quiet machine:
+
+| | hyperdrive | warp | hyperdrive after 0077c1c |
+|---|---|---|---|
+| small responses, 100 connections | 707k req/s (p50 0.11 ms, p99 2.7 ms) | 743k (0.10 ms, 2.7 ms) | 704k |
+| browser fields, 100 connections | 577k (0.15 ms, 2.2 ms) | 638k (0.13 ms, 2.8 ms) | 516k |
+| small responses, 1000 connections | 723k (1.1 ms, 7.6 ms) | 778k (1.1 ms, 6.8 ms) | 685k |
+| pipelined 16 deep | 1,002k (0.9 ms) | 960k (0.9 ms) | 967k |
+| 1 MiB responses, 32 connections | 13.0k (2.4 ms, 5.7 ms) | 11.4k (2.7 ms, 6.3 ms) | 12.0k |
+| 1 MiB uploads, 32 connections | 11.7k (2.4 ms, 6.6 ms) | 6.8k (3.8 ms, 96 ms) | 11.3k |
+| memory per idle connection (10,000) | 24 KB | 22 KB | 24 KB |
+| `bench-cpu`: req/s, user + kernel µs per request | 729k, 2.07 + 4.83 | 737k, 1.75 + 4.75 | 707k, 2.25 + 4.94 |
+
+Small responses at 95% of warp (99% in `bench-cpu`), with a browser's
+fields 90% (82% before), 1000 connections 93%; pipelined ahead by 4%.
+The p99 at 1000 connections was 7.6 ms against warp's 6.8, so the tail
+that looked worse after the yield (44 and 32 ms) was noise. The gap
+left is user time, 0.3 µs a request; the kernel's is within 0.1 µs.
