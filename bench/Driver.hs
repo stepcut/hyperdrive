@@ -5,11 +5,13 @@
 -- the bytes allocated per request; allocation is exact whatever else
 -- the machine is doing, time is not.
 --
---   bench-driver [N] [browser]
+--   bench-driver [N] [browser | chunked]
 --
 -- The default request is wrk's (41 bytes, Host only); @browser@ sends
--- a browser's (499 bytes, 13 header fields). Pin it to a core for
--- timing: @taskset -c 2 bench-driver 300000 browser@.
+-- a browser's (499 bytes, 13 header fields), and @chunked@ a POST with
+-- a chunked body of 16 chunks of 1 KiB (which the application does not
+-- read, so the driver discards it, decoding every chunk). Pin it to a
+-- core for timing: @taskset -c 2 bench-driver 300000 browser@.
 module Main (main) where
 
 import qualified Data.ByteString as B
@@ -37,6 +39,9 @@ main = do
           , "Connection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nSec-Fetch-Dest: document\r\n"
           , "Sec-Fetch-Mode: navigate\r\nSec-Fetch-Site: none\r\nSec-Fetch-User: ?1\r\nPriority: u=0, i\r\n"
           , "Cookie: session=0123456789abcdef; theme=dark\r\n\r\n" ]
+        ["chunked"] -> B.concat
+          ( "POST /upload HTTP/1.1\r\nHost: 127.0.0.1:18083\r\nTransfer-Encoding: chunked\r\n\r\n"
+          : replicate 16 ("400\r\n" <> B.replicate 1024 0x78 <> "\r\n") ++ ["0\r\n\r\n"] )
         _ -> "GET / HTTP/1.1\r\nHost: 127.0.0.1:18083\r\n\r\n"
       body = fieldsFromList [(fromJust (mkFieldName "content-type"), either (error . show) id (mkFieldValue "text/plain"))]
       app _ _ = either (fail . show) pure (mkResponse (fromJust (mkStatus 200)) body (ContentBytes "Hello, World!"))
