@@ -468,3 +468,10 @@ fields 90% (82% before), 1000 connections 93%; pipelined ahead by 4%.
 The p99 at 1000 connections was 7.6 ms against warp's 6.8, so the tail
 that looked worse after the yield (44 and 32 ms) was noise. The gap
 left is user time, 0.3 µs a request; the kernel's is within 0.1 µs.
+
+The chunked decoder used `breakSubstring` too, for each chunk-size
+line and for the trailer section. With the same memchr searches
+(`bench-driver chunked`: 16 chunks of 1 KiB, decoded and discarded;
+alternating, means of 5, faster in every pair): 6.136 to 5.505 µs and
+39699 to 36131 bytes a request. wrk's uploads send a Content-Length, so
+`scripts/bench` does not see this.

@@ -21,6 +21,7 @@ module Hyperdrive.HTTP1.Head
   , scanFieldLines
   , indexCRLFCRLF
   , indexCRLF
+  , breakCRLF
   ) where
 
 import Data.ByteString (ByteString)
@@ -217,7 +218,7 @@ breakCRLF bs = case indexCRLF bs of
 
 -- | Split on CRLF.
 splitLines :: ByteString -> [ByteString]
-splitLines bs = case B.breakSubstring "\r\n" bs of
+splitLines bs = case breakCRLF bs of
   (line, rest) | B.null rest -> [line]
                | otherwise   -> line : splitLines (B.drop 2 rest)
 

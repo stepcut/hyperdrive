@@ -20,7 +20,7 @@ module Hyperdrive.HTTP1.Chunked
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Word (Word64)
-import Hyperdrive.HTTP1.Head (HeadError, checkLine, parseFieldLine)
+import Hyperdrive.HTTP1.Head (HeadError, breakCRLF, checkLine, indexCRLFCRLF, parseFieldLine)
 import Hyperdrive.Semantics.Field (Fields, emptyFields, fieldsFromList)
 import Hyperdrive.Semantics.FieldSyntax (parseQuotedString)
 import Hyperdrive.Semantics.Syntax (isHEXDIG, isOWS, isTChar)
@@ -146,7 +146,7 @@ decodeChunked limits = go 0
         | B.length input < 2       -> NeedMore used d
         | B.take 2 input == "\r\n" -> go (used + 2) d { decoderPhase = SizeLine } (B.drop 2 input)
         | otherwise                -> DecodeError MissingChunkEnd
-      SizeLine -> case B.breakSubstring "\r\n" (B.take (maxSizeLine + 2) input) of
+      SizeLine -> case breakCRLF (B.take (maxSizeLine + 2) input) of
         (line, rest)
           | B.length line > maxSizeLine -> DecodeError ChunkSizeLineTooLong
           | B.null rest -> NeedMore used d
@@ -168,13 +168,12 @@ decodeChunked limits = go 0
       | B.take 2 input == "\r\n" = Finished emptyFields (used + 2)
       -- only the first maxTrailerSection octets can hold a section that
       -- is not too large, with its final CRLF CRLF
-      | otherwise = case B.breakSubstring "\r\n\r\n" (B.drop start (B.take limit input)) of
-          (before, rest)
-            | B.null rest ->
+      | otherwise = case indexCRLFCRLF (B.drop start (B.take limit input)) of
+          Nothing ->
                 if B.length input >= limit then DecodeError TrailerSectionTooLarge
                 else NeedMore used (Decoder (Trailers (B.length input)) 0)
-            | otherwise ->
-                let section = B.take (start + B.length before) input
+          Just before ->
+                let section = B.take (start + before) input
                 in case traverse fieldLine (splitCRLF section) of
                      Left e   -> DecodeError (InvalidTrailer e)
                      Right fs -> Finished (fieldsFromList fs) (used + B.length section + 4)
@@ -183,7 +182,7 @@ decodeChunked limits = go 0
     fieldLine l = checkLine l >> parseFieldLine l
 
 splitCRLF :: ByteString -> [ByteString]
-splitCRLF bs = case B.breakSubstring "\r\n" bs of
+splitCRLF bs = case breakCRLF bs of
   (line, rest) | B.null rest -> [line]
                | otherwise   -> line : splitCRLF (B.drop 2 rest)
 
