@@ -195,7 +195,7 @@ mainLoop env = do
     case stPending st of
       [] -> waitInput env
       (o : rest) -> do
-        writeIORef (envRef env) st { stPending = rest }
+        writeIORef (envRef env) $! st { stPending = rest }
         case o of
           NeedInput    -> waitInput env
           NewRequest h -> serveRequest env h
@@ -207,9 +207,12 @@ mainLoop env = do
 -- whoever is waiting for it.
 feed :: Env -> Input -> IO ()
 feed env input = do
+  -- the state is written evaluated, here and below: written lazily, each
+  -- write left a thunk for the next read to run (ticky counted about
+  -- ten a request)
   st <- readIORef (envRef env)
   let (conn, outs) = step input (stConn st)
-  writeIORef (envRef env) st { stConn = conn }
+  writeIORef (envRef env) $! st { stConn = conn }
   mapM_ act outs
   st' <- readIORef (envRef env)
   when (stOutBytes st' > 16384) (flush env)
@@ -229,7 +232,7 @@ flush env = do
   st <- readIORef (envRef env)
   when (stBroken st) (throwIO ConnectionClosed)
   unless (null (stOut st)) $ do
-    writeIORef (envRef env) st { stOut = [], stOutBytes = 0, stWrote = True }
+    writeIORef (envRef env) $! st { stOut = [], stOutBytes = 0, stWrote = True }
     -- a write that does not finish in time is made to fail by the
     -- ticker, which aborts the transport
     armWrite (envTimer env) =<< deadlineIn (timeoutWrite (settingsTimeouts (envSettings env)))
@@ -274,7 +277,7 @@ waitInput env = do
       !deadline
         | ph' == ph, ph `elem` [ReadingHead, DiscardingBody] = deadline'
         | otherwise = now + fromIntegral limit * 1000
-  writeIORef (envRef env) st { stTimer = TimerFor ph deadline, stWrote = False }
+  writeIORef (envRef env) $! st { stTimer = TimerFor ph deadline, stWrote = False }
   ready <- transportTryRecv (envTransport env)
   case ready of
     Just bs -> received env bs  -- already there
@@ -394,7 +397,7 @@ readChunkFrom env bodyRef = readIORef bodyRef >>= \case
   where
     answer = do
       st <- readIORef (envRef env)
-      let rest' outs = writeIORef (envRef env) st { stPending = outs }
+      let rest' outs = writeIORef (envRef env) $! st { stPending = outs }
       case stPending st of
         (RequestData b : RequestEnd t : outs) -> rest' outs >> writeIORef bodyRef (BodyEnded t) >> pure b
         (RequestData b : outs) -> rest' outs >> pure b
