@@ -493,3 +493,20 @@ allocated 624 bytes more a request: its loops were closures allocated
 on every call, its argument a boxed slice, and its pointer boxed for
 the worker (it was used only inside the loop, so GHC did not unbox it
 without a bang).
+
+The CR search compared the octets after each CR with `isPrefixOf`
+(a call to memcmp); they are now compared in place. The profile put
+0.066 µs a request in `indexFromCR` on the minimal request, but against
+285f69b (alternating, means of 5) only the chunked request, with a
+search per chunk, gained:
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| 285f69b | 1.921 µs | 4.201 µs | 5.806 µs |
+| octets compared in place | 1.913 µs (3 of 5 faster) | 4.226 µs (2 of 5) | 5.678 µs (5 of 5) |
+
+Kept by the user's decision: neutral where the gain was expected,
+better for chunked bodies, and no more complicated. As local functions
+the loops were closures allocated on every call (137 bytes more on the
+minimal request, 1984 on the chunked); at top level they allocate
+nothing.

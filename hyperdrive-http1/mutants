@@ -495,8 +495,8 @@ why: obs-text is allowed in a value
 + isValueOctet w = (w >= 0x20 && w < 0x7F) || w == 0x09
 
 why: the search for CRLF resumes just after a CR that does not start one (CR CR LF)
-- | otherwise -> go (i + k + 1)
-+ | otherwise -> go (i + k + 2)
+- Just k0 -> let k = i + k0 in if k + n <= B.length bs && follows n bs k 1 then Just k else fromCR n bs (k + 1)
++ Just k0 -> let k = i + k0 in if k + n <= B.length bs && follows n bs k 1 then Just k else fromCR n bs (k + 2)
 
 why: eight at a time, a word with an octet below 0x20 (not just below 0x1F) goes to the octet loop
 - suspicious w = below 0x20 w || below 1 (w `xor` (ones * 0x7F))
@@ -509,3 +509,11 @@ why: eight at a time, a word with DEL goes to the octet loop
 why: the octets after the last whole word are checked too
 - | otherwise = valueOctets p i len
 + | otherwise = pure True
+
+why: after a CR, LF and CR alternate (CR LF CR LF), not LF throughout
+- | otherwise = BU.unsafeIndex bs (k + j) == (if odd j then 0x0A else 0x0D) && follows n bs k (j + 1)
++ | otherwise = BU.unsafeIndex bs (k + j) == 0x0A && follows n bs k (j + 1)
+
+why: a match must fit in the input
+- Just k0 -> let k = i + k0 in if k + n <= B.length bs && follows n bs k 1 then Just k else fromCR n bs (k + 1)
++ Just k0 -> let k = i + k0 in if k + n <= B.length bs + 1 && follows n bs k 1 then Just k else fromCR n bs (k + 1)

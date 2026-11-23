@@ -203,17 +203,27 @@ parseRequestHead limits searched input =
 -- which for a browser's head of 500 octets cost more than parsing its
 -- fields; jumping from CR to CR with memchr passes over the rest.
 indexCRLFCRLF, indexCRLF :: ByteString -> Maybe Int
-indexCRLFCRLF = indexFromCR "\r\n\r\n"
-indexCRLF = indexFromCR "\r\n"
+indexCRLFCRLF = indexFromCR 4
+indexCRLF = indexFromCR 2
 
--- | The index of the first occurrence of a pattern that starts with CR.
-indexFromCR :: ByteString -> ByteString -> Maybe Int
-indexFromCR pat bs = go 0
-  where
-    go !i = case B.elemIndex 0x0D (BU.unsafeDrop i bs) of
-      Nothing -> Nothing
-      Just k | pat `B.isPrefixOf` BU.unsafeDrop (i + k) bs -> Just (i + k)
-             | otherwise -> go (i + k + 1)
+-- | The index of the first CRLF repeated to this many octets (2 or 4).
+-- The octets after each CR are compared in place: comparing with
+-- isPrefixOf called memcmp for every CR.
+-- (Top-level loops taking everything as arguments: as local functions
+-- they were closures allocated on every call.)
+indexFromCR :: Int -> ByteString -> Maybe Int
+indexFromCR !n !bs = fromCR n bs 0
+
+fromCR :: Int -> ByteString -> Int -> Maybe Int
+fromCR !n !bs !i = case B.elemIndex 0x0D (BU.unsafeDrop i bs) of
+  Nothing -> Nothing
+  Just k0 -> let k = i + k0 in if k + n <= B.length bs && follows n bs k 1 then Just k else fromCR n bs (k + 1)
+
+-- | Whether the octets after the CR at k alternate LF, CR, ... up to n.
+follows :: Int -> ByteString -> Int -> Int -> Bool
+follows !n !bs !k !j
+  | j == n    = True
+  | otherwise = BU.unsafeIndex bs (k + j) == (if odd j then 0x0A else 0x0D) && follows n bs k (j + 1)
 
 -- | As @B.breakSubstring "\r\n"@.
 breakCRLF :: ByteString -> (ByteString, ByteString)
