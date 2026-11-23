@@ -510,3 +510,64 @@ better for chunked bodies, and no more complicated. As local functions
 the loops were closures allocated on every call (137 bytes more on the
 minimal request, 1984 on the chunked); at top level they allocate
 nothing.
+
+## 2026-11-23: where the time goes now (for a fresh look)
+
+perf over sockets again (wrk, hello, 100 connections; `dontStrip`
+builds of both servers), after 285f69b, with `bench-cpu`'s 6.90 µs
+(hyperdrive) and 6.49 µs (warp) of CPU per request to scale the
+shares:
+
+| µs per request | hyperdrive | warp | hyperdrive, 2026-11-20 |
+|---|---|---|---|
+| in the server binary | 1.79 | 1.53 | 2.3 |
+| GHC's runtime (scheduler, updates, generic application, GC entry) | 0.84 | 0.82 | 1.22 |
+| the HTTP code (hyperdrive's packages; warp, wai, http-types, vault, case-insensitive) | 0.47 | 0.33 | 0.49 |
+| the kernel | 3.64 | 3.63 | 3.8 |
+
+The runtime and the kernel are level with warp's; the gap is in our own
+code and spread thin. Hyperdrive's own functions on the minimal request
+(µs per request): `HTTP1.Connection.step` 0.095, `Head.indexFromCR`
+0.066 (comparing the octets after each CR in place, c88f69e, did not
+reduce it on this request; perhaps the memchr calls themselves),
+`Head.scanFieldLines` 0.056, `Field.lookupAll` 0.050 (the core's eight
+lookups), `Head.parseRequestHead` 0.037, `URI.parseIPv4` 0.027,
+`Target.reconstructTarget` 0.022, the rest under 0.015 each. Updates
+(`stg_upd_frame_info`) are still twice warp's (1.00% of samples against
+0.53%): 28 thunks a request remain (ticky), single ones of 24 to 96
+bytes in `respond`, `parseAuthority`, `mkRequest`, the head parser and
+the driver.
+
+In process, the browser request's 2.4 µs over the minimal one is mostly
+`scanFieldLines` (the tchar span over names and the lower-casing copy of
+capitalized names, at about seven instructions an octet; the value
+check is now eight octets at a time), then building and splitting the
+`Fields` sequence (`Seq` snoc and `mkTree`, `partition`, `reverse`:
+about 0.3 µs), then `lookupAll`.
+
+Not yet tried, with rough expectations:
+
+- RTS options. Both servers run with only `+RTS -N8`; a larger
+  allocation area (`-A`), or `-qg` / `-qn`, might be worth a few per
+  cent to hyperdrive, which allocates about 6.5 KB a small request
+  (warp about 5.8). Try on both servers; it would be a deployment
+  default to document or set with `-with-rtsopts`.
+- Splitting the core's fields (Host and the protocol fields) from the
+  application's during the scan, instead of `partitionFields`
+  afterwards and eight `lookupAll`s over the result: perhaps 0.05 to
+  0.1 µs. Mixes protocol knowledge into the parser.
+- A lighter `Fields` than `Seq` (an array, or a list with its length):
+  less to build for 1 to 15 fields. `Fields` is a public type in
+  hyperdrive-semantics, so it is an API decision.
+- Keeping names as received and comparing case-insensitively, to avoid
+  the copy: conflicts with the decision that names are normalized to
+  lower case (also what HTTP/2 and HTTP/3 send).
+
+What has repeatedly not paid, or cost more than expected: lookup tables
+per octet (a branch-free table lost to memchr and two comparisons);
+anything that trades a short copy for a lookup (sharing field names);
+local loops in functions GHC inlines (they became closures allocated on
+every call: three times this week, each found by allocation going up);
+a pointer used only inside a local loop (boxed for the worker until it
+got a bang). Allocation and time disagree often enough that both are
+measured.
