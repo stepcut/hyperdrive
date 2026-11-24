@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Where the CPU goes in hyperdrive and in warp under the same load (wrk,
+# small responses): builds both servers unstripped, records each with
+# perf for 4 seconds in the middle of a 6-second run, and summarizes
+# with scripts/perf-summary, in microseconds a request if CPU_US is
+# given as "HYPERDRIVE_US WARP_US" (user plus kernel per request, from
+# scripts/bench-cpu).
+#
+#   nix develop .#bench -c nix shell nixpkgs#perf nixpkgs#binutils -c \
+#     scripts/profile-servers
+#
+# Kernel symbols need kernel.perf_event_paranoid at most 1 and
+# kernel.kptr_restrict 0 (the defaults are 2 and 1). Ask for a quiet
+# machine first. The profiles are kept in OUT (default
+# /tmp/profile-servers) for perf report and perf annotate.
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")/.." && pwd)
+OUT=${OUT:-/tmp/profile-servers}
+CONNECTIONS=${CONNECTIONS:-100}
+SERVER_CPUS=${SERVER_CPUS:-0-7}
+CLIENT_CPUS=${CLIENT_CPUS:-8-15}
+PORT=18080
+mkdir -p "$OUT"
+
+# the bench shell's binaries are stripped; build them again without
+nix build --impure -o "$OUT/bench" --expr "
+  let f = builtins.getFlake (toString $here);
+      lib = f.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem}.haskell.lib;
+  in lib.dontStrip f.packages.\${builtins.currentSystem}.hyperdrive-bench"
+
+read -r hyperdrive_us warp_us <<<"${CPU_US:-}"
+for server in hyperdrive warp; do
+  taskset -c "$SERVER_CPUS" "$OUT/bench/bin/bench-$server" "$PORT" +RTS -N8 -RTS &
+  pid=$!
+  for _ in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break; sleep 0.1; done
+  taskset -c "$CLIENT_CPUS" wrk -t8 -c"$CONNECTIONS" -d6s "http://127.0.0.1:$PORT/" > "$OUT/wrk-$server.txt" 2>&1 &
+  wrkpid=$!
+  sleep 1
+  perf record -q -F 4000 -p "$pid" -o "$OUT/perf-$server.data" -- sleep 4 2>/dev/null
+  wait "$wrkpid"
+  kill "$pid"; wait "$pid" 2>/dev/null || true
+  us_var=${server}_us
+  echo "=== $server: $(awk '/Requests\/sec/ {print $2}' "$OUT/wrk-$server.txt") req/s"
+  "$here/scripts/perf-summary" --dso "bench-$server" --binary "$OUT/bench/bin/bench-$server" \
+    ${!us_var:+--us-per-request ${!us_var}} --top 15 "$OUT/perf-$server.data"
+done

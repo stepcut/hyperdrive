@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# System calls per request, for hyperdrive and warp under wrk (small
+# responses), counted with perf tracepoints: receives, and how many of
+# them found nothing (EAGAIN), sends, epoll_ctl, epoll_wait, futex and
+# sched_yield. This is how the yield after a write was found (a receive
+# that finds nothing costs an epoll_ctl and a wake-up).
+#
+#   nix develop .#bench -c nix shell nixpkgs#perf -c scripts/syscall-counts
+#
+# Needs kernel.perf_event_paranoid at most 1 and the tracing file system
+# readable: sudo chmod a+rx /sys/kernel/tracing and
+# sudo chmod -R a+rX /sys/kernel/tracing/events (chmod 700 restores it,
+# as does a reboot). Counts depend on load more than on what else the
+# machine is doing, but a quiet machine is still better.
+#
+# DURATION (default 5) seconds, CONNECTIONS (default 100), SERVER_CPUS
+# (default 0-7) and CLIENT_CPUS (default 8-15), as in scripts/bench.
+set -uo pipefail
+
+DURATION=${DURATION:-5}
+CONNECTIONS=${CONNECTIONS:-100}
+SERVER_CPUS=${SERVER_CPUS:-0-7}
+CLIENT_CPUS=${CLIENT_CPUS:-8-15}
+PORT=18080
+counts=$(mktemp)
+trap 'rm -f "$counts"' EXIT
+
+[ -r /sys/kernel/tracing/events/syscalls ] || {
+  echo "/sys/kernel/tracing/events is not readable: see the comment at the top of $0" >&2; exit 1; }
+
+events=(
+  -e syscalls:sys_enter_recvfrom
+  -e syscalls:sys_exit_recvfrom --filter 'ret == -11'
+  -e syscalls:sys_enter_sendmsg -e syscalls:sys_enter_sendto -e syscalls:sys_enter_writev
+  -e syscalls:sys_enter_epoll_ctl -e syscalls:sys_enter_epoll_wait -e syscalls:sys_enter_epoll_pwait
+  -e syscalls:sys_enter_futex -e syscalls:sys_enter_sched_yield
+)
+
+for server in hyperdrive warp; do
+  taskset -c "$SERVER_CPUS" "bench-$server" "$PORT" +RTS -N8 -RTS &
+  pid=$!
+  for _ in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break; sleep 0.1; done
+  sleep 0.5
+  perf stat -x, -p "$pid" "${events[@]}" -o "$counts" &
+  perfpid=$!
+  sleep 0.2
+  out=$(taskset -c "$CLIENT_CPUS" wrk -t8 -c"$CONNECTIONS" -d"${DURATION}s" "http://127.0.0.1:$PORT/" 2>&1)
+  kill -INT "$perfpid"; wait "$perfpid" 2>/dev/null
+  kill "$pid"; wait "$pid" 2>/dev/null
+  requests=$(awk '/requests in/ {print $1}' <<<"$out")
+  echo "$server: $requests requests ($(awk '/Requests\/sec/ {print $2}' <<<"$out") req/s); per request:"
+  awk -F, -v n="$requests" '
+    /^#/ || NF < 3 { next }
+    { name = $3
+      if (name == "syscalls:sys_exit_recvfrom") name = "recvfrom finding nothing"
+      sub("syscalls:sys_enter_", "", name)
+      if ($1 + 0 > 0) printf "  %-26s %8.3f\n", name, $1 / n }' "$counts"
+done

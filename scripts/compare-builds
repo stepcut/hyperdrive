@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Time several builds of bench-driver against each other, in rotation,
+# and summarize: the mean for each, and in how many rounds each was
+# faster than the first.
+#
+#   scripts/compare-builds [-r ROUNDS] [-k "minimal browser chunked"] NAME=PATH ...
+#
+# The first build is the baseline. Make the others, say, with
+#
+#   git worktree add /tmp/before <commit>
+#   (cd /tmp/before && cabal build --project-file=bench/local.project \
+#      --builddir=dist-bench bench-driver)
+#   cp $(cd /tmp/before && cabal list-bin --project-file=bench/local.project \
+#      --builddir=dist-bench bench-driver) /tmp/bd-base
+#
+# and the same in the working tree for /tmp/bd-new. Timings: ask for a
+# quiet machine first. Each run is pinned to CPU (default 2); N
+# requests (default 300000, and 100000 for chunked).
+set -euo pipefail
+
+ROUNDS=5
+KINDS="minimal browser"
+CPU=${CPU:-2}
+while getopts "r:k:" opt; do
+  case $opt in
+    r) ROUNDS=$OPTARG ;;
+    k) KINDS=$OPTARG ;;
+    *) exit 2 ;;
+  esac
+done
+shift $((OPTIND - 1))
+[ $# -ge 2 ] || { echo "usage: $0 [-r ROUNDS] [-k KINDS] NAME=PATH NAME=PATH ..." >&2; exit 2; }
+
+results=$(mktemp)
+trap 'rm -f "$results"' EXIT
+uptime
+for kind in $KINDS; do
+  arg=$kind; n=${N:-300000}
+  [ "$kind" = minimal ] && arg=
+  [ "$kind" = chunked ] && n=${N:-100000}
+  for _ in $(seq "$ROUNDS"); do
+    for build in "$@"; do
+      name=${build%%=*}; path=${build#*=}
+      out=$(taskset -c "$CPU" "$path" "$n" $arg)
+      us=$(sed 's/.*each: \([0-9.]*\) us.*/\1/' <<<"$out")
+      bytes=$(sed 's/.* and \([0-9]*\) bytes allocated.*/\1/' <<<"$out")
+      echo "$kind $name $us $bytes" | tee -a "$results"
+    done
+  done
+done
+uptime
+
+echo
+echo "means of $ROUNDS (rounds faster than the first build):"
+awk -v first="${1%%=*}" '
+  !($1 in kinds) { kinds[$1] = 1; kind_order[++nk] = $1 }
+  !($2 in names) { names[$2] = 1; name_order[++nn] = $2 }
+  { key = $1 SUBSEP $2; c[key]++; sum[key] += $3; bytes[key] = $4; t[key, c[key]] = $3 }
+  END {
+    for (i = 1; i <= nk; i++) {
+      kind = kind_order[i]; base = kind SUBSEP first
+      printf "  %s\n", kind
+      for (j = 1; j <= nn; j++) {
+        name = name_order[j]; key = kind SUBSEP name
+        printf "    %-12s %8.3f us  %6d bytes", name, sum[key] / c[key], bytes[key]
+        if (name != first) {
+          wins = 0
+          for (r = 1; r <= c[key]; r++) if (t[key, r] < t[base, r]) wins++
+          printf "  %+.1f%%, faster in %d of %d", (sum[key] / sum[base] - 1) * 100, wins, c[key]
+        }
+        printf "\n"
+      }
+    }
+  }' "$results"

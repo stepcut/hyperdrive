@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""The thunks a ticky-ticky profile counted most, per request, each
+with the function it is in and the start of its definition in the STG
+dump of the same build.
+
+    cabal build --project-file=bench/local.project --builddir=dist-ticky \\
+      --ghc-options="-ticky -ticky-allocd -ticky-dyn-thunk -rtsopts \\
+                     -ddump-stg-final -ddump-to-file" bench-driver
+    $(cabal list-bin ... bench-driver) 100000 +RTS -rticky.txt -RTS
+    scripts/ticky-thunks [--requests 100000] [--builddir dist-ticky] [--top 20] ticky.txt
+
+Cabal does not rebuild when only -ddump flags change: delete the build
+directory first if the dumps are missing or stale. The names in ticky's
+output and in the dumps match only when both come from one build.
+"""
+import argparse
+import glob
+import re
+
+parser = argparse.ArgumentParser()
+parser.add_argument('ticky')
+parser.add_argument('--requests', type=int, default=100000)
+parser.add_argument('--builddir', default='dist-ticky')
+parser.add_argument('--top', type=int, default=20)
+args = parser.parse_args()
+
+dumps = {}
+for f in glob.glob(f'{args.builddir}/build/**/*.dump-stg-final', recursive=True):
+    if 'dyn' in f.rsplit('/', 1)[1]:
+        continue   # the dynamic way is not what the executable links
+    path = re.sub(r'\.(thr_)?debug\.dump-stg-final$', '', f)
+    module = re.sub(r'^.*/(src|testing|bench-driver-tmp)/', '', path).replace('/', '.')
+    dumps['Main' if module == 'Driver' else module] = open(f).read().split('\n')
+
+rows = []
+started = False
+for line in open(args.ticky):
+    if re.match(r'\s+Entries\s+Alloc', line):
+        started = True
+        continue
+    if not started or '(thk' not in line:
+        continue
+    m = re.search(r'(\S+?)\{v(?: (\w+))?\} \(([\w.]+)\) \((thk[^)]*)\)', line)
+    parts = line.split()
+    if not m or int(parts[0]) == 0:
+        continue
+    name = m.group(1) if m.group(2) is None else m.group(1) + '_' + m.group(2)
+    rows.append((int(parts[0]), int(parts[2]), name, m.group(3), m.group(4)))
+rows.sort(reverse=True)
+
+n = args.requests
+print(f'{len(rows)} thunks entered, {sum(r[0] for r in rows) / n:.1f} entries a request')
+for entries, allocated, name, module, kind in rows[:args.top]:
+    print(f'--- {entries / n:.2f} a request, {allocated / n:.0f} bytes a request: {name} ({module}) {kind}')
+    lines = dumps.get(module, [])
+    at = next((i for i, l in enumerate(lines) if re.match(r'\s*' + re.escape(name) + r'\b', l)), None)
+    if at is None:
+        print('    (not in the dumps: are they from this build?)')
+        continue
+    top = next((lines[j] for j in range(at, -1, -1) if re.match(r'^[A-Za-z$]', lines[j])), '?')
+    print('    in ' + top.split(' ')[0][:100])
+    for l in lines[at + 1:at + 9]:
+        print('    ' + l.rstrip()[:140])

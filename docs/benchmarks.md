@@ -199,6 +199,23 @@ Timings need a quiet machine (ask first); allocation counts do not.
   `+RTS -p`. Proportions only: profiling stops small functions from
   being inlined, so predicates like `isFieldVChar` show allocation they
   do not have in a normal build.
+- `scripts/compare-builds [-r ROUNDS] [-k "minimal browser chunked"]
+  NAME=PATH ...`: several `bench-driver` builds in rotation, pinned to
+  one core, with each one's mean and the rounds it beat the first.
+  (Added 2026-11-23; how every timing from 2026-11-20 on was taken.)
+- `scripts/profile-servers` (in the bench shell, with `nixpkgs#perf`
+  and `nixpkgs#binutils`): unstripped builds of both servers, perf for
+  4 s under wrk, and `scripts/perf-summary` on each; `CPU_US="H W"`
+  (from `bench-cpu`) gives µs per request.
+- `scripts/perf-summary [--dso D] [--binary B] [--us-per-request U]
+  PERF.DATA`: samples by package, module and function, from sample
+  counts (perf's printed percentages round the many small Haskell
+  symbols to 0.00%), with module-local names counted apart and
+  unnamed addresses attributed to the symbol before them in `--binary`.
+- `scripts/syscall-counts`: system calls per request for both servers
+  (perf tracepoints; needs `/sys/kernel/tracing` readable).
+- `scripts/ticky-thunks TICKY.txt`: the thunks a ticky profile counted
+  most, located in the STG dumps of the same build.
 - CPU profiles: `nix shell nixpkgs#perf`, then `perf record -F 4000 -p
   PID -- sleep 4` while `wrk` runs, and `perf report --sort symbol`.
   Kernel symbols need `sudo sysctl kernel.perf_event_paranoid=1
@@ -571,3 +588,31 @@ every call: three times this week, each found by allocation going up);
 a pointer used only inside a local loop (boxed for the worker until it
 got a bang). Allocation and time disagree often enough that both are
 measured.
+
+
+### Correction, the same day: the runtime is not level; our code is the gap
+
+The table above came from perf's printed percentages, which round each
+of the many small Haskell symbols to 0.00% (about 4% of samples went
+missing that way), and it counted module-local names (`s1Ab_info` and
+the like) and addresses perf could not name as "runtime". Recounted
+from sample counts by `scripts/perf-summary`, with unnamed addresses
+attributed to the symbol before them in the binary (the same profiles,
+µs per request):
+
+| | hyperdrive | warp |
+|---|---|---|
+| in the server binary | 1.78 | 1.53 |
+| the runtime system | 0.48 | 0.57 |
+| HTTP/1.1 core, `Hyperdrive.HTTP1.Connection` | 0.35 | |
+| the driver, `Hyperdrive.Server.Connection` | 0.26 | |
+| the head parser, `Hyperdrive.HTTP1.Head` | 0.19 | |
+| all the HTTP code | ~1.07 | ~0.75 (`Warp.Request` 0.20, `Warp.HTTP1` 0.11, `Warp.Response` 0.11, ...) |
+
+So hyperdrive spends less than warp in the runtime and about 0.3 µs
+more in its own code, mostly inside the core's `step`/`respond` and the
+driver's loop, in code under local labels that perf cannot name (it
+shows as offsets after `$WEndBody` and `defaultSettings1`, the nearest
+exported symbols). A build with debug information (`-g`) would let perf
+map those samples to source lines (`perf report --sort srcline`, `perf
+annotate`): the next step for finding them.
