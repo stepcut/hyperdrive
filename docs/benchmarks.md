@@ -925,3 +925,36 @@ A mutant that let "(" into a name survived: the generator of field
 lines had no such octet in a name. A test now puts each of the 256
 octets at the start, in the middle and at the end of a name and
 compares with the line-by-line parse.
+
+## 2026-11-24: the libraries compiled with -O2
+
+The benchmarks' own code was compiled with `-O2`, the three libraries
+(semantics, http1, server) with cabal's default `-O1`. Each library
+now has `ghc-options: -O2` (the library stanza only, not the tests).
+
+Counts, against c8d2474 (`perf stat`, user mode, 100000 requests):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| bytes allocated a request | 5392 to 5216 | 11574 to 10894 (-5.9%) | 34912 to 31944 (-8.5%) |
+| instructions a request | 10790 to 10603 (-1.7%) | 29148 to 28418 (-2.5%) | 33777 to 31195 (-7.6%) |
+
+Of `-O2`'s two passes, `-fspec-constr` alone gives nearly all of it
+(5192, 10950 and 32000 bytes; 10534, 28618 and 31135 instructions) and
+`-fliberate-case` alone little (5320, 11486, 34824 bytes).
+
+On a quiet machine (`scripts/compare-builds -r 10`, means of 10):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| -O1 | 1.645 µs | 3.788 µs | 5.362 µs |
+| -O2 | 1.612 µs (-2.0%, faster in 10 of 10) | 3.724 µs (-1.7%, 10 of 10) | 4.869 µs (-9.2%, 10 of 10) |
+
+Over sockets, the two builds in turn (wrk, 100 connections, 5 s each,
+means of six): with wrk's own request, user 1.782 to 1.761 µs (-1.2%,
+the runs overlapping), kernel 4.778 to 4.794, 737k and 738k req/s;
+with the browser's request, user 3.553 to 3.414 µs (-3.9%, every run
+under every run of the baseline), kernel 5.265 to 5.207, 611k to 625k
+req/s.
+
+A clean build of the three libraries took 15 s before and 16 s after.

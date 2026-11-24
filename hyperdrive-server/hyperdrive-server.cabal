@@ -20,6 +20,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   default-language: GHC2021
+  ghc-options:      -O2
   exposed-modules:  Hyperdrive.Server
                     Hyperdrive.Server.Connection
                     Hyperdrive.Server.Date

@@ -19,6 +19,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   default-language: GHC2021
+  ghc-options:      -O2
   exposed-modules:  Hyperdrive.HTTP1.Chunked
                     Hyperdrive.HTTP1.Connection
                     Hyperdrive.HTTP1.Framing
