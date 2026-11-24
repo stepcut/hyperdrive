@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | The benchmark application on hyperdrive: GET / is a small response,
 -- GET /large 1 MiB, and POST /upload reads the body and answers with
--- its length.
+-- its length. A second argument, @pin@, turns 'settingsPinConnections'
+-- on.
 module Main (main) where
 
 import qualified Data.ByteString as B
@@ -18,8 +19,10 @@ import System.Environment (getArgs)
 
 main :: IO ()
 main = do
-  [port] <- getArgs
-  runServer defaultSettings { settingsPort = fromIntegral (read port :: Int), settingsHost = Just "127.0.0.1" } app
+  port : options <- getArgs
+  runServer defaultSettings
+    { settingsPort = fromIntegral (read port :: Int), settingsHost = Just "127.0.0.1"
+    , settingsPinConnections = options == ["pin"] } app
 
 large :: B.ByteString
 large = B.replicate (1024 * 1024) 120

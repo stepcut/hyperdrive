@@ -3,7 +3,7 @@ module ServerTests (serverTests) where
 
 import Control.Concurrent
 import Control.Exception hiding (assert)
-import Control.Monad (forM_, forever, unless, when)
+import Control.Monad (forM, forM_, forever, unless, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
@@ -44,6 +44,7 @@ serverTests = testGroup "hyperdrive-server"
   , testProperty "shutdown: idle at once, busy after the response, stuck ones killed" prop_shutdown
   , testProperty "handler failures and the time limit" prop_failures
   , testProperty "request bodies: 100 (Continue) on the wire, and bodies cut short" prop_bodies
+  , testProperty "pinned connections: a capability each in turn, and only when asked" prop_pinned
   , testProperty "Date is an IMF-fixdate" prop_date
   , testProperty "coarse timers: expiries, re-arming, write aborts" prop_timers
   , testProperty "the ticker keeps the Date value current" prop_tickerDate
@@ -193,6 +194,28 @@ ok _ _ = either (throwIO . userError . show) pure (mkResponse (fromJust (mkStatu
 
 statusOf :: ByteString -> ByteString
 statusOf = B.take 3 . B.drop 9
+
+-- | With 'settingsPinConnections', connections are given the
+-- capabilities in turn and their threads stay there; without it (the
+-- default) no thread is tied to a capability.
+prop_pinned :: Property
+prop_pinned = once $ monadicIO $ do
+  results <- run $ do
+    errs <- newIORef []
+    let settings = quietSettings errs
+        whereAmI _ _ = do
+          place <- threadCapability =<< myThreadId
+          either (throwIO . userError . show) pure
+            (mkResponse (fromJust (mkStatus 200)) emptyFields (ContentBytes (C.pack (show place))))
+        places s = withServer s whereAmI $ \srv -> forM [1 .. 5 :: Int] $ \_ -> withClient (serverPort srv) $ \c -> do
+          SB.sendAll c "GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n"
+          snd . B.breakSubstring "(" <$> recvAll c
+    before <- getNumCapabilities
+    bracket_ (setNumCapabilities 2) (setNumCapabilities before) $
+      (,) <$> places settings { settingsPinConnections = True } <*> places settings
+  monitor (counterexample (show results))
+  assert (fst results == ["(0,True)", "(1,True)", "(0,True)", "(1,True)", "(0,True)"])
+  assert (all ("False)" `B.isSuffixOf`) (snd results) && length (snd results) == 5)
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-15.5.9
 -- # The 408 (Request Timeout) status code indicates that the server did

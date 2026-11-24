@@ -83,6 +83,24 @@ why: connections still running after the grace period are killed
 - mapM_ (\t -> forkIO (killThread t)) remaining
 + pure ()
 
+why: pinned connections are given the capabilities in turn
+- | settingsPinConnections settings = forkOnWithUnmask (n `rem` capabilities)
++ | settingsPinConnections settings = forkOnWithUnmask 0
+
+why: connections are pinned only when the setting asks
+- | settingsPinConnections settings = forkOnWithUnmask (n `rem` capabilities)
++ | True = forkOnWithUnmask (n `rem` capabilities)
+
+why: each accepted connection is counted, for the next one's capability
+- writeIORef accepted (n + 1)
++ writeIORef accepted n
+
+file: src/Hyperdrive/Server/Connection.hs
+
+why: connections are not pinned unless asked
+- , settingsPinConnections = False
++ , settingsPinConnections = True
+
 file: src/Hyperdrive/Server/Timer.hs
 
 why: an expired wait is woken

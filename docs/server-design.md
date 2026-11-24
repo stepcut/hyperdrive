@@ -190,6 +190,14 @@ Accept errors from running out of descriptors (`EMFILE`, `ENFILE`)
 pause accepting briefly rather than spin or stop. A limit on
 connections is a setting (default: none).
 
+With `settingsPinConnections` (default: off) the thread is forked with
+`forkOnWithUnmask` on the capabilities in turn, and stays on its
+capability. That saves waking threads across capabilities when
+requests are small and alike (docs/benchmarks.md, 2026-11-24), but the
+scheduler can no longer move a connection to an idle capability, so a
+handler that computes for long delays the other connections on its
+own: a setting for servers whose handlers are short, not the default.
+
 ## Running it: the allocation area
 
 A request is served out of memory allocated for it and dropped at

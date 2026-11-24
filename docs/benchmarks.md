@@ -1410,3 +1410,68 @@ What it says:
 - No server uses its eight cores (4.6 to 5.1 of them), so requests a
   second here depend on the round trip with wrk and not on CPU time
   alone.
+
+## 2026-11-24 (afternoon): capabilities pinned to cores (`-qa`), not turned on
+
+ntex pins each worker to a core; the Haskell servers leave their eight
+capabilities to the kernel within cores 0 to 7. With `+RTS -qa` (each
+capability on its own core), and with `-qm` as well (no thread moved
+to another capability), four alternating runs of five seconds each:
+
+| | wrk's request: req/s | user | kernel | browser's request: req/s | user | kernel |
+|---|---|---|---|---|---|---|
+| hyperdrive | 771k (767k to 778k) | 1.364 | 4.751 | 722k (711k to 746k) | 1.916 | 4.885 |
+| hyperdrive `-qa` | 798k (785k to 809k) | 1.346 | 4.697 | 735k (721k to 744k) | 1.903 | 4.815 |
+| hyperdrive `-qa -qm` | 102k | 1.155 | 4.800 | 91k | 1.748 | 5.138 |
+| warp | 734k (716k to 745k) | 1.448 | 4.774 | 656k (647k to 666k) | 2.306 | 5.110 |
+| warp `-qa` | 758k (742k to 772k) | 1.442 | 4.736 | 562k (552k to 569k) | 2.318 | 5.012 |
+| ntex, epoll | 933k | 0.705 | 4.314 | 822k | 1.389 | 4.656 |
+
+`-qa` gives hyperdrive 3.5% more requests a second for wrk's request
+and about 1% less time, and nothing sure for the browser's; warp loses
+14% for the browser's request with it, in every run (not looked into).
+Left off in the bench servers (the user, 2026-11-24): it is not what
+separates them from ntex, which is still 17% ahead.
+
+With `-qm` every connection's thread stays on the capability that
+accepted it, so the server runs on 0.6 of a core and the figure is of
+no use as a setting; but the user time for a request is 15% less
+(1.155 against 1.364). That is what it costs for a connection's thread
+to be woken from one capability and run on another, and it is the
+reason to try giving each connection a capability when it is accepted.
+
+## 2026-11-24 (afternoon): a capability for each connection, as a setting that is off
+
+The accept loop forks each connection's thread on the capabilities in
+turn (`forkOn`), so that it is woken and run on one capability for its
+life. Four alternating runs of five seconds each, the second with
+`-qa` as well:
+
+| | wrk's request: req/s | user | kernel | browser's request: req/s | user | kernel |
+|---|---|---|---|---|---|---|
+| before | 760k (752k to 773k) | 1.441 | 4.775 | 730k (723k to 734k) | 1.954 | 4.898 |
+| a capability each | 811k (804k to 821k) | 1.332 | 4.581 | 737k (732k to 742k) | 1.969 | 4.806 |
+| and `-qa` | 813k (809k to 816k) | 1.345 | 4.555 | 743k (739k to 748k) | 1.954 | 4.784 |
+| ntex, epoll | 922k | 0.713 | 4.361 | 830k | 1.412 | 4.651 |
+
+For wrk's request 6.7% more requests a second, 7.6% less user time
+and 4.1% less in the kernel; for the browser's 1% more and 1.9% less
+in the kernel, the user time the same. Futex calls for a request fall
+from 0.14 to 0.07 and receives that find nothing from 0.04 to 0.02.
+ntex is then 14% ahead for wrk's request (from 21%) and 13% for the
+browser's.
+
+It is a gain for a benchmark more than for an application: 0.3 µs a
+request, which a handler that does anything hides, and found with 100
+connections that are all alike, where giving them out in turn is also
+an even load. A pinned thread cannot be moved to an idle capability,
+so a handler that computes for long delays the other connections on
+its capability, and nothing measured here would show that. So it is
+`settingsPinConnections`, off by default (the user, 2026-11-24);
+`bench-hyperdrive PORT pin` turns it on, and the figures against warp
+stay those of the defaults. The runs above were of the change before
+it was made a setting; with the setting off the only addition is a
+count for each accepted connection.
+
+Of the 1.1 µs a request between hyperdrive and ntex, then, about 0.3
+is threads waking across capabilities; the other 0.8 is not found yet.

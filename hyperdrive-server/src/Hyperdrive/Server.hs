@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | The hyperdrive HTTP server: listen, accept, and serve each
 -- connection in its own thread (docs/server-design.md).
@@ -72,10 +73,16 @@ startServer settings timers app = do
   port <- socketPort listener
   live <- newTVarIO (0 :: Int)
   threads <- newTVarIO (Map.empty :: Map.Map ThreadId ())
+  capabilities <- getNumCapabilities
+  accepted <- newIORef (0 :: Int)
   let serve s peer = do
         local <- getSocketName s
         transport <- socketTransport s
         serveConnection settings timers transport (Context peer local False) app
+      fork :: Int -> ((forall a. IO a -> IO a) -> IO ()) -> IO ThreadId
+      fork n
+        | settingsPinConnections settings = forkOnWithUnmask (n `rem` capabilities)
+        | otherwise = forkIOWithUnmask
       acceptLoop = forever $ do
         -- wait below the connection limit, if there is one
         case settingsMaxConnections settings of
@@ -90,7 +97,9 @@ startServer settings timers app = do
             setSocketOption s NoDelay 1 `catch` \(_ :: IOException) -> pure ()
             mask_ $ do
               atomically (modifyTVar' live (+ 1))
-              void $ forkIOWithUnmask $ \unmask -> do
+              n <- readIORef accepted
+              writeIORef accepted (n + 1)
+              void $ fork n $ \unmask -> do
                 me <- myThreadId
                 atomically (modifyTVar' threads (Map.insert me ()))
                 unmask (serve s peer) `catch` (\(_ :: SomeException) -> pure ()) `finally`

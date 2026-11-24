@@ -81,6 +81,14 @@ data Settings = Settings
   , settingsShutdownGrace    :: !Int               -- ^ microseconds before remaining connections are killed
   , settingsHandlerTimeLimit :: !(Maybe Int)       -- ^ microseconds a handler may run; 'Nothing': no limit
   , settingsMaxConnections   :: !(Maybe Int)
+  , settingsPinConnections   :: !Bool
+    -- ^ give each connection a capability in turn when it is accepted,
+    -- and keep its thread there. For small, even requests this saves
+    -- waking threads across capabilities (7% more of the smallest
+    -- requests a second, docs/benchmarks.md). But the scheduler can no
+    -- longer move a connection's thread to an idle capability, so a
+    -- handler that computes for long delays the others on its
+    -- capability: off unless handlers are short and alike.
   , settingsTimerResolution  :: !Int
     -- ^ microseconds between checks of the connections' timers: a
     -- timeout fires up to twice this late, not early, and the @Date@
@@ -99,6 +107,7 @@ defaultSettings = Settings
   , settingsShutdownGrace = 30000000
   , settingsHandlerTimeLimit = Nothing
   , settingsMaxConnections = Nothing
+  , settingsPinConnections = False
   , settingsTimerResolution = 100000
   , settingsOnException = \e -> putStrLn ("hyperdrive: " ++ displayException e)
   }
