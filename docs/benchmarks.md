@@ -1289,3 +1289,64 @@ quiet machine as much as a timing does.)
 Since the profile, with the three changes from it, the browser's
 request over sockets has gone from 2.266 to 2.023 µs of user time and
 from 704k to 728k requests a second (figures from different sessions).
+
+## 2026-11-24 (afternoon): a field value trimmed with two octets, and both servers again
+
+A profile after the three changes above (same method, at f6a050f; 1.51
+and 2.63 µs a request) has the browser's request about 1.1 µs over the
+minimal one: 0.57 in the head's scan (`scanLines`, the name loop,
+`valueWords`, memchr), 0.12 sorting the fields into the core's and the
+application's (`splitFields`), 0.12 in the URI's checks, 0.08 in
+`mkRequest`'s check (below), and 0.06 trimming the whitespace around
+each value: `B.dropWhileEnd isOWS (B.dropWhile isOWS raw)`, a search
+from each end of every value (Head.hs:305 and `findFromEndUntil`).
+
+The usual line has one space after the colon and none at the end.
+`trimOWS` sees that in two octets (the second and the last are not
+whitespace) and takes the value as it is; anything else is searched as
+before. Per request, in process:
+
+| | wrk's request | browser's | chunked |
+|---|---|---|---|
+| instructions, before | 10,144 | 22,386 | 30,231 |
+| instructions, after | 10,058 (-0.8%) | 21,037 (-6.0%) | 30,046 (-0.6%) |
+| allocation | 4,967 to 4,911 | 7,598 to 6,870 (-9.6%) | 31,312 to 31,200 |
+| instruction cache misses | 173 to 168 | 220 to 201 | 235 to 216 |
+| time, before | 1.493 µs | 2.655 µs | 3.518 µs |
+| time, after | 1.481 µs (-0.8%, faster in 7 of 10) | 2.499 µs (-5.9%, 10 of 10) | 3.503 µs (-0.4%, 10 of 10) |
+
+Over sockets, six alternating runs of five seconds each:
+
+| | wrk's request: user | kernel | req/s | browser's request: user | kernel | req/s |
+|---|---|---|---|---|---|---|
+| before | 1.392 (1.369 to 1.416) | 4.776 | 770k | 2.037 (2.004 to 2.064) | 4.942 | 727k |
+| after | 1.359 (1.347 to 1.385) | 4.768 | 766k | 1.932 (1.853 to 2.001) | 4.908 | 736k |
+
+Kept: 5.2% less user time for the browser's request, and nothing
+worse.
+
+Both servers with it, as the bench shell builds them (`-A1m` both),
+four alternating runs of five seconds each:
+
+| | wrk's request: user | kernel | req/s | browser's request: user | kernel | req/s |
+|---|---|---|---|---|---|---|
+| hyperdrive | 1.379 (1.360 to 1.401) | 4.759 | 769k | 1.907 (1.900 to 1.920) | 4.855 | 740k |
+| warp | 1.427 (1.384 to 1.509) | 4.833 | 739k | 2.259 (2.218 to 2.286) | 5.106 | 665k |
+
+So hyperdrive is ahead on both: 3% less user time and 4% more requests
+a second for the minimal request, 16% less and 11% more for the
+browser's, where it was 3% behind when the day's `-A1m` baseline was
+taken (2.426 against 2.345).
+
+Not paid, and a decision. `mkRequest` walks the application's fields
+for Host and the protocol fields, which the core has just taken out
+(0.08 µs for the browser's request). A right fold in place of `find`
+keeps the check and saves 23 to 28 instructions a request (0.1 to
+0.3%): the cost is walking the `Seq`, not `find`; reverted. Skipping
+the check is decided against (the user, 2026-11-24): it is what
+catches a mistake in the core's sorting before an application sees a
+stray Transfer-Encoding or Host. If the cost is wanted back, the way
+is by construction: the semantics package sorts the lines itself and
+gives the application's side in a type only that function makes, which
+a second constructor for `Request` accepts without the walk. That
+adds to the package's interface, so it is the user's decision too.

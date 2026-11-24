@@ -547,12 +547,12 @@ why: field names are lower-cased
 + !n = name
 
 why: whitespace at the end of a value is not part of it
-- let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
-+ let !v = B.dropWhile isOWS raw
+- | otherwise = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
++ | otherwise = B.dropWhile isOWS raw
 
 why: whitespace after the colon is not part of the value
-- let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
-+ let !v = B.dropWhileEnd isOWS raw
+- | otherwise = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
++ | otherwise = B.dropWhileEnd isOWS raw
 
 why: a value may contain HTAB
 - isValueOctet w = (w >= 0x20 && w /= 0x7F) || w == 0x09
@@ -616,3 +616,15 @@ file: src/Hyperdrive/HTTP1/Head.hs
 why: the head's field lines are held the last one first
 - Just (acc, BU.unsafeDrop 2 s)
 + Just (reverse acc, BU.unsafeDrop 2 s)
+
+why: more whitespace after the colon than one space is not part of the value
+- | len >= 2, BU.unsafeIndex raw 0 == 0x20, not (isOWS (BU.unsafeIndex raw 1)), not (isOWS (BU.unsafeIndex raw (len - 1))) =
++ | len >= 2, BU.unsafeIndex raw 0 == 0x20, not (isOWS (BU.unsafeIndex raw (len - 1))) =
+
+why: whitespace at the end of a line is not part of the value
+- | len >= 2, BU.unsafeIndex raw 0 == 0x20, not (isOWS (BU.unsafeIndex raw 1)), not (isOWS (BU.unsafeIndex raw (len - 1))) =
++ | len >= 2, BU.unsafeIndex raw 0 == 0x20, not (isOWS (BU.unsafeIndex raw 1)) =
+
+why: a value may follow the colon with no space, and its first octet is kept
+- | len >= 2, BU.unsafeIndex raw 0 == 0x20, not (isOWS (BU.unsafeIndex raw 1)), not (isOWS (BU.unsafeIndex raw (len - 1))) =
++ | len >= 2, not (isOWS (BU.unsafeIndex raw 1)), not (isOWS (BU.unsafeIndex raw (len - 1))) =

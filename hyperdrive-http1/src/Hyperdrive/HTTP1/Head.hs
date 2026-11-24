@@ -302,7 +302,7 @@ scanLines toEmptyLine limit section0 = line 0 [] section0
         | B.null name || B.null afterName || BU.unsafeHead afterName /= 0x3A
           || not (allValueOctets raw) -> Nothing
         | otherwise ->
-            let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
+            let !v = trimOWS raw
                 !n = if spanned < 0 then lowerName name else name
             in Just (FieldName n, FieldValue v)
         where
@@ -310,6 +310,17 @@ scanLines toEmptyLine limit section0 = line 0 [] section0
           !afterName = BU.unsafeDrop (abs spanned) l
           raw = BU.unsafeTail afterName
     {-# INLINE fieldLine #-}
+
+-- | A field value without the whitespace around it. The usual line has
+-- one space after the colon and none at the end, which two octets
+-- show; the searches from either end are for the rest.
+trimOWS :: ByteString -> ByteString
+trimOWS raw
+  | len >= 2, BU.unsafeIndex raw 0 == 0x20, not (isOWS (BU.unsafeIndex raw 1)), not (isOWS (BU.unsafeIndex raw (len - 1))) =
+      BU.unsafeDrop 1 raw
+  | otherwise = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
+  where len = B.length raw
+{-# INLINE trimOWS #-}
 
 -- | A name of tchars (not empty) in lower case: the one copy of a
 -- well-known name, or else a new string. A browser's names all have
