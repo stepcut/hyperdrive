@@ -201,6 +201,9 @@ prop_scanNameOctets = once $ conjoin
       scanFieldLines 1 l === either (const Nothing) (Just . fieldsFromList . (: [])) (checkLine l >> parseFieldLine l)
   | w <- [minBound .. maxBound]
   , l <- [B.cons w "b: v", "A" <> B.cons w "b: v", "Ab" <> B.cons w ": v", B.cons w ": v"]
+         -- and at each place in a name read eight octets at a time
+         ++ [ B.take i name <> B.cons w (B.drop (i + 1) name) <> rest
+            | name <- ["accept-language-x", "Accept-Language-X"], i <- [0 .. B.length name - 1], rest <- [": v", ":", ""] ]
   ]
 
 -- | Values of any length, mostly valid, with an octet that may not be

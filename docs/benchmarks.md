@@ -996,3 +996,46 @@ means of six): with the browser's request, user 3.449 to 3.317 µs
 5.232, 603k to 615k req/s; with wrk's own request, user 1.762 to
 1.781 µs (+1.1%, the runs overlapping: 1.74 to 1.77 against 1.76 to
 1.82), kernel 4.803 to 4.794, 736k and 735k req/s.
+
+## 2026-11-24 (midday): field names read eight octets at a time
+
+The name loop looked up every octet in `nameTable`. It now reads eight
+at a time while they are letters or "-" (exact tests on each octet of
+the word, as for values), and looks up any other octet as before.
+
+Counts, against b94cffd (`perf stat`, user mode, 100000 requests);
+allocation is the same:
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| instructions a request | 10449 to 10460 (+0.1%) | 27036 to 26331 (-2.6%) | 30925 to 30867 (-0.2%) |
+
+(The loop's result has to be returned evaluated, `pure $!`: lazy, it
+was a thunk for every name, 16 bytes each.)
+
+On a quiet machine (`scripts/compare-builds -r 10`, means of 10):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| b94cffd | 1.587 µs | 3.543 µs | 4.854 µs |
+| eight at a time | 1.705 µs (+7.4%, faster in 0 of 10) | 3.504 µs (-1.1%, 10 of 10) | 4.917 µs (+1.3%, 0 of 10) |
+
+The minimal request's 7.4% is not in the instructions (10 more of
+10450). `perf stat` on it, twice each, 300000 requests: cycles 3900 to
+4170 a request, L1 instruction cache misses 150 to 226 a request,
+branch misses 1.6 to 2.7, L1 data misses level. So it is where the
+code lands in this binary, as with the clock change, but here it costs
+more than the change gains in process.
+
+Over sockets, the two builds in turn (wrk, 100 connections, 5 s each,
+means of six), it does not show: with wrk's own request, user 1.790 to
+1.775 µs (-0.8%, the runs overlapping), kernel 4.802 to 4.812, 741k
+and 739k req/s; with the browser's request, user 3.317 to 3.192 µs
+(-3.8%, every run under every run of the baseline), kernel 5.282 to
+5.252, 611k to 620k req/s.
+
+Left out for now, for the in-process result. The change (with its
+mutants) is `docs/patches/field-names-eight-at-a-time.patch`, against
+b94cffd: `git apply` it to try again, when the code around it has
+moved or the in-process benchmark is less sensitive to placement. The
+test of every octet at every place in a long name stays in.
