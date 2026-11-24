@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # System calls per request, for hyperdrive and warp under wrk (small
 # responses), counted with perf tracepoints: receives, and how many of
-# them found nothing (EAGAIN), sends, epoll_ctl, epoll_wait, futex and
-# sched_yield. This is how the yield after a write was found (a receive
-# that finds nothing costs an epoll_ctl and a wake-up).
+# them found nothing (EAGAIN), sends, reads and writes (ntex sends with
+# write), epoll_ctl, epoll_wait, futex, sched_yield and io_uring_enter.
+# This is how the yield after a write was found (a receive that finds
+# nothing costs an epoll_ctl and a wake-up).
 #
 #   nix develop .#bench -c nix shell nixpkgs#perf -c scripts/syscall-counts
 #
@@ -13,10 +14,13 @@
 # as does a reboot). Counts depend on load more than on what else the
 # machine is doing, but a quiet machine is still better.
 #
+# SERVERS (default "hyperdrive warp") names the servers, as in
+# scripts/bench: the ntex servers need the bench-ntex shell.
 # DURATION (default 5) seconds, CONNECTIONS (default 100), SERVER_CPUS
 # (default 0-7) and CLIENT_CPUS (default 8-15), as in scripts/bench.
 set -uo pipefail
 
+SERVERS=${SERVERS:-hyperdrive warp}
 DURATION=${DURATION:-5}
 CONNECTIONS=${CONNECTIONS:-100}
 SERVER_CPUS=${SERVER_CPUS:-0-7}
@@ -31,13 +35,18 @@ trap 'rm -f "$counts"' EXIT
 events=(
   -e syscalls:sys_enter_recvfrom
   -e syscalls:sys_exit_recvfrom --filter 'ret == -11'
+  -e syscalls:sys_enter_read -e syscalls:sys_enter_write
   -e syscalls:sys_enter_sendmsg -e syscalls:sys_enter_sendto -e syscalls:sys_enter_writev
   -e syscalls:sys_enter_epoll_ctl -e syscalls:sys_enter_epoll_wait -e syscalls:sys_enter_epoll_pwait
   -e syscalls:sys_enter_futex -e syscalls:sys_enter_sched_yield
+  -e syscalls:sys_enter_io_uring_enter
 )
 
-for server in hyperdrive warp; do
-  taskset -c "$SERVER_CPUS" "bench-$server" "$PORT" +RTS -N8 -RTS &
+for server in $SERVERS; do
+  case $server in
+    ntex-*) taskset -c "$SERVER_CPUS" "bench-$server" "$PORT" 8 & ;;  # 8 workers
+    *)      taskset -c "$SERVER_CPUS" "bench-$server" "$PORT" +RTS -N8 -RTS & ;;
+  esac
   pid=$!
   for _ in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break; sleep 0.1; done
   sleep 0.5

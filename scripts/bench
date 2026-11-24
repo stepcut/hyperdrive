@@ -4,12 +4,18 @@
 #
 #   nix develop .#bench -c scripts/bench
 #
+# SERVERS (default "hyperdrive warp") names the servers to run. The ntex
+# servers (bench/ntex, Rust) are only in the bench-ntex shell:
+#
+#   SERVERS="hyperdrive ntex-uring ntex-polling" nix develop .#bench-ntex -c scripts/bench
+#
 # DURATION (default 10s), SERVER_CPUS (default 0-7) and CLIENT_CPUS
 # (default 8-15) can be set. The server and wrk run on separate cores
 # (on a 16-core Ryzen, 0-7 and 8-15 are separate CCDs and never SMT
 # siblings), so that they do not compete.
 set -euo pipefail
 
+SERVERS=${SERVERS:-hyperdrive warp}
 DURATION=${DURATION:-10s}
 SERVER_CPUS=${SERVER_CPUS:-0-7}
 CLIENT_CPUS=${CLIENT_CPUS:-8-15}
@@ -41,7 +47,10 @@ wrk_run() {  # name, wrk arguments...
 }
 
 start() {  # server: start it, and wait until it accepts connections
-  taskset -c "$SERVER_CPUS" "bench-$1" "$PORT" +RTS -N8 -RTS &
+  case $1 in
+    ntex-*) taskset -c "$SERVER_CPUS" "bench-$1" "$PORT" 8 & ;;  # 8 workers
+    *)      taskset -c "$SERVER_CPUS" "bench-$1" "$PORT" +RTS -N8 -RTS & ;;
+  esac
   pid=$!
   trap 'kill $pid 2>/dev/null || true' EXIT
   for _ in $(seq 50); do
@@ -55,7 +64,7 @@ stop() {
   trap - EXIT
 }
 
-for server in hyperdrive warp; do
+for server in $SERVERS; do
   echo "$server"
   start "$server"
   url=http://127.0.0.1:$PORT

@@ -1,0 +1,28 @@
+[package]
+name = "hyperdrive-bench-ntex"
+version = "0.1.0"
+edition = "2024"
+license = "BSD-3-Clause"
+publish = false
+
+# The benchmark application on ntex, for comparing hyperdrive with a
+# server that has no garbage collector and one thread per core. Not part
+# of the cabal build or the bench shell: see ../../docs/benchmarks.md.
+
+[[bin]]
+name = "bench-ntex"
+path = "src/main.rs"
+
+[dependencies]
+ntex = { version = "4.10", default-features = false }
+
+# ntex's own runtime with one reactor or the other: exactly one of them.
+[features]
+uring = ["ntex/neon-uring"]
+polling = ["ntex/neon-polling"]
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true
+panic = "abort"

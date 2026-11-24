@@ -18,8 +18,29 @@
         # not checked: run with `nix develop .#bench -c scripts/bench`
         hyperdrive-bench = final.callCabal2nix "hyperdrive-bench" ./bench { };
       });
+
+      # The benchmark application on ntex (bench/ntex), with one of
+      # ntex's reactors. Nothing else refers to it, so only
+      # `nix develop .#bench-ntex` builds it, or fetches Rust.
+      benchNtex = pkgs: reactor: pkgs.rustPlatform.buildRustPackage {
+        pname = "bench-ntex-${reactor}";
+        version = "0.1.0";
+        src = ./bench/ntex;
+        cargoLock.lockFile = ./bench/ntex/Cargo.lock;
+        buildFeatures = [ reactor ];
+        postInstall = "mv $out/bin/bench-ntex $out/bin/bench-ntex-${reactor}";
+      };
+
+      benchTools = pkgs: [
+        (haskellPackages pkgs).hyperdrive-bench
+        pkgs.wrk
+        pkgs.util-linux # taskset
+        pkgs.python3
+      ];
     in {
       packages = forAllSystems (pkgs: {
+        bench-ntex-uring = benchNtex pkgs "uring";
+        bench-ntex-polling = benchNtex pkgs "polling";
         duvet = pkgs.callPackage ./nix/duvet.nix { };
         hyperdrive-semantics = (haskellPackages pkgs).hyperdrive-semantics;
         hyperdrive-abnf = (haskellPackages pkgs).hyperdrive-abnf;
@@ -69,13 +90,11 @@
           ];
         };
         # benchmarks against warp: nix develop .#bench -c scripts/bench
-        bench = pkgs.mkShell {
-          packages = [
-            (haskellPackages pkgs).hyperdrive-bench
-            pkgs.wrk
-            pkgs.util-linux # taskset
-            pkgs.python3
-          ];
+        bench = pkgs.mkShell { packages = benchTools pkgs; };
+        # the same, and ntex (Rust) with io_uring and with epoll:
+        # SERVERS="hyperdrive ntex-uring ntex-polling" nix develop .#bench-ntex -c scripts/bench
+        bench-ntex = pkgs.mkShell {
+          packages = benchTools pkgs ++ [ (benchNtex pkgs "uring") (benchNtex pkgs "polling") ];
         };
       });
     };

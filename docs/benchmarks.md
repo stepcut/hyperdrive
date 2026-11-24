@@ -1350,3 +1350,63 @@ is by construction: the semantics package sorts the lines itself and
 gives the application's side in a type only that function makes, which
 a second constructor for `Request` accepts without the walk. That
 adds to the package's interface, so it is the user's decision too.
+
+## 2026-11-24 (afternoon): ntex beside both, as a measure of what is left
+
+ntex (Rust, no garbage collector, a thread for each core) with the
+same application (`bench/ntex`, ntex 4.10.1 pinned by its
+`Cargo.lock`), on its own runtime with each of its reactors:
+`bench-ntex-uring` (io_uring) and `bench-ntex-polling` (epoll). They
+are built only by `nix develop .#bench-ntex`, so that the bench shell
+and the checks need no Rust. The responses are the same octets as
+hyperdrive's but for the order of the fields. `scripts/bench` and
+`scripts/syscall-counts` take the servers to run in `SERVERS`.
+
+System calls for each request (wrk's request, 100 connections):
+
+| | receive | finding nothing | send | epoll_ctl | epoll_wait | futex | io_uring_enter |
+|---|---|---|---|---|---|---|---|
+| hyperdrive | 1.09 | 0.09 | 1.00 | 0.09 | 0.07 | 0.18 | |
+| warp | 1.10 | 0.10 | 1.00 | 0.10 | 0.08 | 0.19 | |
+| ntex, epoll | 1.00 | | 1.00 | 0.00 | 0.36 | 0.00 | |
+| ntex, io_uring | | | | 0.00 | 0.00 | 0.00 | 0.61 |
+
+Over sockets on a quiet machine, four alternating runs of five seconds
+each, every server on cores 0 to 7 with eight threads and wrk on 8 to
+15 (µs for each request; cores is the CPU time used over the time
+run):
+
+| wrk's request | req/s | user | kernel | both | cores |
+|---|---|---|---|---|---|
+| hyperdrive | 757k (734k to 786k) | 1.390 | 4.813 | 6.203 | 4.7 |
+| warp | 743k (733k to 757k) | 1.453 | 4.767 | 6.220 | 4.6 |
+| ntex, epoll | 926k (916k to 930k) | 0.716 | 4.338 | 5.054 | 4.7 |
+| ntex, io_uring | 923k (919k to 928k) | 0.690 | 4.476 | 5.166 | 4.8 |
+
+| browser's request | req/s | user | kernel | both | cores |
+|---|---|---|---|---|---|
+| hyperdrive | 729k (720k to 747k) | 1.927 | 4.902 | 6.829 | 5.0 |
+| warp | 666k (655k to 675k) | 2.279 | 5.106 | 7.385 | 4.9 |
+| ntex, epoll | 837k (831k to 844k) | 1.395 | 4.589 | 5.984 | 5.0 |
+| ntex, io_uring | 819k (817k to 821k) | 1.434 | 4.792 | 6.226 | 5.1 |
+
+What it says:
+
+- ntex is 22% ahead in requests a second for wrk's request and 15%
+  for the browser's, not twice.
+- io_uring is not the reason: ntex with epoll makes as many system
+  calls as hyperdrive (2.36 against 2.43) and is as fast as ntex with
+  io_uring or faster. A ring of hyperdrive's own is not worth building
+  for this load.
+- Hyperdrive reads fields for less than ntex does: the browser's
+  twelve more fields add 0.54 µs of user time to hyperdrive, 0.68 to
+  ntex and 0.83 to warp.
+- What is left is a cost for each request whatever is in it: 0.67 µs
+  more user time than ntex with epoll for wrk's request and 0.48 µs
+  more in the kernel, with nearly the same system calls. Suspects, not
+  measured: the scheduler and the yield, waking threads, the timeouts,
+  the futex calls (0.18 a request, none in ntex), and capabilities
+  that are not pinned to cores where ntex pins each worker.
+- No server uses its eight cores (4.6 to 5.1 of them), so requests a
+  second here depend on the round trip with wrk and not on CPU time
+  alone.
