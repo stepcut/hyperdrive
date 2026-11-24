@@ -88,9 +88,14 @@ isHEXDIG w = isDIGIT w || (w >= 0x41 && w <= 0x46) || (w >= 0x61 && w <= 0x66)
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-2.3
 -- # unreserved  = ALPHA / DIGIT / "-" / "." / "_" / "~"
 
--- | @unreserved@
+-- | @unreserved@: a bit for each of the 66 octets, in two words, as
+-- for 'isTChar' (every "." of a host was a call to memchr).
 isUnreserved :: Word8 -> Bool
-isUnreserved w = isALPHA w || isDIGIT w || B.elem w "-._~"
+isUnreserved w
+  | w < 64    = testBit (0x03ff600000000000 :: Word64) (fromIntegral w)
+  | w < 128   = testBit (0x47fffffe87fffffe :: Word64) (fromIntegral w - 64)
+  | otherwise = False
+{-# INLINE isUnreserved #-}
 
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-2.2
 -- # sub-delims  = "!" / "$" / "&" / "'" / "(" / ")"
@@ -98,7 +103,8 @@ isUnreserved w = isALPHA w || isDIGIT w || B.elem w "-._~"
 
 -- | @sub-delims@
 isSubDelim :: Word8 -> Bool
-isSubDelim w = B.elem w "!$&'()*+,;="
+isSubDelim w = w < 64 && testBit (0x28001fd200000000 :: Word64) (fromIntegral w)
+{-# INLINE isSubDelim #-}
 
 -- = https://www.rfc-editor.org/rfc/rfc3986#section-3.3
 -- # pchar         = unreserved / pct-encoded / sub-delims / ":" / "@"
@@ -106,4 +112,8 @@ isSubDelim w = B.elem w "!$&'()*+,;="
 -- | @pchar@, except for @pct-encoded@, which spans three octets and so
 -- has to be checked separately.
 isPChar :: Word8 -> Bool
-isPChar w = isUnreserved w || isSubDelim w || w == 0x3A || w == 0x40
+isPChar w
+  | w < 64    = testBit (0x2fff7fd200000000 :: Word64) (fromIntegral w)
+  | w < 128   = testBit (0x47fffffe87ffffff :: Word64) (fromIntegral w - 64)
+  | otherwise = False
+{-# INLINE isPChar #-}

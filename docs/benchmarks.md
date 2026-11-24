@@ -1176,3 +1176,42 @@ misses, which went down; the counts taken do not say what it is. Over
 sockets its difference (0.8%) is inside the spread of the runs.
 
 Kept, for the browser's request. The patch file is removed.
+
+## 2026-11-24 (afternoon): the browser's request profiled again, and the URI's character classes as bit masks
+
+A build with debug information, as on the 23rd, at c0205af with
+`-A1m`: `perf record -F 20000` on `bench-driver 1000000` (1.58 µs a
+request) and `bench-driver 1000000 browser` (3.10 µs), by source line
+and summed. What the browser's request costs over the minimal one,
+about 1.5 µs, in µs a request (the grouping is by hand):
+
+| | browser less minimal | |
+|---|---|---|
+| the head's lines, names and values | 0.58 | `scanLines` and the code inlined into it, `valueWords`, memchr |
+| `Fields` built twice | 0.2 | `Seq.fromList` in the scan, then `splitFields` (Connection.hs:333) with a snoc for each field kept, and `reverse` |
+| the URI's checks | 0.2 | `allEncoded` (URI.hs:719) over the host, the path and the query, with `isUnreserved` and `isSubDelim`, which looked the symbols up in a string: a call to memchr for every "." and "=" |
+| `Connection: keep-alive` | 0.12 | `connectionClose` (Connection.hs:384, 387) through `splitList`, `lower` and `findFromEndUntil` |
+| `mkRequest` | 0.07 | Message.hs:251, a `find` for Host and the protocol fields over fields the core has just split them out of |
+
+The first taken: `isUnreserved`, `isSubDelim` and `isPChar` as a bit
+for each octet in two words, as `isTChar` is, and `allEncoded` inlined
+so that the class is not a call for each octet. Per request, in
+process:
+
+| | wrk's request | browser's | chunked |
+|---|---|---|---|
+| instructions, before | 10,559 | 26,102 | 31,026 |
+| instructions, after | 10,451 (-1.0%) | 24,525 (-6.0%) | 30,652 (-1.2%) |
+| allocation | 5,112 | 9,807 to 9,359 | 31,736 to 31,640 |
+| time, before | 1.406 µs | 2.876 µs | 3.637 µs |
+| time, after | 1.396 µs (-0.7%, faster in 9 of 10) | 2.768 µs (-3.8%, 10 of 10) | 3.641 µs (+0.1%, 7 of 10) |
+
+Over sockets, six alternating runs of five seconds each:
+
+| | wrk's request: user | kernel | req/s | browser's request: user | kernel | req/s |
+|---|---|---|---|---|---|---|
+| before | 1.416 (1.400 to 1.439) | 4.757 | 756k | 2.266 (2.236 to 2.297) | 5.034 | 704k |
+| after | 1.423 (1.370 to 1.477) | 4.798 | 752k | 2.198 (2.163 to 2.235) | 4.985 | 712k |
+
+Kept: 3.0% less user time for the browser's request, every run under
+the baseline's lowest, and the minimal request level.

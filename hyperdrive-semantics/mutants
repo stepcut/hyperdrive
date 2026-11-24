@@ -7,8 +7,24 @@
 file: src/Hyperdrive/Semantics/Syntax.hs
 
 why: "=" is a sub-delim, allowed in reg-names, paths and queries
-- isSubDelim w = B.elem w "!$&'()*+,;="
-+ isSubDelim w = B.elem w "!$&'()*+,;"
+- isSubDelim w = w < 64 && testBit (0x28001fd200000000 :: Word64) (fromIntegral w)
++ isSubDelim w = w < 64 && testBit (0x08001fd200000000 :: Word64) (fromIntegral w)
+
+why: "~" is unreserved
+- | w < 128   = testBit (0x47fffffe87fffffe :: Word64) (fromIntegral w - 64)
++ | w < 128   = testBit (0x07fffffe87fffffe :: Word64) (fromIntegral w - 64)
+
+why: "/" is not unreserved: in a host it would begin the path
+- | w < 64    = testBit (0x03ff600000000000 :: Word64) (fromIntegral w)
++ | w < 64    = testBit (0x03ffe00000000000 :: Word64) (fromIntegral w)
+
+why: "?" is not a pchar: it ends the path
+- | w < 64    = testBit (0x2fff7fd200000000 :: Word64) (fromIntegral w)
++ | w < 64    = testBit (0xafff7fd200000000 :: Word64) (fromIntegral w)
+
+why: "@" is a pchar
+- | w < 128   = testBit (0x47fffffe87ffffff :: Word64) (fromIntegral w - 64)
++ | w < 128   = testBit (0x47fffffe87fffffe :: Word64) (fromIntegral w - 64)
 
 why: "~" is a tchar
 - | w < 128   = testBit (0x57ffffffc7fffffe :: Word64) (fromIntegral w - 64)

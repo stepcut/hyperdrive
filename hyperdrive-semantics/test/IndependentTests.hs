@@ -212,6 +212,12 @@ syntaxTests =
     , allW isSubDelim "!$&'()*+,;=" && noneW isSubDelim ":/?#[]@%a-")
   , ("RFC 3986 3.3 'pchar = unreserved / pct-encoded / sub-delims / \":\" / \"@\"': : and @ are pchar"
     , allW isPChar ":@aZ09-._~!$&'()*+,;=")
+  , ("RFC 3986 2.3, 2.2, 3.3: each of the 256 octets is in unreserved, sub-delims and pchar exactly when the grammar lists it"
+    , and [ isUnreserved o == (o `B.elem` unreserved) && isSubDelim o == (o `B.elem` subDelims)
+            && isPChar o == (o `B.elem` (unreserved <> subDelims <> ":@"))
+          | o <- [minBound .. maxBound]
+          , let unreserved = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+                subDelims = "!$&'()*+,;=" ])
   , ("RFC 3986 3.3 pchar excludes the other gen-delims '/' '?' '#' '[' ']'; '%' alone is not pchar (pct-encoded checked separately, per API doc)"
     , noneW isPChar "/?#[]% \"<>\\^`{|}")
   ]

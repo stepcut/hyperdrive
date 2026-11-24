@@ -719,6 +719,7 @@ allEncoded ok bs = go 0
       | ok w      = go (i + 1)
       | otherwise = False
       where w = B.index bs i
+{-# INLINE allEncoded #-}
 
 -- | Decode percent-encoded octets. Returns 'Nothing' if a "%" is not
 -- followed by two hex digits.
