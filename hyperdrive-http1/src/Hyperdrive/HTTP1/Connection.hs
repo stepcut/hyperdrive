@@ -291,7 +291,7 @@ startRequest :: Config -> RawRequestHead -> Either Status (RequestHead, Maybe Bo
 startRequest config raw = do
   let version = headVersion raw
       method = headMethod raw
-      (fields, found) = splitFields (headFields raw)
+      (fields, found) = splitFields (headLinesReversed raw)
   framing <- either (Left . framingErrorStatus) Right
                (requestFramingFrom version (foundTransferEncoding found) (foundContentLength found))
   target <- either (Left . targetErrorStatus) Right
@@ -315,7 +315,7 @@ startRequest config raw = do
 -- gets, which are those that are neither Host nor a protocol field,
 -- and the values of the fields the core interprets. Looked up one name
 -- at a time, the fields were walked seven times.
-data Split = Split !(Seq.Seq (FieldName, FieldValue)) !CoreFields
+data Split = Split ![(FieldName, FieldValue)] !CoreFields
 
 -- | The values of the fields the core interprets, each in order. Apart
 -- from the application's fields, so that adding one of those (most
@@ -329,22 +329,25 @@ data CoreFields = CoreFields
   , foundExpect           :: ![FieldValue]
   }
 
-splitFields :: Fields -> (Fields, CoreFields)
-splitFields (Fields fs) = inOrder (F.foldl' place (Split Seq.empty (CoreFields [] [] [] [] [] [])) fs)
+--
+-- The lines come the last one first, as the head was read, so putting
+-- each at the front of its list leaves every list in the order
+-- received, and the application's fields are built once.
+splitFields :: [(FieldName, FieldValue)] -> (Fields, CoreFields)
+splitFields reversed = inOrder (F.foldl' place (Split [] (CoreFields [] [] [] [] [] [])) reversed)
   where
     -- by length first: most names are then ruled out by one comparison
     place (Split rest found) f@(name@(FieldName n), v) = case B.length n of
       2  | n == "te"                -> Split rest found { foundTE = v : foundTE found }
       4  | n == "host"              -> Split rest found { foundHost = v : foundHost found }
       -- Expect is not a protocol field: the application sees it too
-      6  | n == "expect"            -> Split (rest Seq.|> f) found { foundExpect = v : foundExpect found }
+      6  | n == "expect"            -> Split (f : rest) found { foundExpect = v : foundExpect found }
       10 | n == "connection"        -> Split rest found { foundConnection = v : foundConnection found }
       14 | n == "content-length"    -> Split rest found { foundContentLength = v : foundContentLength found }
       17 | n == "transfer-encoding" -> Split rest found { foundTransferEncoding = v : foundTransferEncoding found }
       _  | isProtocolField name     -> Split rest found
-         | otherwise                -> Split (rest Seq.|> f) found
-    inOrder (Split rest (CoreFields host te cl t conn expect)) =
-      (Fields rest, CoreFields (reverse host) (reverse te) (reverse cl) (reverse t) (reverse conn) (reverse expect))
+         | otherwise                -> Split (f : rest) found
+    inOrder (Split rest found) = (Fields (Seq.fromList rest), found)
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-10.1.1
 -- # A server that receives an Expect field value containing a member

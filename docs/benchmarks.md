@@ -1250,3 +1250,42 @@ for "the connection persists" in `startRequest`, tried to remove
 those, moved the code: instruction cache misses for the browser's
 request went from about 221 to 276 a request and all three requests
 were slower, so it was taken out.
+
+## 2026-11-24 (afternoon): the request's fields built once
+
+The second line of the profile above. The head's scan built a `Fields`
+(a `Seq`) from its list of lines, and `splitFields` took it apart
+again and built another for the application with a snoc for each
+field, then reversed each of the core's lists. `RawRequestHead` now
+holds the scan's list as it is, the last line first
+(`headLinesReversed`; `headFields` is a function that builds the
+`Fields` for whoever wants it), and `splitFields` puts each line at
+the front of its list: every list comes out in the order received and
+the application's `Fields` is built once. Per request, in process:
+
+| | wrk's request | browser's | chunked |
+|---|---|---|---|
+| instructions, before | 10,431 | 23,515 | 30,604 |
+| instructions, after | 10,144 (-2.8%) | 22,386 (-4.8%) | 30,230 (-1.2%) |
+| allocation | 5,111 to 4,967 | 8,958 to 7,598 (-15.2%) | 31,640 to 31,312 |
+| instruction cache misses | 192 to 174 | 234 to 217 | 246 to 236 |
+| time, before | 1.433 µs | 2.612 µs | 3.581 µs |
+| time, after | 1.372 µs (-4.3%, faster in 10 of 10) | 2.476 µs (-5.2%, 10 of 10) | 3.507 µs (-2.1%, 10 of 10) |
+
+Over sockets, six alternating runs of five seconds each:
+
+| | wrk's request: user | kernel | req/s | browser's request: user | kernel | req/s |
+|---|---|---|---|---|---|---|
+| before | 1.417 (1.375 to 1.459) | 4.810 | 756k | 2.111 (2.075 to 2.157) | 4.966 | 721k |
+| after | 1.418 (1.379 to 1.452) | 4.815 | 754k | 2.023 (1.993 to 2.060) | 4.936 | 728k |
+
+Kept: 4.2% less user time for the browser's request, every run under
+the baseline's lowest, and nothing worse. (The instruction cache
+misses, counted while the machine was busy, had looked higher with the
+change: 219 against 160 for the minimal request. Counted again on the
+quiet machine they are the figures in the table. That count needs a
+quiet machine as much as a timing does.)
+
+Since the profile, with the three changes from it, the browser's
+request over sockets has gone from 2.266 to 2.023 µs of user time and
+from 704k to 728k requests a second (figures from different sessions).

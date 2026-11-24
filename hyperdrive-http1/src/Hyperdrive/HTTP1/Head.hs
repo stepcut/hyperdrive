@@ -9,6 +9,7 @@
 -- whitespace are rejected.
 module Hyperdrive.HTTP1.Head
   ( RawRequestHead(..)
+  , headFields
   , Limits(..)
   , defaultLimits
   , HeadResult(..)
@@ -38,7 +39,7 @@ import GHC.ByteOrder (ByteOrder(..), targetByteOrder)
 import Data.Word (Word64, Word8, byteSwap64)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekByteOff)
-import Hyperdrive.Semantics.Field (FieldName, FieldValue, FieldValueError, Fields, emptyFields, fieldsFromList, mkFieldName, mkFieldValue)
+import Hyperdrive.Semantics.Field (FieldName, FieldValue, FieldValueError, Fields, mkFieldName, mkFieldValue)
 import Hyperdrive.Semantics.Internal (FieldName(..), FieldValue(..), Fields(..))
 import Hyperdrive.Semantics.Message (HttpVersion(..))
 import Hyperdrive.Semantics.Method (Method, mkMethod)
@@ -52,8 +53,16 @@ data RawRequestHead = RawRequestHead
   { headMethod  :: !Method
   , headTarget  :: !ByteString
   , headVersion :: !HttpVersion
-  , headFields  :: !Fields
+  , headLinesReversed :: ![(FieldName, FieldValue)]
+    -- ^ the field lines, the last one first, as reading them leaves
+    -- them: the connection sorts them into its own and the
+    -- application's from this, so no 'Fields' is built to be taken
+    -- apart again
   } deriving (Show)
+
+-- | The header section's fields, in the order received.
+headFields :: RawRequestHead -> Fields
+headFields = Fields . Seq.fromList . reverse . headLinesReversed
 
 -- | Limits on the head of a request.
 data Limits = Limits
@@ -190,8 +199,8 @@ parseRequestHead limits searched input
           -- the error that comes first.
           withinLimits = B.length requestLine <= maxRequestLine limits
             && B.length head' + 4 - B.length requestLine - 2 <= maxFieldSection limits
-          fast | B.null rest = Just emptyFields
-               | otherwise   = scanFieldLines (maxFields limits) (B.drop 2 rest)
+          fast | B.null rest = Just []
+               | otherwise   = fst <$> scanLines False (maxFields limits) (B.drop 2 rest)
       in if not withinLimits then full requestLine fieldLines else
          case parseRequestLine requestLine of
            Right (method, target, 1, minor)
@@ -210,7 +219,7 @@ parseRequestHead limits searched input
            -- a version we do not serve is reported only for a head that
            -- is otherwise well formed; a malformed one gets 400
            if major /= 1 then Left (UnsupportedVersion major) else Right ()
-           Right (RawRequestHead method target (HttpVersion 1 minor) (fieldsFromList fields))
+           Right (RawRequestHead method target (HttpVersion 1 minor) (reverse fields))
 
     lineTooLong line
       | not (B.elem 0x20 line) = MethodTooLong
@@ -264,22 +273,23 @@ splitLines bs = case breakCRLF bs of
 -- (lower-cased), a colon, and a value of field-vchars, SP and HTAB
 -- with the whitespace at either end left out.
 scanFieldLines :: Int -> ByteString -> Maybe Fields
-scanFieldLines limit section = fst <$> scanLines False limit section
+scanFieldLines limit section = Fields . Seq.fromList . reverse . fst <$> scanLines False limit section
 
 -- | 'scanFieldLines', or, for a head, the field lines up to the empty
 -- line that ends them (each ending with CRLF), with what follows it.
-scanLines :: Bool -> Int -> ByteString -> Maybe (Fields, ByteString)
+-- The lines are given the last one first.
+scanLines :: Bool -> Int -> ByteString -> Maybe ([(FieldName, FieldValue)], ByteString)
 scanLines toEmptyLine limit section0 = line 0 [] section0
   where
-    line :: Int -> [(FieldName, FieldValue)] -> ByteString -> Maybe (Fields, ByteString)
+    line :: Int -> [(FieldName, FieldValue)] -> ByteString -> Maybe ([(FieldName, FieldValue)], ByteString)
     line !count acc s
       | toEmptyLine, B.length s >= 2, BU.unsafeIndex s 0 == 0x0D, BU.unsafeIndex s 1 == 0x0A =
-          Just (Fields (Seq.fromList (reverse acc)), BU.unsafeDrop 2 s)
+          Just (acc, BU.unsafeDrop 2 s)
       | count >= limit = Nothing
       -- the line ends at the end of the section, or at a CRLF
       | otherwise = case B.elemIndex 0x0D s of
           Nothing -> case fieldLine s of
-            Just field | not toEmptyLine -> Just (Fields (Seq.fromList (reverse (field : acc))), B.empty)
+            Just field | not toEmptyLine -> Just (field : acc, B.empty)
             _ -> Nothing
           Just k
             | k + 1 < B.length s, BU.unsafeIndex s (k + 1) == 0x0A -> case fieldLine (BU.unsafeTake k s) of

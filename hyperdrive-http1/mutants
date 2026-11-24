@@ -442,19 +442,23 @@ file: src/Hyperdrive/HTTP1/Connection.hs
 
 why: Host and the protocol fields are the core's; the application gets the rest
 - 4  | n == "host"              -> Split rest found { foundHost = v : foundHost found }
-+ 4  | n == "host"              -> Split (rest Seq.|> f) found { foundHost = v : foundHost found }
++ 4  | n == "host"              -> Split (f : rest) found { foundHost = v : foundHost found }
 
 why: Expect is the application's too
-- 6  | n == "expect"            -> Split (rest Seq.|> f) found { foundExpect = v : foundExpect found }
+- 6  | n == "expect"            -> Split (f : rest) found { foundExpect = v : foundExpect found }
 + 6  | n == "expect"            -> Split rest found { foundExpect = v : foundExpect found }
 
 why: the other protocol fields are not the application's either
 - _  | isProtocolField name     -> Split rest found
-+ _  | isProtocolField name     -> Split (rest Seq.|> f) found
++ _  | isProtocolField name     -> Split (f : rest) found
 
 why: field lines with the same name keep their order (chunked must be the last transfer coding)
-- (Fields rest, CoreFields (reverse host) (reverse te) (reverse cl) (reverse t) (reverse conn) (reverse expect))
-+ (Fields rest, CoreFields (reverse host) te (reverse cl) (reverse t) (reverse conn) (reverse expect))
+- inOrder (Split rest found) = (Fields (Seq.fromList rest), found)
++ inOrder (Split rest found) = (Fields (Seq.fromList rest), found { foundTransferEncoding = reverse (foundTransferEncoding found) })
+
+why: the application's fields are in the order received
+- inOrder (Split rest found) = (Fields (Seq.fromList rest), found)
++ inOrder (Split rest found) = (Fields (Seq.fromList (reverse rest)), found)
 
 file: src/Hyperdrive/HTTP1/Head.hs
 
@@ -483,8 +487,8 @@ why: read at once, the empty lines before the request line are consumed too
 + -> Just (HeadComplete (RawRequestHead method target (HttpVersion 1 minor) fields) (B.length fromStart - B.length after))
 
 why: a head is not complete before its empty line
-- Just field | not toEmptyLine -> Just (Fields (Seq.fromList (reverse (field : acc))), B.empty)
-+ Just field -> Just (Fields (Seq.fromList (reverse (field : acc))), B.empty)
+- Just field | not toEmptyLine -> Just (field : acc, B.empty)
++ Just field -> Just (field : acc, B.empty)
 
 why: the empty line that ends a head is CRLF
 - | toEmptyLine, B.length s >= 2, BU.unsafeIndex s 0 == 0x0D, BU.unsafeIndex s 1 == 0x0A =
@@ -607,3 +611,8 @@ why: a line with several options, or one that is not a list of tokens, is not on
 why: without a Connection field nothing asks for the connection to be closed
 - connectionClose [] = Just False
 + connectionClose [] = Just True
+
+file: src/Hyperdrive/HTTP1/Head.hs
+why: the head's field lines are held the last one first
+- Just (acc, BU.unsafeDrop 2 s)
++ Just (reverse acc, BU.unsafeDrop 2 s)
