@@ -8,10 +8,13 @@ author:             Jeremy Shaw
 maintainer:         jeremy@seereason.com
 build-type:         Simple
 
--- Both built the same way, so that only the server differs.
+-- Both built the same way, so that only the server differs. The
+-- allocation area is the size of a core's L2 cache on the machine the
+-- benchmarks are run on: with -A32m both servers spent a fifth to a
+-- quarter more user time (docs/benchmarks.md, 2026-11-24).
 common server
   default-language: GHC2021
-  ghc-options:      -Wall -O2 -threaded -rtsopts "-with-rtsopts=-N8 -A32m"
+  ghc-options:      -Wall -O2 -threaded -rtsopts "-with-rtsopts=-N8 -A1m"
   build-depends:    base >= 4.18 && < 5, bytestring
 
 executable bench-hyperdrive
@@ -40,5 +43,5 @@ executable bench-warp
 executable bench-driver
   default-language: GHC2021
   main-is:          Driver.hs
-  ghc-options:      -Wall -O2 -threaded -rtsopts "-with-rtsopts=-A32m"
+  ghc-options:      -Wall -O2 -threaded -rtsopts "-with-rtsopts=-A1m"
   build-depends:    base >= 4.18 && < 5, bytestring, network, hyperdrive-semantics, hyperdrive-server

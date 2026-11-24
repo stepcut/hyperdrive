@@ -190,6 +190,18 @@ Accept errors from running out of descriptors (`EMFILE`, `ENFILE`)
 pause accepting briefly rather than spin or stop. A limit on
 connections is a setting (default: none).
 
+## Running it: the allocation area
+
+A request is served out of memory allocated for it and dropped at
+once, so the size of the allocation area (`+RTS -A`) decides whether
+that memory is in the cache. An area about the size of one core's L2
+cache is the one to start from (`-A1m` on the machine the benchmarks
+are run on): against `-A32m` it took 18% off the user time of a
+minimal request and 24% off a browser's, and warp gained as much
+(docs/benchmarks.md, 2026-11-24). It is the application's setting to
+make (`-with-rtsopts`, or on the command line), not the library's, and
+worth measuring on the machine and the load it will have.
+
 ## Not in this step
 
 - **TLS** (S5): the `Transport` record leaves room for it. HTTP/2 needs

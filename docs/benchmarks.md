@@ -1075,3 +1075,73 @@ five of six runs under every run of the baseline), kernel 4.857 to
 
 Mutants that only stop a name being shared change no output, so the
 sharing itself is checked by the allocation count alone.
+
+## 2026-11-24 (afternoon): RTS options: the allocation area
+
+Both benchmark servers are linked with `-with-rtsopts=-N8 -A32m`: an
+allocation area of 32 MiB for each of the 8 capabilities, far more
+than a core's cache (L1d 48 KiB, L2 1 MiB a core, L3 32 MiB shared by
+8 on this Ryzen 9 9955HX), so every allocation is written to memory
+that is not in the cache. Other settings, given on the command line
+to the same binary (8b7cbeb), the settings run in turn, three runs of
+5 s each (wrk, 100 connections); user µs a request as mean (lowest to
+highest), kernel µs, requests a second:
+
+hyperdrive, wrk's own request:
+
+| | user | kernel | req/s |
+|---|---|---|---|
+| -A32m | 1.781 (1.755 to 1.822) | 4.803 | 733k |
+| -A128m | 1.709 (1.687 to 1.749) | 4.833 | 738k |
+| -A4m | 1.544 (1.524 to 1.568) | 4.726 | 749k |
+| -A1m | 1.457 (1.425 to 1.485) | 4.806 | 746k |
+| -A256k | 1.494 (1.471 to 1.522) | 4.856 | 738k |
+| -A32m -qg | 1.766 (1.745 to 1.782) | 4.844 | 731k |
+| -A1m -qg | 1.450 (1.443 to 1.462) | 4.756 | 720k |
+| -A32m -n1m | 1.789 (1.730 to 1.831) | 4.861 | 720k |
+| -A32m -n4m | 1.811 (1.807 to 1.819) | 4.785 | 730k |
+| -A32m -I0 | 1.755 (1.737 to 1.782) | 4.808 | 734k |
+
+and again, closer in: -A32m 1.758, -A2m 1.448, -A1m 1.454, -A768k
+1.430, -A512k 1.419 (1.404 to 1.435, 756k req/s).
+
+hyperdrive, the browser's request:
+
+| | user | kernel | req/s |
+|---|---|---|---|
+| -A32m | 3.206 (3.156 to 3.249) | 5.160 | 640k |
+| -A4m | 2.591 (2.583 to 2.598) | 5.082 | 679k |
+| -A2m | 2.459 (2.429 to 2.484) | 5.092 | 683k |
+| -A1m | 2.426 (2.399 to 2.441) | 5.152 | 684k |
+| -A512k | 2.503 (2.465 to 2.549) | 5.213 | 667k |
+
+warp, the same way:
+
+| | wrk's request: user | req/s | browser's request: user | req/s |
+|---|---|---|---|---|
+| -A32m | 1.694 (1.690 to 1.698) | 745k | 3.145 (3.138 to 3.159) | 612k |
+| -A4m | 1.567 | 747k | | |
+| -A2m | 1.475 | 736k | 2.284 (2.246 to 2.349) | 673k |
+| -A1m | 1.469 (1.433 to 1.526) | 733k | 2.345 (2.319 to 2.371) | 651k |
+| -A512k | 1.551 | 722k | | |
+
+So an allocation area that fits a core's L2 cache is worth more than
+everything else measured this week: 18% of hyperdrive's user time for
+the minimal request and 24% for the browser's (7% more requests a
+second), and as much for warp. The parallel collector (`-qg`), the
+nursery chunks (`-n`) and the idle collection (`-I0`) change nothing
+that can be measured. At `-A1m` hyperdrive is level with warp on the
+minimal request (1.457 and 1.454 against 1.469) and 3% behind on the
+browser's (2.426 against 2.345); at `-A32m` it is 4% behind and 2%
+behind.
+
+Both benchmark servers, and `bench-driver`, are linked with `-A1m`
+from here on (in process, the browser's request at 8b7cbeb: 3.47 and
+3.64 µs with `-A32m`, 3.08 and 3.08 with `-A1m`). Figures above this
+section were measured with `-A32m` and do not compare with those
+below. `docs/server-design.md` says how to choose the size.
+
+The new baseline (`scripts/bench-cpu`, two runs each, at 8b7cbeb with
+`-A1m`): hyperdrive 751k and 761k req/s, 1.45 and 1.45 µs user, 4.73
+and 4.77 kernel; warp 736k and 749k, 1.45 and 1.50 user, 4.81 and 4.74
+kernel.
