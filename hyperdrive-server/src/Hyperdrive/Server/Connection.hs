@@ -29,7 +29,6 @@ import qualified Data.ByteString as B
 import Data.IORef
 import Data.Maybe (fromJust)
 import Data.Word (Word64)
-import GHC.Clock (getMonotonicTimeNSec)
 import Hyperdrive.HTTP1.Connection
 import Hyperdrive.HTTP1.Target (TargetContext(..))
 import Hyperdrive.Semantics.Field
@@ -37,7 +36,6 @@ import Hyperdrive.Semantics.Message
 import Hyperdrive.Semantics.Method (pattern HEAD)
 import Hyperdrive.Semantics.Status (Status, pattern InternalServerError, pattern ServiceUnavailable)
 import Hyperdrive.Semantics.URI (pattern HTTP, pattern HTTPS)
-import Hyperdrive.Server.Date
 import Hyperdrive.Server.Timer
 import Hyperdrive.Server.Transport
 import Network.Socket (HostName, PortNumber, SockAddr)
@@ -85,7 +83,8 @@ data Settings = Settings
   , settingsMaxConnections   :: !(Maybe Int)
   , settingsTimerResolution  :: !Int
     -- ^ microseconds between checks of the connections' timers: a
-    -- timeout fires up to this much late (see "Hyperdrive.Server.Timer")
+    -- timeout fires up to twice this late, not early, and the @Date@
+    -- field is up to this much behind (see "Hyperdrive.Server.Timer")
   , settingsOnException      :: SomeException -> IO ()
     -- ^ told of exceptions from applications, and of bugs; not of
     -- clients going away
@@ -135,7 +134,6 @@ data Env = Env
   , envTransport :: !Transport
   , envContext  :: !Context
   , envApp      :: Application
-  , envDates    :: !DateCache
   , envTimer    :: !Timer
   , envRef      :: !(IORef St)
   }
@@ -176,8 +174,7 @@ serveConnection settings timers transport context app = do
         target = configTarget config
         config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
     ref <- newIORef (St (newConn config') [] [] 0 False False False False (TimerFor Closed 0))
-    dates <- newDateCache
-    let env = Env settings wake transport context app dates timer ref
+    let env = Env settings wake transport context app timer ref
     (do r <- try (mainLoop env)
         case r of
           -- what the core had to say before closing (a 400, say) is still sent
@@ -235,7 +232,7 @@ flush env = do
     writeIORef (envRef env) $! st { stOut = [], stOutBytes = 0, stWrote = True }
     -- a write that does not finish in time is made to fail by the
     -- ticker, which aborts the transport
-    armWrite (envTimer env) =<< deadlineIn (timeoutWrite (settingsTimeouts (envSettings env)))
+    armWrite (envTimer env) =<< deadlineIn (envTimer env) (timeoutWrite (settingsTimeouts (envSettings env)))
     r <- try (transportSendMany (envTransport env) (reverse (stOut st)))
     disarm (envTimer env)
     case r of
@@ -261,7 +258,6 @@ waitInput env = do
   wrote <- stWrote <$> readIORef (envRef env)
   when wrote yield
   st <- readIORef (envRef env)
-  now <- getMonotonicTimeNSec
   let ph = phase (stConn st)
       ts = settingsTimeouts (envSettings env)
       limit = case ph of
@@ -270,13 +266,14 @@ waitInput env = do
         ReadingBody    -> timeoutBody ts
         DiscardingBody -> timeoutDiscard ts
         _              -> timeoutIdle ts
-      -- the head and discarding timers run from the start of the phase;
+  fresh <- deadlineIn (envTimer env) limit
+  let -- the head and discarding timers run from the start of the phase;
       -- the others restart at each wait
       TimerFor ph' deadline'
         = stTimer st
       !deadline
         | ph' == ph, ph `elem` [ReadingHead, DiscardingBody] = deadline'
-        | otherwise = now + fromIntegral limit * 1000
+        | otherwise = fresh
   writeIORef (envRef env) $! st { stTimer = TimerFor ph deadline, stWrote = False }
   ready <- transportTryRecv (envTransport env)
   case ready of
@@ -336,7 +333,7 @@ linger env = do
     Left ConnectionClosed -> pure ()
     Right () -> do
       transportShutdownWrite (envTransport env)
-      deadline <- deadlineIn (timeoutLinger (settingsTimeouts (envSettings env)))
+      deadline <- deadlineIn (envTimer env) (timeoutLinger (settingsTimeouts (envSettings env)))
       let drain (n :: Int) = when (n < 1048576) $ do
             ready <- transportTryRecv (envTransport env)
             case ready of
@@ -434,7 +431,7 @@ noticeShutdown env = do
 respondWithStatus :: Env -> Status -> IO ()
 respondWithStatus env status = do
   noticeShutdown env
-  date <- currentDate (envDates env)
+  date <- dateNow (envTimer env)
   feed env (Respond (ResponseHead status (withDate date emptyFields) True (Just 0) []))
   feed env (EndBody emptyFields)
   flush env
@@ -450,7 +447,7 @@ hDate = fromJust (mkFieldName "date")
 sendResponse :: Env -> Request -> IORef Bool -> Response -> IO ()
 sendResponse env req started resp0 = do
   resp <- either (throwIO . InvalidResponse) pure (checkResponseFor req resp0)
-  date <- currentDate (envDates env)
+  date <- dateNow (envTimer env)
   let fields = withDate date (responseHeaders resp)
       begin hasContent len trailers = do
         noticeShutdown env

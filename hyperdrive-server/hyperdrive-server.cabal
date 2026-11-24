@@ -52,6 +52,7 @@ test-suite hyperdrive-server-tests
                   , hyperdrive-server
                   , network
                   , stm
+                  , time
                   , QuickCheck       >= 2.14 && < 2.18
                   , tasty            >= 1.4  && < 1.6
                   , tasty-quickcheck >= 0.10 && < 0.12

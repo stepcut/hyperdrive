@@ -713,3 +713,43 @@ is the loopback firewall, 0.4 in `nf_tables` and `nf_conntrack` and
 0.69 at addresses perf cannot name in the BPF and module range
 (`0xffffffffc0...`), so a machine without those rules would show
 higher figures for both and a larger relative gap.
+
+## 2026-11-23 (evening): the clock read by the ticker, not per request
+
+A request read the clock three times: the monotonic clock in
+`waitInput` (the wait's deadline) and in `flush` (the write's), and the
+wall clock in `currentDate`. The timers' ticker now publishes both
+every tick (100 ms by default): the monotonic time in an `IORef` that
+`deadlineIn` reads, adding one tick so that a deadline is not early,
+and the `Date` value, formatted when the second changes. A timeout
+fires up to two ticks late (one before), and `Date` is up to a tick
+behind.
+
+Against ef1d907 on a quiet machine (`scripts/compare-builds -r 10`,
+means of 10; allocation exact):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| ef1d907 | 1.774 µs, 6496 bytes | 3.857 µs, 12727 bytes | 5.378 µs, 36131 bytes |
+| the ticker's clock | 1.744 µs, 6401 bytes (faster in 8 of 10) | 3.802 µs, 12631 bytes (9 of 10) | 5.416 µs, 36035 bytes (slower in 9 of 10) |
+
+A first run of 5 rounds gave the same picture (-0.8%, -2.0%, +0.9%).
+The gain, 0.03 to 0.055 µs, is less than the 0.086 perf put in
+`clock_gettime`; and the chunked request, which reads the clock no
+more often than the others, is 0.04 µs slower.
+
+That slowdown is where the code landed, not more work. `perf stat` on
+the chunked run of each build (user mode, 100000 requests, three runs
+each, the instruction counts repeatable to four digits): 3611.6 to 3560.1 million
+instructions (-1.4%, some 500 fewer a request), but 23.1 to 30.7
+million L1 instruction-cache misses (+33%, some 76 more a request) and
+1000 to 2800 instruction-TLB misses. Cycles were not compared: the
+machine was not quiet for this. The next change to these modules will
+move the code again, so the 0.04 µs is not held against this one.
+
+Over sockets (`scripts/bench-cpu`, two runs each, the same session):
+hyperdrive 739k and 727k req/s, 1.96 and 1.95 µs user, 4.80 and 4.84
+kernel; warp 731k and 751k, 1.71 and 1.69 user, 4.73 and 4.69 kernel.
+The last socket figures for hyperdrive were 2.07 µs user at 309fcbc
+(two days and two small commits earlier, so not a clean before and
+after): the gap in user time is now about 0.25 µs.

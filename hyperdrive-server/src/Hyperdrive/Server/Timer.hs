@@ -8,8 +8,16 @@
 -- wait and per write, threads queue on it, and a benchmark ran at a
 -- seventh of the speed it reached without timers. Here setting a
 -- deadline is a write to the connection's own 'IORef', and the ticker
--- looks at every connection once per tick, so a timeout fires up to a
--- tick late.
+-- looks at every connection once per tick.
+--
+-- The ticker also keeps the time for the connections: the monotonic
+-- clock as of its last tick, which deadlines are counted from
+-- ('deadlineIn'), and the @Date@ field's value ('dateNow'). Reading the
+-- clocks instead, three times a request (for the wait, the write and
+-- the date), cost 0.09 microseconds of a small request's 2
+-- (docs/benchmarks.md). A deadline allows for the clock being a tick
+-- old, so a timeout is early only by as much as the ticker itself is
+-- late, and fires up to two ticks late.
 --
 -- A connection is woken by calling the action it registered with
 -- ('withTimer'), with a 'Wake' saying why. The connection then waits on
@@ -27,6 +35,7 @@ module Hyperdrive.Server.Timer
   , armWrite
   , disarm
   , deadlineIn
+  , dateNow
   , beginShutdown
   , isShuttingDown
   ) where
@@ -38,11 +47,16 @@ import Data.IORef
 import qualified Data.IntMap.Strict as IntMap
 import Data.Word (Word64)
 import GHC.Clock (getMonotonicTimeNSec)
+import Hyperdrive.Semantics.Field (FieldValue)
+import Hyperdrive.Server.Date
 
 data Timers = Timers
   { timersRegistry :: !(IORef (IntMap.IntMap Timer))
   , timersNext     :: !(IORef Int)
   , timersStopping :: !(IORef Bool)
+  , timersClock    :: !(IORef Word64)  -- ^ monotonic nanoseconds at the last tick
+  , timersTick     :: !Word64          -- ^ nanoseconds between ticks
+  , timersDate     :: !DateCache
   }
 
 -- | Why a connection was woken.
@@ -60,6 +74,9 @@ data Timer = Timer
   , timerWake     :: Wake -> IO ()  -- ^ wakes the connection
   , timerAbort    :: IO ()          -- ^ what to do when a write expires
   , timerStopping :: !(IORef Bool)  -- ^ the server is shutting down
+  , timerClock    :: !(IORef Word64) -- ^ the server's 'timersClock'
+  , timerTick     :: !Word64
+  , timerDate     :: !DateCache
   }
 
 data Armed
@@ -67,13 +84,18 @@ data Armed
   | Reading !Int !Word64  -- ^ generation, deadline
   | Writing !Word64       -- ^ deadline
 
--- | Run with a ticker that checks every connection's timer every given
--- number of microseconds, stopping it afterwards.
+-- | Run with a ticker that checks every connection's timer, and
+-- brings the clock and the date up to date, every given number of
+-- microseconds, stopping it afterwards.
 withTimers :: Int -> (Timers -> IO a) -> IO a
 withTimers resolution act = do
   timers <- Timers <$> newIORef IntMap.empty <*> newIORef 0 <*> newIORef False
+                   <*> (newIORef =<< getMonotonicTimeNSec) <*> pure (fromIntegral resolution * 1000)
+                   <*> newDateCache
   let tick = do
         now <- getMonotonicTimeNSec
+        writeIORef (timersClock timers) now
+        refreshDate (timersDate timers)
         registry <- readIORef (timersRegistry timers)
         forM_ registry $ \t -> do
           fire <- atomicModifyIORef' (timerState t) $ \case
@@ -93,6 +115,7 @@ withTimers resolution act = do
 withTimer :: Timers -> (Wake -> IO ()) -> IO () -> (Timer -> IO a) -> IO a
 withTimer timers wake abort act = do
   t <- Timer <$> newIORef Disarmed <*> newIORef 0 <*> pure wake <*> pure abort <*> newIORef False
+             <*> pure (timersClock timers) <*> pure (timersTick timers) <*> pure (timersDate timers)
   bracket (mask_ (register t)) unregister (const (act t))
   where
     register t = do
@@ -120,10 +143,18 @@ armWrite t deadline = writeIORef (timerState t) (Writing deadline)
 disarm :: Timer -> IO ()
 disarm t = writeIORef (timerState t) Disarmed
 
--- | Now, in the timers' clock (monotonic nanoseconds), plus the given
--- number of microseconds.
-deadlineIn :: Int -> IO Word64
-deadlineIn micros = (+ fromIntegral micros * 1000) <$> getMonotonicTimeNSec
+-- | A deadline the given number of microseconds from now, in the
+-- timers' clock (monotonic nanoseconds). Now is taken to be the last
+-- tick plus the time between ticks, which is the latest it can be
+-- unless the ticker is late: the deadline is not early.
+deadlineIn :: Timer -> Int -> IO Word64
+deadlineIn t micros = do
+  ticked <- readIORef (timerClock t)
+  pure $! ticked + timerTick t + fromIntegral micros * 1000
+
+-- | The value of the @Date@ field, as of the last tick.
+dateNow :: Timer -> IO FieldValue
+dateNow t = currentDate (timerDate t)
 
 -- | Tell every connection, present and future, that the server is
 -- shutting down, and wake each.

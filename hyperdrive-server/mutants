@@ -100,7 +100,7 @@ why: each read arming has a generation of its own
 file: src/Hyperdrive/Server/Connection.hs
 
 why: writes have a deadline
-- armWrite (envTimer env) =<< deadlineIn (timeoutWrite (settingsTimeouts (envSettings env)))
+- armWrite (envTimer env) =<< deadlineIn (envTimer env) (timeoutWrite (settingsTimeouts (envSettings env)))
 + pure ()
 
 why: input that is already there is used, not dropped
@@ -127,3 +127,9 @@ why: a connection that waits after shutdown began is told at once
 # One only arrives if the ticker fires an arming just as the connection
 # ends that wait and begins the next, after the next has emptied its
 # variable; no test can make that happen reliably.
+
+file: src/Hyperdrive/Server/Timer.hs
+
+why: the ticker keeps the Date value current
+- refreshDate (timersDate timers)
++ pure ()

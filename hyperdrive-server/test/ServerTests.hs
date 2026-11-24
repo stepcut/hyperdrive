@@ -10,6 +10,7 @@ import qualified Data.ByteString.Char8 as C
 import Data.Int (Int64)
 import Data.IORef
 import Data.Maybe (fromJust)
+import Data.Time.Clock.System (getSystemTime, systemSeconds)
 import GHC.Clock (getMonotonicTimeNSec)
 import GHC.Stats (gcdetails_live_bytes, getRTSStats, gc)
 import System.Mem (performMajorGC)
@@ -45,6 +46,7 @@ serverTests = testGroup "hyperdrive-server"
   , testProperty "request bodies: 100 (Continue) on the wire, and bodies cut short" prop_bodies
   , testProperty "Date is an IMF-fixdate" prop_date
   , testProperty "coarse timers: expiries, re-arming, write aborts" prop_timers
+  , testProperty "the ticker keeps the Date value current" prop_tickerDate
   , testProperty "a long keep-alive connection does not accumulate memory" prop_noLeak
   ]
 
@@ -381,16 +383,16 @@ prop_timers = once $ monadicIO $ do
         woken = reverse <$> readIORef wakes
     withTimer timers wake (writeIORef aborted True) $ \t -> do
       -- a read deadline already passed wakes the connection, with its generation
-      first <- armRead t =<< deadlineIn 0
+      first <- armRead t =<< deadlineIn t 0
       threadDelay 50000
       afterFirst <- woken
       -- re-armed far ahead: nothing more, and a new generation
-      second <- armRead t =<< deadlineIn 10000000
+      second <- armRead t =<< deadlineIn t 10000000
       threadDelay 50000
       afterSecond <- woken
       disarm t
       -- a write past its deadline is aborted
-      armWrite t =<< deadlineIn 0
+      armWrite t =<< deadlineIn t 0
       threadDelay 50000
       wasAborted <- readIORef aborted
       -- shutdown reaches this connection, and one that starts afterwards
@@ -403,6 +405,22 @@ prop_timers = once $ monadicIO $ do
   let (first, second, afterFirst, afterSecond, wasAborted, afterShutdown, stopping, late) = results
   assert (afterFirst == [WakeTimer first] && afterSecond == afterFirst && second /= first)
   assert (wasAborted && afterShutdown == afterFirst ++ [WakeShutdown] && stopping && late)
+
+-- | The Date value connections read is the ticker's: it changes with
+-- the second, and to the current time.
+prop_tickerDate :: Property
+prop_tickerDate = once $ monadicIO $ do
+  (before, after, now) <- run $ withTimers 5000 $ \timers ->
+    withTimer timers (const (pure ())) (pure ()) $ \t -> do
+      before <- dateNow t
+      let wait (n :: Int) = do
+            d <- dateNow t
+            if d /= before || n == 0 then pure d else threadDelay 10000 >> wait (n - 1)
+      after <- wait 150
+      now <- systemSeconds <$> getSystemTime
+      pure (before, after, now)
+  monitor (counterexample (show (before, after, now)))
+  assert (after /= before && fieldValueBytes after `elem` [ formatHttpDate s | s <- [now - 1, now] ])
 
 -- | 60,000 requests on one connection, from a transport that makes them
 -- as they are read: the live heap after 10,000 and after 60,000 must be
