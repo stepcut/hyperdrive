@@ -478,8 +478,20 @@ why: a line ends only at CRLF, not at a bare CR
 - | k + 1 < B.length s, BU.unsafeIndex s (k + 1) == 0x0A -> case fieldLine
 + | k + 1 < B.length s -> case fieldLine
 
+why: an upper-case letter anywhere in the name is noticed
+- done i changed = pure (if changed == 0 then i else negate i)
++ done i changed = pure i
+
+why: every upper-case letter is lower-cased, Z too
+- where toLower w = if w >= 0x41 && w <= 0x5A then w + 0x20 else w
++ where toLower w = if w >= 0x41 && w <= 0x59 then w + 0x20 else w
+
+why: the name ends at the first octet that is not a tchar
+- nameTable = B.pack [ if isTChar w then toLower w else 0 | w <- [minBound .. maxBound] ]
++ nameTable = B.pack [ if isTChar w || w == 0x28 then toLower w else 0 | w <- [minBound .. maxBound] ]
+
 why: field names are lower-cased
-- !n = if B.any isUpper name then B.map toLower name else name
+- !n = if spanned < 0 then B.map lowerTChar name else name
 + !n = name
 
 why: whitespace at the end of a value is not part of it

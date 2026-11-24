@@ -31,7 +31,7 @@ import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
 import Data.Maybe (fromJust)
 import qualified Data.Sequence as Seq
-import Data.Bits (complement, xor, (.&.))
+import Data.Bits (complement, xor, (.&.), (.|.))
 import Data.Word (Word64, Word8)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekByteOff)
@@ -262,20 +262,46 @@ scanFieldLines limit section0 = line 0 [] section0
                 Nothing    -> Nothing
             | otherwise -> Nothing
     fieldLine :: ByteString -> Maybe (FieldName, FieldValue)
-    fieldLine l
-      | B.null name || B.null afterName || BU.unsafeHead afterName /= 0x3A
-        || not (allValueOctets raw) = Nothing
-      | otherwise =
-          let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
-              !n = if B.any isUpper name then B.map toLower name else name
-          in Just (FieldName n, FieldValue v)
-      where
-        name = B.takeWhile isTChar l
-        afterName = BU.unsafeDrop (B.length name) l
-        raw = BU.unsafeTail afterName
+    fieldLine l = case nameSpan l of
+      spanned
+        | B.null name || B.null afterName || BU.unsafeHead afterName /= 0x3A
+          || not (allValueOctets raw) -> Nothing
+        | otherwise ->
+            let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
+                !n = if spanned < 0 then B.map lowerTChar name else name
+            in Just (FieldName n, FieldValue v)
+        where
+          !name = BU.unsafeTake (abs spanned) l
+          !afterName = BU.unsafeDrop (abs spanned) l
+          raw = BU.unsafeTail afterName
     {-# INLINE fieldLine #-}
-    isUpper w = w >= 0x41 && w <= 0x5A
-    toLower w = if isUpper w then w + 0x20 else w
+    lowerTChar w = BU.unsafeIndex nameTable (fromIntegral w)
+
+-- | For each octet: itself in lower case if it is a tchar, and 0 if it
+-- is not (no tchar is 0).
+nameTable :: ByteString
+nameTable = B.pack [ if isTChar w then toLower w else 0 | w <- [minBound .. maxBound] ]
+  where toLower w = if w >= 0x41 && w <= 0x5A then w + 0x20 else w
+{-# NOINLINE nameTable #-}
+
+-- | How many tchars the line begins with, negated if any of them is an
+-- upper-case letter: one pass, with one look in 'nameTable' an octet.
+nameSpan :: ByteString -> Int
+nameSpan (BI.BS fp len) = BI.accursedUnutterablePerformIO $ BI.unsafeWithForeignPtr fp $ \p ->
+  case nameTable of
+    BI.BS tfp _ -> BI.unsafeWithForeignPtr tfp $ \table -> nameOctets table p len 0 0
+{-# INLINE nameSpan #-}
+
+nameOctets :: Ptr Word8 -> Ptr Word8 -> Int -> Int -> Word8 -> IO Int
+nameOctets !table !p !len = go
+  where
+    go !i !changed
+      | i >= len = done i changed
+      | otherwise = do
+          w <- peekByteOff p i :: IO Word8
+          lower <- peekByteOff table (fromIntegral w) :: IO Word8
+          if lower == 0 then done i changed else go (i + 1) (changed .|. xor w lower)
+    done i changed = pure (if changed == 0 then i else negate i)
 
 -- | Whether every octet is a field-vchar, SP or HTAB, eight at a time:
 -- a word with no octet below 0x20 and none equal to 0x7F is all valid

@@ -881,3 +881,47 @@ there before it: nothing checked that the other protocol fields
 (Keep-Alive, Upgrade, Proxy-Connection) are kept from the application,
 nor that Transfer-Encoding on two lines keeps its order. Both now have
 tests.
+
+## 2026-11-23 (late): a field name read in one pass
+
+`scanFieldLines` read a field name up to three times: `takeWhile
+isTChar` for its end, `any isUpper`, and `map toLower` when there was
+an upper-case letter (every name a browser sends has one). The profile
+by source line had this at 3.9% of the browser request over sockets.
+`nameSpan` now reads it once with a table of 256 octets, each its own
+lower-case form if it is a tchar and 0 if not, and notes whether any
+octet differs from its entry; the table is made from `isTChar`.
+
+Counts, against 1f8b4de (`perf stat`, user mode, 100000 requests);
+allocation is the same for all three:
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| instructions a request | 10841 to 10790 (-0.5%) | 31732 to 29148 (-8.1%) | 34076 to 33777 (-0.9%) |
+
+Left lazy, the span and the name cost 32 bytes a field line; they are
+bound strictly.
+
+Against 1f8b4de on a quiet machine (`scripts/compare-builds -r 10`,
+means of 10):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| 1f8b4de | 1.691 µs | 3.831 µs | 5.412 µs |
+| one pass over the name | 1.644 µs (-2.8%, faster in 10 of 10) | 3.769 µs (-1.6%, 9 of 10) | 5.278 µs (-2.5%, 10 of 10) |
+
+The minimal and chunked requests gain more time than their
+instruction counts explain, and the browser's less: some of this is
+where the code lands, as with the clock change.
+
+Over sockets, the two builds in turn (wrk, 100 connections, 5 s each):
+with the browser's request, means of six, user 3.615 to 3.587 µs
+(-0.8%), kernel 5.291 and 5.291, 590k to 596k req/s, the runs
+overlapping; with wrk's own request, means of four, user 1.835 to
+1.792 µs (-2.3%), kernel 4.756 to 4.778, 739k and 738k req/s, three of
+the four runs under every run of the baseline.
+
+A mutant that let "(" into a name survived: the generator of field
+lines had no such octet in a name. A test now puts each of the 256
+octets at the start, in the middle and at the end of a name and
+compares with the line-by-line parse.

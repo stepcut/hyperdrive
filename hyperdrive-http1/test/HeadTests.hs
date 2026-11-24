@@ -28,6 +28,7 @@ headTests = testGroup "Request head (RFC 9112 Sections 2 to 5)"
   , testProperty "what is parsed is what was sent" prop_contents
   , testProperty "limits, at their boundaries" prop_limits
   , testProperty "the one-pass field lines agree with the line-by-line parse" prop_scanFieldLines
+  , testProperty "every octet in a field name, the same in the one-pass field lines" prop_scanNameOctets
   , testProperty "searching for CRLF and CRLF CRLF agrees with breakSubstring" prop_indexCRLF
   , testProperty "checking values eight octets at a time agrees with one at a time" prop_allValueOctets
   , testProperty "each rule, by example" prop_examples
@@ -190,6 +191,17 @@ prop_scanFieldLines = checkCoverage $ withMaxSuccess 5000 $
     splitOn bs = case B.breakSubstring "\r\n" bs of
       (l, rest) | B.null rest -> [l]
                 | otherwise   -> l : splitOn (B.drop 2 rest)
+
+-- | Each of the 256 octets at the start, in the middle and at the end
+-- of a field name: 'scanFieldLines' accepts and lower-cases what
+-- 'checkLine' and 'parseFieldLine' do.
+prop_scanNameOctets :: Property
+prop_scanNameOctets = once $ conjoin
+  [ counterexample (show l) $
+      scanFieldLines 1 l === either (const Nothing) (Just . fieldsFromList . (: [])) (checkLine l >> parseFieldLine l)
+  | w <- [minBound .. maxBound]
+  , l <- [B.cons w "b: v", "A" <> B.cons w "b: v", "Ab" <> B.cons w ": v", B.cons w ": v"]
+  ]
 
 -- | Values of any length, mostly valid, with an octet that may not be
 -- (or HTAB, which may) at any position: the eight-at-a-time check
