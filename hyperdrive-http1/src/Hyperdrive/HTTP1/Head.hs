@@ -26,6 +26,8 @@ module Hyperdrive.HTTP1.Head
   ) where
 
 import Data.ByteString (ByteString)
+import Data.Array (Array, accumArray)
+import Data.Array.Base (unsafeAt)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
@@ -290,14 +292,79 @@ scanLines toEmptyLine limit section0 = line 0 [] section0
           || not (allValueOctets raw) -> Nothing
         | otherwise ->
             let !v = B.dropWhileEnd isOWS (B.dropWhile isOWS raw)
-                !n = if spanned < 0 then B.map lowerTChar name else name
+                !n = if spanned < 0 then lowerName name else name
             in Just (FieldName n, FieldValue v)
         where
           !name = BU.unsafeTake (abs spanned) l
           !afterName = BU.unsafeDrop (abs spanned) l
           raw = BU.unsafeTail afterName
     {-# INLINE fieldLine #-}
-    lowerTChar w = BU.unsafeIndex nameTable (fromIntegral w)
+
+-- | A name of tchars (not empty) in lower case: the one copy of a
+-- well-known name, or else a new string. A browser's names all have
+-- an upper-case letter, and nearly all are well known.
+lowerName :: ByteString -> ByteString
+lowerName name = among (knownNames `unsafeAt` nameHash name)
+  where
+    among (known : others)
+      | B.length known == B.length name, sameName known name = known
+      | otherwise = among others
+    among [] = B.map lowerTChar name
+
+-- | Whether a name of tchars is this well-known name, of the same
+-- length, in any case: eight octets at a time. A well-known name is
+-- of lower-case letters, digits and "-", which all have bit 5 set, and
+-- the only tchars that differ from one of those in bit 5 alone are the
+-- upper-case letters.
+sameName :: ByteString -> ByteString -> Bool
+sameName (BI.BS kfp len) (BI.BS nfp _) = BI.accursedUnutterablePerformIO $
+  BI.unsafeWithForeignPtr kfp $ \k -> BI.unsafeWithForeignPtr nfp $ \n -> sameOctets k n len 0
+{-# INLINE sameName #-}
+
+sameOctets :: Ptr Word8 -> Ptr Word8 -> Int -> Int -> IO Bool
+sameOctets !k !n !len = go
+  where
+    go !i
+      | i + 8 <= len = do
+          known <- peekByteOff k i :: IO Word64
+          w <- peekByteOff n i :: IO Word64
+          if w .|. 0x2020202020202020 == known then go (i + 8) else pure False
+      | i < len = do
+          known <- peekByteOff k i :: IO Word8
+          w <- peekByteOff n i :: IO Word8
+          if w .|. 0x20 == known then go (i + 1) else pure False
+      | otherwise = pure True
+
+lowerTChar :: Word8 -> Word8
+lowerTChar w = BU.unsafeIndex nameTable (fromIntegral w)
+{-# INLINE lowerTChar #-}
+
+-- | Where a name is in 'knownNames', whatever its case: from its
+-- length and its first and last octets.
+nameHash :: ByteString -> Int
+nameHash name = (B.length name + 3 * lowered (BU.unsafeHead name) + 5 * lowered (BU.unsafeLast name)) .&. 255
+  where lowered = fromIntegral . lowerTChar
+{-# INLINE nameHash #-}
+
+-- | The names requests usually have, in lower case, each at its 'nameHash'.
+knownNames :: Array Int [ByteString]
+knownNames = accumArray (flip (:)) [] (0, 255) [ (nameHash n, n) | n <- names, B.all plain n ]
+  where
+    -- what 'sameName' can compare
+    plain w = w >= 0x61 && w <= 0x7A || w >= 0x30 && w <= 0x39 || w == 0x2D
+    names =
+      [ "accept", "accept-charset", "accept-encoding", "accept-language", "authorization"
+      , "cache-control", "connection", "content-encoding", "content-length", "content-type"
+      , "cookie", "date", "dnt", "expect", "forwarded", "host", "if-match"
+      , "if-modified-since", "if-none-match", "if-range", "if-unmodified-since", "keep-alive"
+      , "origin", "pragma", "priority", "proxy-authorization", "range", "referer"
+      , "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "sec-fetch-dest"
+      , "sec-fetch-mode", "sec-fetch-site", "sec-fetch-user", "sec-gpc", "te", "trailer"
+      , "transfer-encoding", "upgrade", "upgrade-insecure-requests", "user-agent", "via"
+      , "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip"
+      , "x-requested-with"
+      ]
+{-# NOINLINE knownNames #-}
 
 -- | For each octet: itself in lower case if it is a tchar, and 0 if it
 -- is not (no tchar is 0).

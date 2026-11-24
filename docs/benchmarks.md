@@ -1039,3 +1039,39 @@ mutants) is `docs/patches/field-names-eight-at-a-time.patch`, against
 b94cffd: `git apply` it to try again, when the code around it has
 moved or the in-process benchmark is less sensitive to placement. The
 test of every octet at every place in a long name stays in.
+
+## 2026-11-24 (afternoon): one string for each well-known field name
+
+A name with an upper-case letter was copied in lower case, a pinned
+string for each (every name a browser sends, and wrk's "Host").
+`lowerName` now looks for it among 48 names that requests usually
+have, in a table by length and first and last octet, comparing eight
+octets at a time (`sameName`), and gives that one string; a name not
+there is copied as before.
+
+Counts, against b94cffd (`perf stat`, user mode, 100000 requests):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| bytes allocated a request | 5192 to 5112 (-1.5%) | 10862 to 9807 (-9.7%) | 31912 to 31736 (-0.6%) |
+| instructions a request | 10449 to 10425 (-0.2%) | 27036 to 26503 (-2.0%) | 30925 to 30717 (-0.7%) |
+
+Comparing an octet at a time through `nameTable` first, the browser's
+request took 361 instructions more than the copies it saved.
+
+On a quiet machine (`scripts/compare-builds -r 10`, means of 10):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| b94cffd | 1.645 µs | 3.602 µs | 5.019 µs |
+| shared names | 1.617 µs (-1.7%, faster in 10 of 10) | 3.466 µs (-3.8%, 10 of 10) | 5.066 µs (+0.9%, 3 of 10) |
+
+Over sockets, the two builds in turn (wrk, 100 connections, 5 s each,
+means of six): with wrk's own request, user 1.859 to 1.806 µs (-2.9%,
+five of six runs under every run of the baseline), kernel 4.857 to
+4.884, 729k and 730k req/s; with the browser's request, user 3.355 to
+3.270 µs (-2.5%, the runs overlapping a little), kernel 5.253 to
+5.248, 621k and 621k req/s.
+
+Mutants that only stop a name being shared change no output, so the
+sharing itself is checked by the allocation count alone.

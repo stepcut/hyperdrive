@@ -29,6 +29,7 @@ headTests = testGroup "Request head (RFC 9112 Sections 2 to 5)"
   , testProperty "limits, at their boundaries" prop_limits
   , testProperty "the one-pass field lines agree with the line-by-line parse" prop_scanFieldLines
   , testProperty "every octet in a field name, the same in the one-pass field lines" prop_scanNameOctets
+  , testProperty "well-known field names in any case, and names one octet from them" prop_scanKnownNames
   , testProperty "searching for CRLF and CRLF CRLF agrees with breakSubstring" prop_indexCRLF
   , testProperty "checking values eight octets at a time agrees with one at a time" prop_allValueOctets
   , testProperty "each rule, by example" prop_examples
@@ -205,6 +206,38 @@ prop_scanNameOctets = once $ conjoin
          ++ [ B.take i name <> B.cons w (B.drop (i + 1) name) <> rest
             | name <- ["accept-language-x", "Accept-Language-X"], i <- [0 .. B.length name - 1], rest <- [": v", ":", ""] ]
   ]
+
+-- | Names a request usually has (which 'scanFieldLines' does not copy
+-- to lower-case) and some it does not: all in upper case, with one
+-- upper-case letter at each place, and with each octet in turn changed
+-- to another octet, one shorter and one longer. The fields are those
+-- of 'parseFieldLine'.
+prop_scanKnownNames :: Property
+prop_scanKnownNames = once $ conjoin
+  [ counterexample (show l) $
+      scanFieldLines 1 l === either (const Nothing) (Just . fieldsFromList . (: [])) (checkLine l >> parseFieldLine l)
+  | name <- names
+  , variant <- [name, B.map upper name, B.init name, name <> "e", name <> "E"]
+      ++ [ B.take i name <> B.cons w (B.drop (i + 1) name)
+         | i <- [0 .. B.length name - 1]
+         , let c = B.index name i
+         , w <- [upper c, c + 1, upper c + 1, c - 1, c + 0x20, c - 0x20, 0x5E, 0x5F, 0x7E, 0x2D, 0x30] ]
+  , let l = variant <> ": v"
+  ]
+  where
+    upper w = if w >= 0x61 && w <= 0x7A then w - 0x20 else w
+    names =
+      [ "accept", "accept-charset", "accept-encoding", "accept-language", "authorization"
+      , "cache-control", "connection", "content-encoding", "content-length", "content-type"
+      , "cookie", "date", "dnt", "expect", "forwarded", "host", "if-match"
+      , "if-modified-since", "if-none-match", "if-range", "if-unmodified-since", "keep-alive"
+      , "origin", "pragma", "priority", "proxy-authorization", "range", "referer"
+      , "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", "sec-fetch-dest"
+      , "sec-fetch-mode", "sec-fetch-site", "sec-fetch-user", "sec-gpc", "te", "trailer"
+      , "transfer-encoding", "upgrade", "upgrade-insecure-requests", "user-agent", "via"
+      , "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip"
+      , "x-requested-with", "x-unknown-name", "q", "x_y~z^0"
+      ]
 
 -- | Values of any length, mostly valid, with an octet that may not be
 -- (or HTAB, which may) at any position: the eight-at-a-time check

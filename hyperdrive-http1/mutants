@@ -514,8 +514,16 @@ why: the name ends at the first octet that is not a tchar
 - nameTable = B.pack [ if isTChar w then toLower w else 0 | w <- [minBound .. maxBound] ]
 + nameTable = B.pack [ if isTChar w || w == 0x28 then toLower w else 0 | w <- [minBound .. maxBound] ]
 
+why: a well-known name is taken only for the same name: eight octets at a time
+- if w .|. 0x2020202020202020 == known then go (i + 8) else pure False
++ if w .|. 0x2020202020202021 == known .|. 1 then go (i + 8) else pure False
+
+why: a name that is not well known is lower-cased too
+- among [] = B.map lowerTChar name
++ among [] = name
+
 why: field names are lower-cased
-- !n = if spanned < 0 then B.map lowerTChar name else name
+- !n = if spanned < 0 then lowerName name else name
 + !n = name
 
 why: whitespace at the end of a value is not part of it
