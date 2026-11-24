@@ -135,19 +135,21 @@ data Env = Env
   , envContext  :: !Context
   , envApp      :: Application
   , envTimer    :: !Timer
-  , envRef      :: !(IORef St)
-  }
-
-data St = St
-  { stConn         :: !Conn
-  , stPending      :: ![Output]      -- ^ outputs not yet acted on, oldest first
-  , stOut          :: ![ByteString]  -- ^ to write, newest first
-  , stOutBytes     :: !Int
-  , stWrote        :: !Bool          -- ^ something was written since the last wait for input
-  , stClosed       :: !Bool          -- ^ the core said Close
-  , stBroken       :: !Bool          -- ^ a write failed: the client has gone
-  , stShutdownSeen :: !Bool
-  , stTimer        :: !TimerFor      -- ^ the phase the timer is for, and its deadline
+    -- The connection's state, each part in a reference of its own: as
+    -- one record in one reference, every change (a dozen a request)
+    -- allocated the whole record again. Each is written evaluated:
+    -- written lazily, a write leaves a thunk for the next read to run
+    -- (ticky counted about ten a request), and one that refers to the
+    -- value before it keeps every earlier one alive.
+  , envConn     :: !(IORef Conn)
+  , envPending  :: !(IORef [Output])      -- ^ outputs not yet acted on, oldest first
+  , envOut      :: !(IORef [ByteString])  -- ^ to write, newest first
+  , envOutBytes :: !(IORef Int)
+  , envWrote    :: !(IORef Bool)          -- ^ something was written since the last wait for input
+  , envClosed   :: !(IORef Bool)          -- ^ the core said Close
+  , envBroken   :: !(IORef Bool)          -- ^ a write failed: the client has gone
+  , envShutdownSeen :: !(IORef Bool)
+  , envTimerFor :: !(IORef TimerFor)      -- ^ the phase the timer is for, and its deadline
   }
 
 -- | Strict, and the deadline evaluated before it is stored: a lazy
@@ -173,8 +175,10 @@ serveConnection settings timers transport context app = do
     let config = settingsConfig settings
         target = configTarget config
         config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
-    ref <- newIORef (St (newConn config') [] [] 0 False False False False (TimerFor Closed 0))
-    let env = Env settings wake transport context app timer ref
+    env <- Env settings wake transport context app timer
+      <$> newIORef (newConn config') <*> newIORef [] <*> newIORef [] <*> newIORef 0
+      <*> newIORef False <*> newIORef False <*> newIORef False <*> newIORef False
+      <*> newIORef (TimerFor Closed 0)
     (do r <- try (mainLoop env)
         case r of
           -- what the core had to say before closing (a 400, say) is still sent
@@ -187,12 +191,13 @@ serveConnection settings timers transport context app = do
 
 mainLoop :: Env -> IO ()
 mainLoop env = do
-  st <- readIORef (envRef env)
-  unless (stClosed st) $ do
-    case stPending st of
+  closed <- readIORef (envClosed env)
+  unless closed $ do
+    pending <- readIORef (envPending env)
+    case pending of
       [] -> waitInput env
       (o : rest) -> do
-        writeIORef (envRef env) $! st { stPending = rest }
+        writeIORef (envPending env) $! rest
         case o of
           NeedInput    -> waitInput env
           NewRequest h -> serveRequest env h
@@ -204,43 +209,45 @@ mainLoop env = do
 -- whoever is waiting for it.
 feed :: Env -> Input -> IO ()
 feed env input = do
-  -- the state is written evaluated, here and below: written lazily, each
-  -- write left a thunk for the next read to run (ticky counted about
-  -- ten a request)
-  st <- readIORef (envRef env)
-  let (conn, outs) = step input (stConn st)
-  writeIORef (envRef env) $! st { stConn = conn }
+  conn <- readIORef (envConn env)
+  let (conn', outs) = step input conn
+  writeIORef (envConn env) $! conn'
   mapM_ act outs
-  st' <- readIORef (envRef env)
-  when (stOutBytes st' > 16384) (flush env)
+  buffered <- readIORef (envOutBytes env)
+  when (buffered > 16384) (flush env)
   where
     act = \case
-      Send bs -> modifyIORef' (envRef env) $ \s ->
-        s { stOut = reverse bs ++ stOut s, stOutBytes = stOutBytes s + sum (map B.length bs) }
-      Close -> modifyIORef' (envRef env) $ \s -> s { stClosed = True }
+      Send bs -> do
+        modifyIORef' (envOut env) (reverse bs ++)
+        modifyIORef' (envOutBytes env) (+ sum (map B.length bs))
+      Close -> writeIORef (envClosed env) True
       ProtocolMisuse m -> settingsOnException (envSettings env) (toException (DriverBug m))
-      o -> modifyIORef' (envRef env) $ \s -> s { stPending = stPending s ++ [o] }
+      o -> modifyIORef' (envPending env) (++ [o])
 
 -- | Write what is buffered, in one vectored write. If the client has
 -- gone, or does not read within the write timeout, the connection is
 -- broken and 'ConnectionClosed' thrown.
 flush :: Env -> IO ()
 flush env = do
-  st <- readIORef (envRef env)
-  when (stBroken st) (throwIO ConnectionClosed)
-  unless (null (stOut st)) $ do
-    writeIORef (envRef env) $! st { stOut = [], stOutBytes = 0, stWrote = True }
+  isBroken <- readIORef (envBroken env)
+  when isBroken (throwIO ConnectionClosed)
+  out <- readIORef (envOut env)
+  unless (null out) $ do
+    writeIORef (envOut env) []
+    writeIORef (envOutBytes env) 0
+    writeIORef (envWrote env) True
     -- a write that does not finish in time is made to fail by the
     -- ticker, which aborts the transport
     armWrite (envTimer env) =<< deadlineIn (envTimer env) (timeoutWrite (settingsTimeouts (envSettings env)))
-    r <- try (transportSendMany (envTransport env) (reverse (stOut st)))
+    r <- try (transportSendMany (envTransport env) (reverse out))
     disarm (envTimer env)
     case r of
       Right () -> pure ()
       Left (_ :: IOException) -> broken
   where
     broken = do
-      modifyIORef' (envRef env) $ \s -> s { stBroken = True, stClosed = True }
+      writeIORef (envBroken env) True
+      writeIORef (envClosed env) True
       throwIO ConnectionClosed
 
 -- | Wait for input, the phase's timer, or shutdown, whichever comes
@@ -255,10 +262,12 @@ waitInput env = do
   -- usually gives it time to arrive (warp does the same): with 100
   -- connections, receives that found nothing fell from one per request
   -- to under two per hundred (docs/benchmarks.md).
-  wrote <- stWrote <$> readIORef (envRef env)
+  wrote <- readIORef (envWrote env)
   when wrote yield
-  st <- readIORef (envRef env)
-  let ph = phase (stConn st)
+  conn <- readIORef (envConn env)
+  shutdownSeen <- readIORef (envShutdownSeen env)
+  TimerFor ph' deadline' <- readIORef (envTimerFor env)
+  let ph = phase conn
       ts = settingsTimeouts (envSettings env)
       limit = case ph of
         Idle           -> timeoutIdle ts
@@ -269,16 +278,15 @@ waitInput env = do
   fresh <- deadlineIn (envTimer env) limit
   let -- the head and discarding timers run from the start of the phase;
       -- the others restart at each wait
-      TimerFor ph' deadline'
-        = stTimer st
       !deadline
         | ph' == ph, ph `elem` [ReadingHead, DiscardingBody] = deadline'
         | otherwise = fresh
-  writeIORef (envRef env) $! st { stTimer = TimerFor ph deadline, stWrote = False }
+  writeIORef (envTimerFor env) $! TimerFor ph deadline
+  writeIORef (envWrote env) False
   ready <- transportTryRecv (envTransport env)
   case ready of
     Just bs -> received env bs  -- already there
-    Nothing -> waitFor env (stShutdownSeen st) deadline
+    Nothing -> waitFor env shutdownSeen deadline
 
 -- | Feed what was received; nothing means the end of input.
 received :: Env -> ByteString -> IO ()
@@ -296,7 +304,7 @@ waitFor env shutdownSeen deadline = do
         Nothing -> waitFor env shutdownSeen deadline  -- woken for nothing: wait again
     WakeTimer _ -> feed env TimedOut
     WakeShutdown -> do
-      modifyIORef' (envRef env) $ \s -> s { stShutdownSeen = True }
+      writeIORef (envShutdownSeen env) True
       feed env Shutdown
 
 -- | Block until the socket is readable, the timer set for the deadline
@@ -393,14 +401,15 @@ readChunkFrom env bodyRef = readIORef bodyRef >>= \case
   BodyOpen    -> feed env WantBody >> answer
   where
     answer = do
-      st <- readIORef (envRef env)
-      let rest' outs = writeIORef (envRef env) $! st { stPending = outs }
-      case stPending st of
+      pending <- readIORef (envPending env)
+      closed <- readIORef (envClosed env)
+      let rest' outs = writeIORef (envPending env) $! outs
+      case pending of
         (RequestData b : RequestEnd t : outs) -> rest' outs >> writeIORef bodyRef (BodyEnded t) >> pure b
         (RequestData b : outs) -> rest' outs >> pure b
         (RequestEnd t : outs) -> rest' outs >> writeIORef bodyRef (BodyEnded t) >> pure B.empty
         (RequestAborted : outs) -> rest' outs >> failed
-        (NeedInput : outs) | not (stClosed st) -> rest' outs >> waitInput env >> answer
+        (NeedInput : outs) | not closed -> rest' outs >> waitInput env >> answer
         _ -> failed
     failed = writeIORef bodyRef BodyFailed >> throwIO IncompleteBody
 
@@ -420,11 +429,11 @@ readTrailersFrom env bodyRef = do
 -- tell the core now, so that the response says the connection closes.
 noticeShutdown :: Env -> IO ()
 noticeShutdown env = do
-  st <- readIORef (envRef env)
-  unless (stShutdownSeen st) $ do
+  seen <- readIORef (envShutdownSeen env)
+  unless seen $ do
     stopping <- isShuttingDown (envTimer env)
     when stopping $ do
-      modifyIORef' (envRef env) $ \s -> s { stShutdownSeen = True }
+      writeIORef (envShutdownSeen env) True
       feed env Shutdown
 
 -- | A response with no content, for errors the driver answers itself.
@@ -481,8 +490,8 @@ sendResponse env req started resp0 = do
       begin True len names
       written <- newIORef (0 :: Word64)
       let write b = do
-            st <- readIORef (envRef env)
-            when (stClosed st) (throwIO ConnectionClosed)
+            closed <- readIORef (envClosed env)
+            when closed (throwIO ConnectionClosed)
             modifyIORef' written (+ fromIntegral (B.length b))
             feed env (WriteBody b)
       trailers <- produce write (flush env)

@@ -803,3 +803,33 @@ and 4.83 kernel, and warp 763k and 734k, 1.66 and 1.74 user, 4.68 and
 Tried and taken out: counting `decimalBytes`'s digits with a loop
 rather than `length (takeWhile ...)` changed the instruction count by
 two a request (GHC already fuses the list away).
+
+## 2026-11-23 (night): the driver's state in separate references
+
+The driver kept a connection's state as one record of nine fields in
+one `IORef`, and every change allocated the record again: about a
+dozen a request (the core's state after each input, each output
+queued and taken, the output buffer, the timer, the flags). Each field
+now has a reference of its own in `Env`, written evaluated as before.
+
+Counts, against 98ddc60 (`perf stat`, user mode, 100000 requests):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| bytes allocated a request | 6312 to 5424 (-14%) | 12542 to 11654 (-7%) | 35944 to 35056 (-2.5%) |
+| instructions a request | 11448 to 11089 (-3.1%) | 33081 to 32743 (-1.0%) | 35289 to 34934 (-1.0%) |
+
+Against 98ddc60 on a quiet machine (`scripts/compare-builds -r 10`,
+means of 10):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| 98ddc60 | 1.650 µs | 3.706 µs | 5.276 µs |
+| separate references | 1.615 µs (-2.1%, faster in 10 of 10) | 3.657 µs (-1.3%, 9 of 10) | 5.248 µs (-0.5%, 7 of 10) |
+
+Over sockets (`scripts/bench-cpu`, two runs each): hyperdrive 753k and
+745k req/s, 1.77 and 1.80 µs user, 4.76 and 4.80 kernel; warp 754k and
+741k, 1.65 and 1.66 user, 4.64 and 4.73 kernel. User time was 1.92 and
+1.89 µs at 98ddc60 twenty minutes earlier: 0.12 µs gained, more than
+in process, where one connection's state stays in the cache. The gap
+to warp in user time is about 0.13 µs, and requests a second are level.

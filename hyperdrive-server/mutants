@@ -105,7 +105,7 @@ why: writes have a deadline
 
 why: input that is already there is used, not dropped
 - Just bs -> received env bs  -- already there
-+ Just _ -> waitFor env (stShutdownSeen st) deadline
++ Just _ -> waitFor env shutdownSeen deadline
 
 file: src/Hyperdrive/Server/Timer.hs
 
