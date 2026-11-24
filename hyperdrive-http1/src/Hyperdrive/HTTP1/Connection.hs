@@ -27,10 +27,10 @@ module Hyperdrive.HTTP1.Connection
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
-import Control.Monad (foldM)
+import Data.Array (Array, listArray, (!))
+import qualified Data.Foldable as F
 import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
-import qualified Data.IntMap.Strict as IntMap
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import Foreign.Marshal.Utils (copyBytes)
 import Foreign.Ptr (castPtr, plusPtr)
@@ -43,6 +43,7 @@ import Hyperdrive.HTTP1.Head
 import Hyperdrive.HTTP1.Target
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.FieldSyntax (Comments(..), splitList)
+import Hyperdrive.Semantics.Internal (FieldName(..), FieldValue(..), Fields(..))
 import Hyperdrive.Semantics.Message (HttpVersion, isProtocolField, pattern HTTP_1_1)
 import Hyperdrive.Semantics.Method (Method, pattern CONNECT)
 import Hyperdrive.Semantics.Status
@@ -445,8 +446,8 @@ respond h ex c =
                      | framing == SendChunked, not (null (respTrailers h))
                      , Right v <- [mkFieldValue (B.intercalate ", " (map fieldNameBytes (respTrailers h)))] ]
       closeField = [ (hConnection, closeValue) | not keepAlive ]
-      headBytes = renderHead (statusLine (respStatus h))
-                    (fieldsToList (respFields h) ++ framingFields framing ++ trailerField ++ closeField)
+      headBytes = renderHead (statusLine (respStatus h)) (respFields h)
+                    (framingFields framing ++ trailerField ++ closeField)
       !ex' = ex { exKeepAlive = keepAlive, exResponse = Sending framing 0 }
   in result c { cExchange = Just ex' } [Send [headBytes]]
 
@@ -466,7 +467,7 @@ writeBody bs framing written ex c =
 endBody :: Fields -> ResponseFraming -> Word64 -> Exchange -> Conn -> (Conn, [Output])
 endBody trailers framing written ex c = case framing of
   SendLength n | written < n -> close c []   -- less than declared: aborted
-  SendChunked    -> prefix [Send [renderHead "0\r\n" (fieldsToList trailers)]] done
+  SendChunked    -> prefix [Send [renderHead "0\r\n" trailers []]] done
   SendUntilClose -> close c []
   _              -> done
   where
@@ -489,29 +490,34 @@ finishExchange c = case cExchange c of
 
 -- | The status line, made once for each status code.
 statusLine :: Status -> ByteString
-statusLine s = IntMap.findWithDefault (makeStatusLine (statusCode s)) (statusCode s) statusLines
+statusLine s = statusLines ! statusCode s
 
-statusLines :: IntMap.IntMap ByteString
-statusLines = IntMap.fromList [ (code, makeStatusLine code) | code <- [100 .. 599] ]
+-- | Every 'Status' has a code from 100 to 599.
+statusLines :: Array Int ByteString
+statusLines = listArray (100, 599) (map makeStatusLine [100 .. 599])
 
 makeStatusLine :: Int -> ByteString
 makeStatusLine code = "HTTP/1.1 " <> C.pack (show code) <> " " <> fromMaybe "" (lookup code reasonPhrases) <> "\r\n"
 
 -- | A status line and field lines, and the empty line that ends them,
 -- written into one buffer of the exact size, rather than joined from
--- several small strings per field.
-renderHead :: ByteString -> [(FieldName, FieldValue)] -> ByteString
-renderHead line fs = BI.unsafeCreate size $ \p -> do
+-- several small strings per field. The field lines are a section's
+-- and then some more (the core's own), each folded over where it is
+-- rather than joined into one list first.
+renderHead :: ByteString -> Fields -> [(FieldName, FieldValue)] -> ByteString
+renderHead line (Fields fs) more = BI.unsafeCreate size $ \p -> do
   start <- put p 0 line
-  end <- foldM (fieldLine p) start fs
+  mid <- F.foldlM (fieldLine p) start fs
+  end <- F.foldlM (fieldLine p) mid more
   crlf p end
   where
-    size = B.length line + sum [ B.length (fieldNameBytes n) + B.length (fieldValueBytes v) + 4 | (n, v) <- fs ] + 2
-    fieldLine p off (n, v) = do
-      off' <- put p off (fieldNameBytes n)
+    size = F.foldl' lineLength (F.foldl' lineLength (B.length line + 2) fs) more
+    lineLength !acc (FieldName n, FieldValue v) = acc + B.length n + B.length v + 4
+    fieldLine p !off (FieldName n, FieldValue v) = do
+      off' <- put p off n
       pokeByteOff p off' (0x3A :: Word8)        -- ':'
       pokeByteOff p (off' + 1) (0x20 :: Word8)  -- SP
-      off'' <- put p (off' + 2) (fieldValueBytes v)
+      off'' <- put p (off' + 2) v
       crlf p off''
       pure (off'' + 2)
     put p off bs = BU.unsafeUseAsCStringLen bs $ \(src, len) ->

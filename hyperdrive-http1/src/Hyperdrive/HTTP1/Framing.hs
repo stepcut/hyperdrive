@@ -28,8 +28,9 @@ import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Internal as BI
 import Data.Word (Word64, Word8)
 import Foreign.Storable (pokeByteOff)
-import Hyperdrive.Semantics.Field (FieldName, FieldValue, Fields, hContentLength, hTransferEncoding, lookupAll, mkFieldName, mkFieldValue)
+import Hyperdrive.Semantics.Field (FieldName, Fields, hContentLength, hTransferEncoding, lookupAll, mkFieldName, mkFieldValue)
 import Data.Maybe (fromJust)
+import Hyperdrive.Semantics.Internal (FieldValue(..))
 import Hyperdrive.Semantics.FieldSyntax (Comments(..), parseQuotedString, splitList)
 import Hyperdrive.Semantics.Message (HttpVersion, pattern HTTP_1_1)
 import Hyperdrive.Semantics.Method (Method, pattern CONNECT, pattern HEAD)
@@ -348,5 +349,6 @@ framingFields f = case f of
   SendChunked         -> [(hTransferEncoding, chunked)]
   _                   -> []
   where
-    decimal = either (error "framingFields") id . mkFieldValue . decimalBytes
+    -- digits need no checking
+    decimal = FieldValue . decimalBytes
     chunked = either (error "framingFields") id (mkFieldValue "chunked")

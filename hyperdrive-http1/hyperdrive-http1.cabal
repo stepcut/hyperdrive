@@ -25,6 +25,7 @@ library
                     Hyperdrive.HTTP1.Head
                     Hyperdrive.HTTP1.Target
   build-depends:    base                 >= 4.18 && < 5
+                  , array                >= 0.5  && < 0.6
                   , bytestring           >= 0.11 && < 0.13
                   , containers           >= 0.6  && < 0.8
                   , hyperdrive-semantics

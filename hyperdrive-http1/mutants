@@ -393,7 +393,7 @@ why: content short of the declared length is not ended normally
 + SendLength n | False -> close c []
 
 why: a chunked body ends with the last chunk and the trailer section
-- SendChunked    -> prefix [Send [renderHead "0\r\n" (fieldsToList trailers)]] done
+- SendChunked    -> prefix [Send [renderHead "0\r\n" trailers []]] done
 + SendChunked    -> prefix [Send ["0\r\n\r\n"]] done
 
 why: chunk sizes are hexadecimal
@@ -421,8 +421,8 @@ why: field lines are name ": " value
 + pokeByteOff p (off' + 1) (0x3A :: Word8)  -- SP
 
 why: every field line ends with CRLF, and the head with an empty line
-- size = B.length line + sum [ B.length (fieldNameBytes n) + B.length (fieldValueBytes v) + 4 | (n, v) <- fs ] + 2
-+ size = B.length line + sum [ B.length (fieldNameBytes n) + B.length (fieldValueBytes v) + 4 | (n, v) <- fs ]
+- size = F.foldl' lineLength (F.foldl' lineLength (B.length line + 2) fs) more
++ size = F.foldl' lineLength (F.foldl' lineLength (B.length line) fs) more
 
 why: a status line for a code without a reason phrase still has its SP
 - makeStatusLine code = "HTTP/1.1 " <> C.pack (show code) <> " " <> fromMaybe "" (lookup code reasonPhrases) <> "\r\n"
@@ -517,3 +517,13 @@ why: after a CR, LF and CR alternate (CR LF CR LF), not LF throughout
 why: a match must fit in the input
 - Just k0 -> let k = i + k0 in if k + n <= B.length bs && follows n bs k 1 then Just k else fromCR n bs (k + 1)
 + Just k0 -> let k = i + k0 in if k + n <= B.length bs + 1 && follows n bs k 1 then Just k else fromCR n bs (k + 1)
+
+file: src/Hyperdrive/HTTP1/Connection.hs
+
+why: the response's own fields are sent, before the core's
+- headBytes = renderHead (statusLine (respStatus h)) (respFields h)
++ headBytes = renderHead (statusLine (respStatus h)) emptyFields
+
+why: the status line carries the response's status code
+- statusLine s = statusLines ! statusCode s
++ statusLine _ = statusLines ! 200

@@ -753,3 +753,53 @@ kernel; warp 731k and 751k, 1.71 and 1.69 user, 4.73 and 4.69 kernel.
 The last socket figures for hyperdrive were 2.07 µs user at 309fcbc
 (two days and two small commits earlier, so not a clean before and
 after): the gap in user time is now about 0.25 µs.
+
+## 2026-11-23 (night): the response head rendered without a joined list
+
+The source-line profile put 0.15 to 0.20 µs a request in `respond`,
+`renderHead` and `statusLine`. Three small changes there:
+
+- `renderHead` takes the response's `Fields` and the core's own few
+  fields (framing, `Trailer`, `Connection: close`) separately and folds
+  over each where it is, for the size and again for the bytes. It was
+  given one list joined from both, and walked it twice.
+- The status line comes from an array indexed by the code, not an
+  `IntMap` of the 500 codes (the `array` package, a boot library, is a
+  new dependency of hyperdrive-http1).
+- `framingFields` wraps Content-Length's digits as a field value
+  directly; `mkFieldValue` checked them on every response.
+
+Counts, against f22f3b5 (`perf stat`, user mode, 100000 requests):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| bytes allocated a request | 6403 to 6312 | 12633 to 12542 | 36035 to 35944 |
+| instructions a request | 11758 to 11448 (-2.6%) | 33384 to 33081 (-0.9%) | 35600 to 35289 (-0.9%) |
+| L1 instruction-cache misses (millions) | 22.0 to 20.0 | 33.9 to 26.2 | 30.7 to 24.7 |
+
+Against f22f3b5 (`scripts/compare-builds -r 10`, means of 10; the load
+average was 2.3 from the mutation run just before, so the absolute
+figures are higher than the same build's earlier in the evening):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| f22f3b5 | 1.767 µs | 3.972 µs | 5.565 µs |
+| the head from its parts | 1.687 µs (-4.5%, faster in 10 of 10) | 3.933 µs (-1.0%, 8 of 10) | 5.488 µs (-1.4%, 10 of 10) |
+
+Over sockets (`scripts/bench-cpu`, two runs each): hyperdrive 726k and
+733k req/s, 1.93 and 1.93 µs user, 4.84 and 4.84 kernel; warp 750k and
+730k, 1.68 and 1.74 user, 4.73 and 4.74 kernel. User time was 1.96 and
+1.95 µs before this change, an hour earlier: 0.02 to 0.03 µs gained,
+less than the 0.08 in process. The gap to warp in user time is about
+0.22 µs.
+
+Again a few minutes later, with the load average under 1: minimal
+1.776 to 1.720 µs (-3.1%, faster in 10 of 10), browser 4.007 to 3.969
+(-0.9%, 9 of 10), chunked 5.529 to 5.450 (-1.4%, 10 of 10); over
+sockets hyperdrive 738k and 738k req/s, 1.92 and 1.89 µs user, 4.82
+and 4.83 kernel, and warp 763k and 734k, 1.66 and 1.74 user, 4.68 and
+4.74 kernel.
+
+Tried and taken out: counting `decimalBytes`'s digits with a loop
+rather than `length (takeWhile ...)` changed the instruction count by
+two a request (GHC already fuses the list away).
