@@ -616,3 +616,100 @@ shows as offsets after `$WEndBody` and `defaultSettings1`, the nearest
 exported symbols). A build with debug information (`-g`) would let perf
 map those samples to source lines (`perf report --sort srcline`, `perf
 annotate`): the next step for finding them.
+
+## 2026-11-23: an outside view, ranked hypotheses
+
+From reading the record above and the hot path's source (Fable 5.2),
+before any measurement. Expected gains are guesses, per small request
+unless said otherwise; the gap to close is about 0.3 µs of user time
+(1.0 µs of 2.07 is our own code), and about 2.3 µs in process on the
+browser request.
+
+A correction first: "both servers run with only `-N8`" (above, and in
+the notes this came from) is wrong. `bench/hyperdrive-bench.cabal` has
+`-with-rtsopts=-N8 -A32m` for both servers (since b7905c8), and the
+scripts' `+RTS -N8` adds to it. So a large allocation area is what has
+been measured all along: 32 MB a capability, 256 MB in all.
+
+Step 0, before any of them: the `-g` build and `perf report --sort
+srcline` on the core and the driver. It tests 1 to 4 and 7 at once, and
+the order below should be revised by what it shows.
+
+| | hypothesis | evidence (from the source) | expected | how to measure |
+|---|---|---|---|---|
+| 1 | The driver rebuilds its state and queues outputs far more than a small response needs | A small response is four `feed`s (`Received`, `Respond`, `WriteBody`, `EndBody`). Each reads the `IORef`, writes a new 9-field `St`, then `mapM_ act` writes another per output (`modifyIORef'`), appends with `stPending s ++ [o]`, and `Send` does `reverse bs ++ stOut` and `sum (map B.length bs)`; `mainLoop` then pops each queued output with one more `St`. About 12 `St`s a request (~1 KB of the 6.5 KB), and `NewRequest` and `NeedInput` go through the queue only to be popped at once. The driver is 0.26 µs. | 0.1 to 0.15 µs, ~1 KB | allocation in `bench-driver` (exact), then `compare-builds`. Variants: `feed` folds a step's outputs into one new `St`; the three response inputs for `ContentBytes` handled with one read and one write of the state; `stPending` not used for the outputs acted on at once |
+| 2 | Three clock reads a request | `getMonotonicTimeNSec` in `waitInput`, again in `flush` (`deadlineIn` for `armWrite`), and `getSystemTime` in `currentDate`. Each is a vDSO call of 15 to 25 ns behind an FFI call. Warp reads none per request (its date and timeouts come from tickers). The timers are coarse already (100 ms), so the ticker could publish the time, monotonic and wall-clock, in an `IORef`. | 0.04 to 0.07 µs | `[vdso]` samples in the profile first; then `bench-driver` (it pays all three) with `compare-builds` |
+| 3 | After every response the core parses an empty buffer and asks for input through the queue | `endBody` -> `finishExchange` -> `advance` -> `readHead` on an empty `cBuffer`: `skipEmptyLines`, `indexCRLFCRLF`, then `breakCRLF` again for `tooLong`, to produce `HeadIncomplete 0` and `[NeedInput]`. An early return for an empty buffer is three lines. | 0.02 to 0.04 µs | srcline profile; `bench-driver` |
+| 4 | The response path builds lists and a `Seq` to render a dozen octets of fields | `withDate` runs `lookupAll hDate` (a fold and a `reverse`) and a `Seq` snoc; `respond` builds `fieldsToList ... ++ framingFields ++ trailerField ++ closeField` as tuples, walks it twice (size, then copy) with `foldM`; `statusLine` is an `IntMap` lookup; `checkResponseFor` and `mkResponse` run per request too. Part of the core's 0.35 µs. | 0.05 µs | srcline profile; allocation; `bench-driver` |
+| 5 | The libraries are built at `-O1` | Only the bench executables have `-O2`; the three libraries' cabal files have `-Wall` alone, so cabal (and nixpkgs) build them with `-O`. `-O2` adds SpecConstr and liberate-case, which matter for exactly the loops that became closures three times last week. Could go either way. | unknown, -3% to +5% | one flag in `bench/local.project` (`optimization: 2`), allocation and `compare-builds` on all three request kinds; no source change |
+| 6 | The head is searched twice, and a line at a time | `indexCRLFCRLF` goes CR to CR with memchr to find the head's end (one call a line), then `breakCRLF` for the request line, then `scanFieldLines` calls memchr for every line again. One pass that reads lines until the empty one, and says "incomplete" if it runs out, halves the calls; the resumable search then only matters for heads that arrive in pieces. | browser: 0.1 to 0.2 µs; minimal: ~0.03 | perf's symbols for `fromCR` and memchr on the browser request; `compare-builds` |
+| 7 | The request side's lookups build lists | `startRequest` runs `requestFraming`, `reconstructTarget`, `connectionClose`, `acceptsTrailers` and `expectation`, each `lookupAll` (fold, cons, `reverse`) and some `splitList` and `concat`, plus `partitionFields`; `expectation` scans all the application's fields for `expect`. `lookupAll` alone was 0.05 µs. Collecting Host and the protocol fields into a small record during the scan (already in "not yet tried") replaces the partition and all the lookups. | 0.05 to 0.1 µs, more on the browser request | srcline profile; allocation; `compare-builds` |
+| 8 | An allocation area that fits in cache, and no parallel GC | With `-A32m` at 6.5 KB a request and 700k requests a second, the 8 nurseries (256 MB) are written through at 4.5 GB/s: every allocation lands on memory that left the cache long ago. `-A1m` or `-A2m` (within L2) trades more, tiny collections for warm memory; `-qg` (or `-qn2`) stops eight capabilities synchronizing for collections whose live data is a few KB. Applies to warp as well, so it moves both more than the ratio; hyperdrive allocates 12% more and may gain slightly more. | a few per cent of user time for both | `scripts/bench-cpu` with `+RTS -A1m/-A4m/-A32m`, with and without `-qg`, both servers (quiet machine) |
+| 9 | `Fields` as a `Seq` | Built with `Seq.fromList (reverse acc)`, split with `Seq.partition`, read with folds and `toList`; never indexed or concatenated on the hot path. An array or a list costs less for 1 to 15 fields (about 0.3 µs on the browser request went to `Seq`). Public API, so the user's decision; 7 removes part of the cost without it. | browser: 0.2 to 0.3 µs | a branch with the representation changed behind the same interface |
+
+Looked at and ranked low: the kernel (level with warp's, same system
+calls per request); the yield (both servers do it); the copy out of the
+receive buffer (one small `memcpy`, and it is what keeps the idle
+connection at 24 KB); the vectored write of head and content (the
+kernel times are level).
+
+## 2026-11-23 (evening): the unnamed code, by source line
+
+A build with debug information (`cabal build
+--project-file=bench/local.project --builddir=/tmp/hyperdrive-dist-g
+--ghc-options=-g bench-driver bench-hyperdrive`; it allocates what the
+normal build does, 6499 and 12729 bytes) and `perf report --stdio
+--full-source-path --sort dso,srcline,symbol`, summed by function from
+the line numbers. Quiet machine. In process (`bench-driver`, 1.84 and
+4.04 µs a request in these runs) and over sockets (wrk, 100
+connections, 722k req/s hello and 570k with the browser's fields, under
+perf; shares scaled by `bench-cpu`'s 6.90 µs for both columns, so the
+browser column is approximate). µs per request:
+
+| | in process, minimal | in process, browser | sockets, hello | sockets, browser |
+|---|---|---|---|---|
+| `clock_gettime` (vDSO): the three clock reads | 0.086 | 0.078 | 0.096 | |
+| the core, rendering the response: `renderHead` | 0.101 | 0.088 | 0.092 | 0.028 |
+| `respond` (mostly lines 449-451, the list of fields) | 0.063 | 0.062 | 0.031 | 0.029 |
+| `statusLine` (the `IntMap` lookup, line 492) | 0.032 | 0.030 | 0.027 | 0.033 |
+| the driver: `feed` (lines 209-225) | 0.110 | 0.114 | 0.083 | 0.103 |
+| `mainLoop`, `serveRequest`, `sendResponse`, `flush`, `waitInput` | 0.165 | 0.131 | 0.065 | 0.047 |
+| the core's `step`, `advance`, `readHead`, `startRequest` | 0.124 | 0.161 | 0.079 | 0.149 |
+| `Head.indexFromCR` | 0.063 | 0.175 | 0.068 | 0.124 |
+| `Head.scanFieldLines` | 0.060 | 0.734 | 0.050 | 0.526 |
+| `Head`'s value check | 0.008 | 0.113 | 0.005 | 0.068 |
+| `Field.hs` (`lookupAll`, line 239) and `GHC.List.reverse` | 0.088 | 0.257 | 0.080 | |
+| `URI.hs` (the authority and the path) | 0.101 | 0.247 | 0.061 | 0.035 |
+| `connectionClose` and `FieldSyntax.splitList` | 0.004 | 0.141 | 0.001 | 0.101 |
+| `threadPaused` and `schedule` (the yield) | 0.087 | 0.095 | 0.137 | |
+| `stg_upd_frame_info` (thunk updates) | 0.067 | 0.093 | 0.070 | |
+
+What it says about the hypotheses above:
+
+- 2 (clock reads) is confirmed and larger than guessed: 0.09 to 0.10 µs
+  a request, a third of the gap to warp, in one place. First to do.
+- 4 (the response path) is larger than guessed: `renderHead`, `respond`
+  and `statusLine` are 0.15 µs over sockets (0.20 in process) for a
+  115-octet response. Second.
+- 1 (the driver's state): `feed` alone is 0.08 to 0.11 µs, the rest of
+  the driver's loop as much again in process (less over sockets, where
+  perf sees the same code at 0.065). Third.
+- 7 (the lookups): `lookupAll` and the `reverse` it calls are 0.08 µs
+  on the minimal request and 0.26 on the browser's; `connectionClose`
+  with `splitList` another 0.10 to 0.14 on the browser's
+  (`Connection: keep-alive`).
+- 3 (parsing the empty buffer) is not visible on its own: `readHead`
+  and `advance` are 0.015 to 0.04 together. Dropped to the end.
+- 6 and the browser request: `scanFieldLines` is 0.53 to 0.73 µs, and
+  line 273, `B.takeWhile isTChar` over each name, is 0.35 of the 0.73
+  in process (about 150 name octets: over 2 ns each); line 270, the
+  upper-case test and lower-casing copy, 0.09. `indexFromCR` gains
+  0.06 to 0.11 with the extra lines. The name span is the browser
+  request's largest single cost.
+
+Also seen, common to both servers: the yield costs 0.09 to 0.14 µs
+(`threadPaused`, `schedule`); and in the kernel about 1.1 µs a request
+is the loopback firewall, 0.4 in `nf_tables` and `nf_conntrack` and
+0.69 at addresses perf cannot name in the BPF and module range
+(`0xffffffffc0...`), so a machine without those rules would show
+higher figures for both and a larger relative gap.
