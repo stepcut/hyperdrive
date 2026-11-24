@@ -45,10 +45,13 @@ serverTests = testGroup "hyperdrive-server"
   , testProperty "handler failures and the time limit" prop_failures
   , testProperty "request bodies: 100 (Continue) on the wire, and bodies cut short" prop_bodies
   , testProperty "pinned connections: a capability each in turn, and only when asked" prop_pinned
+  , testProperty "small writes to a client that is slow to read all arrive, in order" prop_smallWrites
   , testProperty "Date is an IMF-fixdate" prop_date
   , testProperty "coarse timers: expiries, re-arming, write aborts" prop_timers
   , testProperty "the ticker keeps the Date value current" prop_tickerDate
-  , testProperty "a long keep-alive connection does not accumulate memory" prop_noLeak
+    -- measures the live heap, so not while megabytes are in flight in another test
+  , after AllFinish "/small writes/" $
+      testProperty "a long keep-alive connection does not accumulate memory" prop_noLeak
   ]
 
 ------------------------------------------------------------------------------
@@ -194,6 +197,25 @@ ok _ _ = either (throwIO . userError . show) pure (mkResponse (fromJust (mkStatu
 
 statusOf :: ByteString -> ByteString
 statusOf = B.take 3 . B.drop 9
+
+-- | Small pieces are sent a quicker way than large ones, which the
+-- socket can refuse once the client is behind: what it did not take
+-- must still be sent, and in its place.
+prop_smallWrites :: Property
+prop_smallWrites = once $ monadicIO $ do
+  result <- run $ do
+    errs <- newIORef []
+    let pieces = [ B.replicate 1500 (fromIntegral i) | i <- [1 .. 6000 :: Int] ]
+        stream _ _ = either (throwIO . userError . show) pure $
+          mkResponse (fromJust (mkStatus 200)) emptyFields
+            (ContentStream (Just (6000 * 1500)) [] (\write flush -> forM_ pieces (\p -> write p >> flush) >> pure emptyFields))
+    received <- withServer (quietSettings errs) stream $ \srv -> withClient (serverPort srv) $ \c -> do
+      SB.sendAll c "GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n"
+      threadDelay 300000  -- the server fills the socket's buffers meanwhile
+      recvAll c
+    pure (B.drop 4 (snd (B.breakSubstring "\r\n\r\n" received)) == B.concat pieces, B.length received)
+  monitor (counterexample (show result))
+  assert (fst result)
 
 -- | With 'settingsPinConnections', connections are given the
 -- capabilities in turn and their threads stay there; without it (the

@@ -6,13 +6,17 @@ module Hyperdrive.Server.Transport
   ) where
 
 import Control.Exception (IOException, catch)
+import Control.Monad (foldM_, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Unsafe as BU
 import Data.Word (Word8)
 import Foreign.C.Error (eAGAIN, eINTR, eWOULDBLOCK, getErrno)
 import Foreign.C.Types (CInt(..), CSize(..))
 import Foreign.ForeignPtr (ForeignPtr, mallocForeignPtrBytes, withForeignPtr)
-import Foreign.Ptr (Ptr, castPtr)
+import Foreign.Marshal.Alloc (allocaBytes)
+import Foreign.Marshal.Utils (copyBytes)
+import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import GHC.Conc (threadWaitRead)
 import GHC.Event (Lifetime(OneShot), evtRead, getSystemEventManager, registerFd, unregisterFd)
 import System.Posix.Types (CSsize(..), Fd(..))
@@ -53,7 +57,7 @@ socketTransport s = do
   pure Transport
     { transportRecv          = maybe B.empty id <$> recvInto s buffer True
     , transportTryRecv       = recvInto s buffer False
-    , transportSendMany      = SB.sendMany s
+    , transportSendMany      = sendPieces s
     , transportOnReadable    = onReadable s
     , transportShutdownWrite = S.shutdown s S.ShutdownSend `catch` \e -> const (pure ()) (e :: IOException)
     , transportAbort         = S.shutdown s S.ShutdownBoth `catch` \e -> const (pure ()) (e :: IOException)
@@ -83,6 +87,32 @@ recvInto s buffer wait = S.withFdSocket s $ \fd -> loop fd
         else if errno == eAGAIN || errno == eWOULDBLOCK then
           if wait then threadWaitRead (Fd fd) >> loop fd else pure Nothing
         else pure (Just B.empty)
+
+foreign import ccall unsafe "send"
+  c_send :: CInt -> Ptr Word8 -> CSize -> CInt -> IO CSsize
+
+-- | Output up to this size is sent as one piece.
+smallSend :: Int
+smallSend = 2048
+
+-- | Write all of these. A small response is a head and its content, and
+-- writing the two with one vectored write costs more than copying them
+-- together and sending once, in the kernel (a check and a copy for
+-- each piece) and in marshalling the vector (docs/benchmarks.md). The
+-- socket nearly always takes all of something this small; if it does
+-- not (or fails), what is left goes the ordinary way, which waits for
+-- the socket or throws.
+sendPieces :: S.Socket -> [ByteString] -> IO ()
+sendPieces s pieces
+  | total <= smallSend = do
+      sent <- S.withFdSocket s $ \fd -> allocaBytes total $ \buffer -> do
+        foldM_ (\at piece -> BU.unsafeUseAsCStringLen piece $ \(p, n) ->
+                  copyBytes (buffer `plusPtr` at) (castPtr p) n >> pure (at + n)) 0 pieces
+        c_send fd buffer (fromIntegral total) 0
+      let done = max 0 (fromIntegral sent)
+      when (done < total) (SB.sendAll s (B.drop done (B.concat pieces)))
+  | otherwise = SB.sendMany s pieces
+  where total = sum (map B.length pieces)
 
 -- | Register a one-shot callback with the event manager of the current
 -- capability (as 'threadWaitRead' does).

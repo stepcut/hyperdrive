@@ -1475,3 +1475,30 @@ count for each accepted connection.
 
 Of the 1.1 µs a request between hyperdrive and ntex, then, about 0.3
 is threads waking across capabilities; the other 0.8 is not found yet.
+
+## 2026-11-24 (evening): a small write as one `send`
+
+A profile of wrk's request on the socket has hyperdrive's 1.4 µs of
+user time as: the core 0.50, the runtime's `stg_` code 0.22, the
+server's driver 0.20, the scheduler and the runtime's C 0.19 (0.13 of
+it the `yield` after a write), libc 0.13, the rest 0.21 (the collector
+0.06). In the kernel the difference from ntex is mostly in sending:
+hyperdrive's response is a `writev` of two pieces (a head of 102 bytes
+and a body of 13), ntex's one `write`.
+
+So the socket transport copies a write of 2048 bytes or less into one
+buffer and sends it with one `send`. A request is then `sendto` 1.000
+in place of `writev` 1.000, and the other calls are as they were. Four
+alternating runs of five seconds each:
+
+| | wrk's request: req/s | user | kernel | cores | browser's request: req/s | user | kernel | cores |
+|---|---|---|---|---|---|---|---|---|
+| before | 762k (753k to 770k) | 1.426 | 4.781 | 4.73 | 732k (726k to 736k) | 1.986 | 4.883 | 5.03 |
+| one `send` | 764k (757k to 773k) | 1.313 | 4.687 | 4.58 | 745k (740k to 751k) | 1.851 | 4.789 | 4.95 |
+| ntex, epoll | 920k (917k to 925k) | 0.722 | 4.365 | 4.68 | 825k (819k to 835k) | 1.424 | 4.661 | 5.02 |
+
+0.2 µs less for a request with both (user 0.11 and 0.14, kernel 0.09
+and 0.09), in every run. For the browser's request that is 1.8% more
+requests a second; for wrk's the rate is the same and the server uses
+less of the machine (4.58 cores from 4.73). ntex is 20% ahead for
+wrk's request and 11% for the browser's.

@@ -101,6 +101,20 @@ why: connections are not pinned unless asked
 - , settingsPinConnections = False
 + , settingsPinConnections = True
 
+file: src/Hyperdrive/Server/Transport.hs
+
+why: what the socket did not take of a small write is still sent
+- when (done < total) (SB.sendAll s (B.drop done (B.concat pieces)))
++ when False (SB.sendAll s (B.drop done (B.concat pieces)))
+
+why: what is left of a small write starts where the socket stopped
+- when (done < total) (SB.sendAll s (B.drop done (B.concat pieces)))
++ when (done < total) (SB.sendAll s (B.concat pieces))
+
+why: the pieces of a small write are copied one after another
+- copyBytes (buffer `plusPtr` at) (castPtr p) n >> pure (at + n)) 0 pieces
++ copyBytes (buffer `plusPtr` at) (castPtr p) n >> pure at) 0 pieces
+
 file: src/Hyperdrive/Server/Timer.hs
 
 why: an expired wait is woken

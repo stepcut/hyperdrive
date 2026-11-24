@@ -173,6 +173,10 @@ application must be written to tolerate (with `bracket` and the like).
 
 `Send` outputs are collected in a list and written with one
 `sendMany` (`writev`), so a small response is one system call. The
+socket transport copies a write of 2048 bytes or less into one buffer
+and sends it with one `send`, which costs less in the kernel than a
+`writev` of a head and a body; what the socket does not take is sent
+the ordinary way. The
 buffer is flushed before waiting for input, when the response ends,
 when a `ContentStream` flushes, and when it holds more than 16 KiB.
 `TCP_NODELAY` is set, since the driver does its own coalescing.
