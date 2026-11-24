@@ -139,13 +139,28 @@ headErrorStatus e = case e of
 -- arrived, except that a request line, or a head, longer than the
 -- limits is rejected as soon as it is known to be.
 parseRequestHead :: Limits -> Int -> ByteString -> HeadResult
-parseRequestHead limits searched input =
-  case findEnd (max start (searched - 3)) of
-    Just end -> parseHead (B.take (end - start) (B.drop start input)) (end + 4)
-    Nothing
-      | Just e <- tooLong -> HeadError e
-      | otherwise         -> HeadIncomplete (B.length input)
+parseRequestHead limits searched input
+  | searched == 0, Just complete <- inOneRead = complete
+  | otherwise = case findEnd (max start (searched - 3)) of
+      Just end -> parseHead (B.take (end - start) (B.drop start input)) (end + 4)
+      Nothing
+        | Just e <- tooLong -> HeadError e
+        | otherwise         -> HeadIncomplete (B.length input)
   where
+    -- A head that is all here, valid and within the limits, read once:
+    -- its end is the empty line the field lines come to, rather than
+    -- searched for first. Anything else is left to the search below,
+    -- which waits for the rest or finds the error that comes first.
+    inOneRead = case indexCRLF fromStart of
+      Just k
+        | k <= maxRequestLine limits
+        , Right (method, target, major, minor) <- parseRequestLine (BU.unsafeTake k fromStart)
+        , major == 1
+        , Just (fields, after) <- scanLines True (maxFields limits) (BU.unsafeDrop (k + 2) fromStart)
+        , B.length fromStart - B.length after - k - 2 <= maxFieldSection limits
+        -> Just (HeadComplete (RawRequestHead method target (HttpVersion 1 minor) fields) (B.length input - B.length after))
+      _ -> Nothing
+    fromStart = B.drop start input
     -- the empty lines before the request line
     !start = skipEmptyLines 0
     skipEmptyLines i
@@ -246,16 +261,23 @@ splitLines bs = case breakCRLF bs of
 -- (lower-cased), a colon, and a value of field-vchars, SP and HTAB
 -- with the whitespace at either end left out.
 scanFieldLines :: Int -> ByteString -> Maybe Fields
-scanFieldLines limit section0 = line 0 [] section0
+scanFieldLines limit section = fst <$> scanLines False limit section
+
+-- | 'scanFieldLines', or, for a head, the field lines up to the empty
+-- line that ends them (each ending with CRLF), with what follows it.
+scanLines :: Bool -> Int -> ByteString -> Maybe (Fields, ByteString)
+scanLines toEmptyLine limit section0 = line 0 [] section0
   where
-    line :: Int -> [(FieldName, FieldValue)] -> ByteString -> Maybe Fields
+    line :: Int -> [(FieldName, FieldValue)] -> ByteString -> Maybe (Fields, ByteString)
     line !count acc s
+      | toEmptyLine, B.length s >= 2, BU.unsafeIndex s 0 == 0x0D, BU.unsafeIndex s 1 == 0x0A =
+          Just (Fields (Seq.fromList (reverse acc)), BU.unsafeDrop 2 s)
       | count >= limit = Nothing
       -- the line ends at the end of the section, or at a CRLF
       | otherwise = case B.elemIndex 0x0D s of
           Nothing -> case fieldLine s of
-            Just field -> Just (Fields (Seq.fromList (reverse (field : acc))))
-            Nothing    -> Nothing
+            Just field | not toEmptyLine -> Just (Fields (Seq.fromList (reverse (field : acc))), B.empty)
+            _ -> Nothing
           Just k
             | k + 1 < B.length s, BU.unsafeIndex s (k + 1) == 0x0A -> case fieldLine (BU.unsafeTake k s) of
                 Just field -> line (count + 1) (field : acc) (BU.unsafeDrop (k + 2) s)

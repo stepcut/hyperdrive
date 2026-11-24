@@ -958,3 +958,41 @@ under every run of the baseline), kernel 5.265 to 5.207, 611k to 625k
 req/s.
 
 A clean build of the three libraries took 15 s before and 16 s after.
+
+## 2026-11-24: a complete head read once, without searching for its end
+
+A profile by symbol at a18145d: for the browser's request
+`scanFieldLines` is 19.6% of the in-process time (nearly half of that
+the name loop, a seventh lower-casing the name into a new string), the
+value check 3.6%, and the search for the CRLF CRLF that ends the head
+(`fromCR`) 3.0%; for the minimal request the search is 1.7% and
+nothing is above 5%.
+
+`parseRequestHead` searched for the end of the head, then for the end
+of the request line, then for each field line's CR. For a request
+that starts fresh it now reads the request line and then field lines
+up to the empty line (`scanLines True`), and that is the end. A head
+that is incomplete, invalid, over a limit or not version 1 falls to
+the search as before, which waits or reports the first error.
+
+Counts, against a18145d (`perf stat`, user mode, 100000 requests):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| bytes allocated a request | 5216 to 5192 | 10894 to 10862 | 31944 to 31912 |
+| instructions a request | 10603 to 10449 (-1.5%) | 28418 to 27035 (-4.9%) | 31195 to 30925 (-0.9%) |
+
+On a quiet machine (`scripts/compare-builds -r 10`, means of 10, load
+0.2):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| a18145d | 1.534 µs | 3.486 µs | 4.735 µs |
+| read once | 1.514 µs (-1.3%, faster in 9 of 10) | 3.355 µs (-3.7%, 10 of 10) | 4.723 µs (-0.3%, 7 of 10) |
+
+Over sockets, the two builds in turn (wrk, 100 connections, 5 s each,
+means of six): with the browser's request, user 3.449 to 3.317 µs
+(-3.8%, every run under every run of the baseline), kernel 5.288 to
+5.232, 603k to 615k req/s; with wrk's own request, user 1.762 to
+1.781 µs (+1.1%, the runs overlapping: 1.74 to 1.77 against 1.76 to
+1.82), kernel 4.803 to 4.794, 736k and 735k req/s.

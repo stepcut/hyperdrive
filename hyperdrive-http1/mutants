@@ -466,6 +466,30 @@ why: a version other than 1 takes the full path, which answers 505
 - Right (method, target, 1, minor)
 + Right (method, target, _, minor)
 
+why: read at once, the request line is within its limit
+- | k <= maxRequestLine limits
++ | k <= maxRequestLine limits + 1
+
+why: read at once, the header section is within its limit
+- , B.length fromStart - B.length after - k - 2 <= maxFieldSection limits
++ , B.length fromStart - B.length after - k - 3 <= maxFieldSection limits
+
+why: read at once, a version other than 1 is left to the full path, which answers 505
+- , major == 1
++ , major >= 1
+
+why: read at once, the empty lines before the request line are consumed too
+- -> Just (HeadComplete (RawRequestHead method target (HttpVersion 1 minor) fields) (B.length input - B.length after))
++ -> Just (HeadComplete (RawRequestHead method target (HttpVersion 1 minor) fields) (B.length fromStart - B.length after))
+
+why: a head is not complete before its empty line
+- Just field | not toEmptyLine -> Just (Fields (Seq.fromList (reverse (field : acc))), B.empty)
++ Just field -> Just (Fields (Seq.fromList (reverse (field : acc))), B.empty)
+
+why: the empty line that ends a head is CRLF
+- | toEmptyLine, B.length s >= 2, BU.unsafeIndex s 0 == 0x0D, BU.unsafeIndex s 1 == 0x0A =
++ | toEmptyLine, B.length s >= 2, BU.unsafeIndex s 0 == 0x0D =
+
 why: the one-pass scan stops at the limit on field lines
 - | count >= limit = Nothing
 + | count > limit = Nothing
