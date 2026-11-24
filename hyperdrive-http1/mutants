@@ -245,8 +245,8 @@ why: a CONNECT target needs a port
 + Right (TargetConnect (authorityHost a) (maybe 443 id (authorityPort a)))
 
 why: only CONNECT uses the authority-form
-- target <- if method == CONNECT then authorityForm else otherForms host
-+ target <- if method == CONNECT || B.elem 0x3A raw && not (B.elem 0x2F raw) then authorityForm else otherForms host
+- if method == CONNECT then authorityForm else otherForms host
++ if method == CONNECT || B.elem 0x3A raw && not (B.elem 0x2F raw) then authorityForm else otherForms host
 
 why: the asterisk-form is only for OPTIONS
 - | raw == "*" = if method == OPTIONS then Right TargetAsterisk else Left TargetFormNotForMethod
@@ -441,12 +441,20 @@ why: a length of zero is "0", not empty
 file: src/Hyperdrive/HTTP1/Connection.hs
 
 why: Host and the protocol fields are the core's; the application gets the rest
-- (connectionLevel, fields) = partitionFields (\n -> n == hHost || isProtocolField n) (headFields raw)
-+ (connectionLevel, fields) = partitionFields isProtocolField (headFields raw)
+- 4  | n == "host"              -> Split rest found { foundHost = v : foundHost found }
++ 4  | n == "host"              -> Split (rest Seq.|> f) found { foundHost = v : foundHost found }
 
-why: Expect is the application's too, and is looked up among its fields
-- expects100 <- expectation version fields
-+ expects100 <- expectation version connectionLevel
+why: Expect is the application's too
+- 6  | n == "expect"            -> Split (rest Seq.|> f) found { foundExpect = v : foundExpect found }
++ 6  | n == "expect"            -> Split rest found { foundExpect = v : foundExpect found }
+
+why: the other protocol fields are not the application's either
+- _  | isProtocolField name     -> Split rest found
++ _  | isProtocolField name     -> Split (rest Seq.|> f) found
+
+why: field lines with the same name keep their order (chunked must be the last transfer coding)
+- (Fields rest, CoreFields (reverse host) (reverse te) (reverse cl) (reverse t) (reverse conn) (reverse expect))
++ (Fields rest, CoreFields (reverse host) te (reverse cl) (reverse t) (reverse conn) (reverse expect))
 
 file: src/Hyperdrive/HTTP1/Head.hs
 

@@ -29,6 +29,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Data.Array (Array, listArray, (!))
 import qualified Data.Foldable as F
+import qualified Data.Sequence as Seq
 import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
 import Data.Maybe (fromJust, fromMaybe, isJust)
@@ -290,30 +291,60 @@ startRequest :: Config -> RawRequestHead -> Either Status (RequestHead, Maybe Bo
 startRequest config raw = do
   let version = headVersion raw
       method = headMethod raw
-      -- One pass splits the fields: Host and the protocol fields, which
-      -- the core interprets and which are all its lookups need, and the
-      -- rest, which is what the application gets. A request with a dozen
-      -- fields usually has one to three of the first kind, so the
-      -- lookups below scan those rather than every field.
-      (connectionLevel, fields) = partitionFields (\n -> n == hHost || isProtocolField n) (headFields raw)
-  framing <- either (Left . framingErrorStatus) Right (requestFraming version connectionLevel)
-  (target, _) <- either (Left . targetErrorStatus) Right
-                   (reconstructTarget (configTarget config) version method (headTarget raw) connectionLevel)
+      (fields, found) = splitFields (headFields raw)
+  framing <- either (Left . framingErrorStatus) Right
+               (requestFramingFrom version (foundTransferEncoding found) (foundContentLength found))
+  target <- either (Left . targetErrorStatus) Right
+              (reconstructTargetFrom (configTarget config) version method (headTarget raw) (foundHost found))
   -- Q2: CONNECT has no content (RFC 9110 Section 9.3.6, M10)
   if method == CONNECT && framing /= NoBody then Left BadRequest else Right ()
-  -- Expect is not a protocol field: the application sees it too
-  expects100 <- expectation version fields
-  closeRequested <- maybe (Left BadRequest) Right (connectionClose connectionLevel)
+  expects100 <- expectation version (foundExpect found)
+  closeRequested <- maybe (Left BadRequest) Right (connectionClose (foundConnection found))
   let (body, len) = case framing of
         NoBody          -> (Nothing, Just 0)
         ContentLength 0 -> (Nothing, Just 0)
         ContentLength n -> (Just (Remaining n), Just n)
         Chunked         -> (Just (ChunkedBody startDecoder), Nothing)
-      h = RequestHead version method target fields len (acceptsTrailers connectionLevel)
+      h = RequestHead version method target fields len (acceptsTrailersFrom (foundTE found))
   -- = https://www.rfc-editor.org/rfc/rfc9112#section-9.3
   -- # If the received protocol is HTTP/1.1 (or later), the connection
   -- # will persist after the current response
   Right (h, body, expects100 && isJust body, version >= HTTP_1_1 && not closeRequested)
+
+-- | A request's fields, split in one pass: the fields the application
+-- gets, which are those that are neither Host nor a protocol field,
+-- and the values of the fields the core interprets. Looked up one name
+-- at a time, the fields were walked seven times.
+data Split = Split !(Seq.Seq (FieldName, FieldValue)) !CoreFields
+
+-- | The values of the fields the core interprets, each in order. Apart
+-- from the application's fields, so that adding one of those (most
+-- fields) does not copy these.
+data CoreFields = CoreFields
+  { foundHost             :: ![FieldValue]
+  , foundTransferEncoding :: ![FieldValue]
+  , foundContentLength    :: ![FieldValue]
+  , foundTE               :: ![FieldValue]
+  , foundConnection       :: ![FieldValue]
+  , foundExpect           :: ![FieldValue]
+  }
+
+splitFields :: Fields -> (Fields, CoreFields)
+splitFields (Fields fs) = inOrder (F.foldl' place (Split Seq.empty (CoreFields [] [] [] [] [] [])) fs)
+  where
+    -- by length first: most names are then ruled out by one comparison
+    place (Split rest found) f@(name@(FieldName n), v) = case B.length n of
+      2  | n == "te"                -> Split rest found { foundTE = v : foundTE found }
+      4  | n == "host"              -> Split rest found { foundHost = v : foundHost found }
+      -- Expect is not a protocol field: the application sees it too
+      6  | n == "expect"            -> Split (rest Seq.|> f) found { foundExpect = v : foundExpect found }
+      10 | n == "connection"        -> Split rest found { foundConnection = v : foundConnection found }
+      14 | n == "content-length"    -> Split rest found { foundContentLength = v : foundContentLength found }
+      17 | n == "transfer-encoding" -> Split rest found { foundTransferEncoding = v : foundTransferEncoding found }
+      _  | isProtocolField name     -> Split rest found
+         | otherwise                -> Split (rest Seq.|> f) found
+    inOrder (Split rest (CoreFields host te cl t conn expect)) =
+      (Fields rest, CoreFields (reverse host) (reverse te) (reverse cl) (reverse t) (reverse conn) (reverse expect))
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-10.1.1
 -- # A server that receives an Expect field value containing a member
@@ -327,14 +358,13 @@ startRequest config raw = do
 
 -- | Whether the request expects 100 (Continue). Any other expectation,
 -- or an @Expect@ that is not a list, is 417 (Q3).
-expectation :: HttpVersion -> Fields -> Either Status Bool
-expectation version fields =
-  case traverse (either (const Nothing) Just . splitList NoComments) (lookupAll hExpect fields) of
+expectation :: HttpVersion -> [FieldValue] -> Either Status Bool
+expectation version values =
+  case traverse (either (const Nothing) Just . splitList NoComments) values of
     Nothing -> Left ExpectationFailed
     Just members
       | all ((== "100-continue") . lower) (concat members) -> Right (version >= HTTP_1_1 && not (null (concat members)))
       | otherwise -> Left ExpectationFailed
-  where hExpect = fromJust (mkFieldName "expect")
 
 -- = https://www.rfc-editor.org/rfc/rfc9112#section-9.6
 -- # A server that receives a "close" connection option MUST initiate
@@ -348,9 +378,9 @@ expectation version fields =
 
 -- | Whether @Connection@ has the @close@ option, or 'Nothing' if it is
 -- not a list of tokens.
-connectionClose :: Fields -> Maybe Bool
-connectionClose fields = do
-  options <- concat <$> traverse (either (const Nothing) Just . splitList NoComments) (lookupAll hConnection fields)
+connectionClose :: [FieldValue] -> Maybe Bool
+connectionClose values = do
+  options <- concat <$> traverse (either (const Nothing) Just . splitList NoComments) values
   if all (\o -> not (B.null o) && B.all isTChar o) options then Just ("close" `elem` map lower options) else Nothing
 
 lower :: ByteString -> ByteString

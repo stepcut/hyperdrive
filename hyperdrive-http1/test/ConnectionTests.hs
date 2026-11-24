@@ -29,6 +29,7 @@ connectionTests = testGroup "Connection (step)"
   , testProperty "persistence and closing" prop_persistence
   , testProperty "100 (Continue)" prop_continue
   , testProperty "requests the core rejects itself" prop_rejections
+  , testProperty "the application's fields: without Host and the protocol fields" prop_requestFields
   , testProperty "request bodies" prop_bodies
   , testProperty "responses" prop_responses
   , testProperty "timeouts, shutdown and misuse" prop_events
@@ -375,6 +376,18 @@ prop_continue = once $ conjoin
   ]
   where expecting v = "POST / HTTP/" <> v <> "\r\nHost: a\r\nExpect: 100-continue\r\nContent-Length: 2\r\n\r\n"
 
+-- | The application gets the fields that are neither Host nor a
+-- protocol field, in order, and Expect, which the core reads as well.
+prop_requestFields :: Property
+prop_requestFields = once $
+  [ [ (fieldNameBytes n, fieldValueBytes v) | (n, v) <- fieldsToList (reqFields h) ]
+  | NewRequest h <- outputs defaultConfig [Received request] ]
+    === [[("x-a", "1"), ("expect", "100-continue"), ("x-b", "2"), ("x-a", "3")]]
+  where
+    request = "POST / HTTP/1.1\r\nX-A: 1\r\nHost: a\r\nKeep-Alive: timeout=5\r\nExpect: 100-continue\r\n"
+           <> "Upgrade: x\r\nX-B: 2\r\nProxy-Connection: keep-alive\r\nConnection: keep-alive\r\nTE: trailers\r\n"
+           <> "Content-Length: 1\r\nX-A: 3\r\n\r\n"
+
 prop_rejections :: Property
 prop_rejections = once $ conjoin
   [ status "GET / HTTP/1.1\r\n\r\n" === "400"                                          -- no Host
@@ -382,6 +395,9 @@ prop_rejections = once $ conjoin
   , status "GET / HTTP/2.0\r\nHost: a\r\n\r\n" === "505"
   , status "POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\n" === "400"
   , status "POST / HTTP/1.1\r\nHost: a\r\nTransfer-Encoding: gzip, chunked\r\n\r\n" === "501"
+    -- field lines with the same name are read in order: chunked is last here, and not there
+  , status "POST / HTTP/1.1\r\nHost: a\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n" === "501"
+  , status "POST / HTTP/1.1\r\nHost: a\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n\r\n" === "400"
   , status "GET https://a/ HTTP/1.1\r\nHost: a\r\n\r\n" === "421"
   , status ("GET /" <> C.replicate 9000 'a' <> " HTTP/1.1\r\n\r\n") === "414"
   , status "GET / HTTP/1.1\r\nHost: a\r\nExpect: 100-continue, x\r\n\r\n" === "417"   -- Q3

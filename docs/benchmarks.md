@@ -833,3 +833,51 @@ Over sockets (`scripts/bench-cpu`, two runs each): hyperdrive 753k and
 1.89 µs at 98ddc60 twenty minutes earlier: 0.12 µs gained, more than
 in process, where one connection's state stays in the cache. The gap
 to warp in user time is about 0.13 µs, and requests a second are level.
+
+## 2026-11-23 (night): the request's fields split in one pass
+
+`startRequest` looked up Host, Transfer-Encoding, Content-Length, TE,
+Connection and Expect one at a time, each a walk over all the fields
+comparing names, and then filtered the fields twice more for the
+application's copy. `splitFields` now walks them once, choosing by the
+name's length before comparing, and gives the application's fields and
+the six fields' values together; `requestFramingFrom`,
+`reconstructTargetFrom` and `acceptsTrailersFrom` take the values.
+
+Counts, against 5a846d0 (`perf stat`, user mode, 100000 requests):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| bytes allocated a request | 5425 to 5393 | 11655 to 11575 | 35057 to 34913 |
+| instructions a request | 11089 to 10841 (-2.2%) | 32743 to 31731 (-3.1%) | 34933 to 34075 (-2.5%) |
+
+Against 5a846d0 on a quiet machine (`scripts/compare-builds -r 10`,
+means of 10):
+
+| | minimal request | browser request | chunked request |
+|---|---|---|---|
+| 5a846d0 | 1.706 µs | 3.981 µs | 5.515 µs |
+| one pass | 1.695 µs (-0.6%, faster in 8 of 10) | 3.882 µs (-2.5%, 10 of 10) | 5.526 µs (+0.2%, 4 of 10) |
+
+Over sockets the two builds ran in turn (wrk, 100 connections, 5 s
+each), since `bench-cpu`'s figures drift by more than this between
+sessions. With wrk's own request, means of six: user 1.842 to 1.855 µs
+and kernel 4.779 to 4.830, with single runs from 1.79 to 1.90 either
+way, so no difference that can be measured. With the browser's request
+(13 fields, from a wrk script), means of four: user 3.689 to 3.659 µs
+(-0.8%), kernel 5.321 to 5.316, 589k to 591k req/s; the runs overlap.
+
+So the gain is where there are many fields, and shows in process; the
+socket runs cannot resolve less than about 2%. The record of a
+connection's fields first had seven flat fields in the fold's
+accumulator, which allocated 544 bytes more for the browser's request;
+the six lists in a record of their own inside it did not.
+
+Tried and taken out: `lookupAll` as a lazy `foldr` (90 instructions
+fewer for the minimal request, 443 more for the browser's).
+
+The mutants on the new code found two gaps in the tests that were
+there before it: nothing checked that the other protocol fields
+(Keep-Alive, Upgrade, Proxy-Connection) are kept from the application,
+nor that Transfer-Encoding on two lines keeps its order. Both now have
+tests.

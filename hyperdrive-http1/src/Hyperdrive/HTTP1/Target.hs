@@ -11,12 +11,13 @@ module Hyperdrive.HTTP1.Target
   ( TargetContext(..)
   , TargetError(..)
   , reconstructTarget
+  , reconstructTargetFrom
   , targetErrorStatus
   ) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import Hyperdrive.Semantics.Field (Fields, fieldValueBytes, fieldsFromList, fieldsToList, hHost, lookupAll)
+import Hyperdrive.Semantics.Field (FieldValue, Fields, fieldValueBytes, fieldsFromList, fieldsToList, hHost, lookupAll)
 import Hyperdrive.Semantics.Message (HttpVersion, pattern HTTP_1_1)
 import Hyperdrive.Semantics.Method (Method, pattern CONNECT, pattern OPTIONS)
 import Hyperdrive.Semantics.Status (Status, pattern BadRequest, pattern MisdirectedRequest)
@@ -103,12 +104,19 @@ targetErrorStatus _                   = BadRequest
 reconstructTarget :: TargetContext -> HttpVersion -> Method -> ByteString -> Fields
                   -> Either TargetError (Target, Fields)
 reconstructTarget ctx version method raw fields = do
-  host <- hostField
-  target <- if method == CONNECT then authorityForm else otherForms host
+  target <- reconstructTargetFrom ctx version method raw (lookupAll hHost fields)
   Right (target, fieldsFromList [ f | f@(n, _) <- fieldsToList fields, n /= hHost ])
+
+-- | 'reconstructTarget', given the values of the @Host@ field lines,
+-- for a caller that has already found them and taken them out.
+reconstructTargetFrom :: TargetContext -> HttpVersion -> Method -> ByteString -> [FieldValue]
+                      -> Either TargetError Target
+reconstructTargetFrom ctx version method raw hosts = do
+  host <- hostField
+  if method == CONNECT then authorityForm else otherForms host
   where
     -- Nothing when there is no Host (allowed before HTTP/1.1) or it is empty
-    hostField = case lookupAll hHost fields of
+    hostField = case hosts of
       [] | version >= HTTP_1_1 -> Left MissingHost
          | otherwise           -> Right Nothing
       [v] | B.null (fieldValueBytes v) -> Right Nothing

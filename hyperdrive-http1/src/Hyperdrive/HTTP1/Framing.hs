@@ -13,8 +13,10 @@ module Hyperdrive.HTTP1.Framing
     RequestFraming(..)
   , FramingError(..)
   , requestFraming
+  , requestFramingFrom
   , framingErrorStatus
   , acceptsTrailers
+  , acceptsTrailersFrom
     -- * Responses
   , Payload(..)
   , ResponseFraming(..)
@@ -107,15 +109,20 @@ framingErrorStatus _                             = BadRequest
 --   number.
 -- * Otherwise there is no body.
 requestFraming :: HttpVersion -> Fields -> Either FramingError RequestFraming
-requestFraming version fields
+requestFraming version fields =
+  requestFramingFrom version (lookupAll hTransferEncoding fields) (lookupAll hContentLength fields)
+
+-- | 'requestFraming', given the values of the @Transfer-Encoding@ field
+-- lines and of the @Content-Length@ ones, for a caller that has
+-- already found them.
+requestFramingFrom :: HttpVersion -> [FieldValue] -> [FieldValue] -> Either FramingError RequestFraming
+requestFramingFrom version te cl
   | not (null te), version < HTTP_1_1 = Left TransferEncodingInHTTP10
   | not (null te), not (null cl)      = Left BothLengthAndEncoding
   | not (null te)                     = transferEncoding te
   | not (null cl)                     = ContentLength <$> contentLength cl
   | otherwise                         = Right NoBody
   where
-    te = lookupAll hTransferEncoding fields
-    cl = lookupAll hContentLength fields
     transferEncoding vs = do
       codings <- concat <$> traverse (either (const (Left InvalidTransferEncoding)) (traverse coding) . splitList NoComments) vs
       case reverse codings of
@@ -145,12 +152,15 @@ requestFraming version fields
 -- transfer coding named trailers, not the @trailers@ member. The
 -- @Connection: TE@ its sender must also send is not required.
 acceptsTrailers :: Fields -> Bool
-acceptsTrailers fields =
-  case traverse (either (const Nothing) (traverse (either (const Nothing) Just . coding)) . splitList NoComments)
-                (lookupAll hTE fields) of
+acceptsTrailers fields = acceptsTrailersFrom (lookupAll hTE fields)
+  where hTE = fromJust (mkFieldName "TE")
+
+-- | 'acceptsTrailers', given the values of the @TE@ field lines.
+acceptsTrailersFrom :: [FieldValue] -> Bool
+acceptsTrailersFrom values =
+  case traverse (either (const Nothing) (traverse (either (const Nothing) Just . coding)) . splitList NoComments) values of
     Just members -> ("trailers", False) `elem` concat members
     Nothing      -> False
-  where hTE = fromJust (mkFieldName "TE")
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-10.1.4
 -- # transfer-coding    = token *( OWS ";" OWS transfer-parameter )
