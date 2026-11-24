@@ -379,6 +379,12 @@ expectation version values =
 -- | Whether @Connection@ has the @close@ option, or 'Nothing' if it is
 -- not a list of tokens.
 connectionClose :: [FieldValue] -> Maybe Bool
+connectionClose [] = Just False
+-- the usual field is one line with one option ("keep-alive" from a
+-- browser): a token is the whole list, and nothing is built to read it
+connectionClose [value]
+  | B.all isTChar option = Just (B.length option == 5 && lower option == "close")
+  where option = fieldValueBytes value
 connectionClose values = do
   options <- concat <$> traverse (either (const Nothing) Just . splitList NoComments) values
   if all (\o -> not (B.null o) && B.all isTChar o) options then Just ("close" `elem` map lower options) else Nothing

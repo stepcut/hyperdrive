@@ -1215,3 +1215,38 @@ Over sockets, six alternating runs of five seconds each:
 
 Kept: 3.0% less user time for the browser's request, every run under
 the baseline's lowest, and the minimal request level.
+
+## 2026-11-24 (afternoon): the Connection field read without building a list
+
+The fourth line of the profile above: `Connection: keep-alive` went
+through `splitList`, `concat` and a lower-cased copy of each option.
+`connectionClose` now answers at once when there is no field, and
+compares the value itself when there is one line whose value is one
+token; anything else goes the old way. Per request, in process:
+
+| | wrk's request | browser's | chunked |
+|---|---|---|---|
+| instructions, before | 10,452 | 24,525 | 30,653 |
+| instructions, after | 10,431 (-0.2%) | 23,515 (-4.1%) | 30,604 (-0.2%) |
+| allocation | 5,111 | 9,358 to 8,958 | 31,640 |
+| time, before | 1.483 µs | 2.865 µs | 3.719 µs |
+| time, after | 1.477 µs (-0.4%, faster in 7 of 10) | 2.710 µs (-5.4%, 10 of 10) | 3.741 µs (+0.6%, 2 of 10) |
+
+Over sockets, six alternating runs of five seconds each:
+
+| | wrk's request: user | kernel | req/s | browser's request: user | kernel | req/s |
+|---|---|---|---|---|---|---|
+| before | 1.455 (1.436 to 1.490) | 4.737 | 761k | 2.224 (2.196 to 2.280) | 4.973 | 710k |
+| after | 1.425 (1.390 to 1.472) | 4.728 | 758k | 2.098 (2.044 to 2.130) | 4.889 | 727k |
+
+Kept, by the user's decision: 5.7% less user time for the browser's
+request, every run under the baseline's lowest. The chunked request is
+0.6% slower in process with fewer instructions and the same
+allocation, so it is where the code lands; it has no run over sockets.
+
+Two things on the way. Without the clause for no field at all, the
+requests that have none allocated 24 bytes more. And a strict binding
+for "the connection persists" in `startRequest`, tried to remove
+those, moved the code: instruction cache misses for the browser's
+request went from about 221 to 276 a request and all three requests
+were slower, so it was taken out.

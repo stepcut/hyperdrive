@@ -322,6 +322,8 @@ prop_persistence = once $ conjoin
           , "send \"ok\"", "request GET Just 0" ]
   , shown (outputs defaultConfig [Received "GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n", Respond (response 200 (Just 0)), EndBody emptyFields])
       === [ "request GET Just 0", "send \"HTTP/1.1 200 OK\\r\\ncontent-length: 0\\r\\nconnection: close\\r\\n\\r\\n\"", "Close" ]
+  , shown (outputs defaultConfig [Received "GET / HTTP/1.1\r\nHost: a\r\nConnection: Close\r\n\r\n", Respond (response 204 Nothing), EndBody emptyFields])
+      === [ "request GET Just 0", "send \"HTTP/1.1 204 No Content\\r\\nconnection: close\\r\\n\\r\\n\"", "Close" ]
   , shown (outputs defaultConfig [Received "GET / HTTP/1.1\r\nHost: a\r\nConnection: keep-alive, CLOSE\r\n\r\n", Respond (response 204 Nothing), EndBody emptyFields])
       === [ "request GET Just 0", "send \"HTTP/1.1 204 No Content\\r\\nconnection: close\\r\\n\\r\\n\"", "Close" ]
     -- HTTP/1.0 always closes (D5); an unknown length is close-delimited

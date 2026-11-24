@@ -595,3 +595,15 @@ why: the response's own fields are sent, before the core's
 why: the status line carries the response's status code
 - statusLine s = statusLines ! statusCode s
 + statusLine _ = statusLines ! 200
+
+why: one "close" option closes the connection, in any case
+- | B.all isTChar option = Just (B.length option == 5 && lower option == "close")
++ | B.all isTChar option = Just (B.length option == 5 && option == "close")
+
+why: a line with several options, or one that is not a list of tokens, is not one option
+- | B.all isTChar option = Just (B.length option == 5 && lower option == "close")
++ | otherwise = Just (B.length option == 5 && lower option == "close")
+
+why: without a Connection field nothing asks for the connection to be closed
+- connectionClose [] = Just False
++ connectionClose [] = Just True
