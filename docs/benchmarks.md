@@ -1145,3 +1145,34 @@ The new baseline (`scripts/bench-cpu`, two runs each, at 8b7cbeb with
 `-A1m`): hyperdrive 751k and 761k req/s, 1.45 and 1.45 µs user, 4.73
 and 4.77 kernel; warp 736k and 749k, 1.45 and 1.50 user, 4.81 and 4.74
 kernel.
+
+## 2026-11-24 (afternoon): field names read eight octets at a time, again
+
+The patch left out at midday, applied on top of a0715bf (the shared
+names and `-A1m`). Per request, in process:
+
+| | wrk's request | browser's | chunked |
+|---|---|---|---|
+| instructions, before | 10,546 | 26,756 | 31,076 |
+| instructions, after | 10,559 | 26,103 (-2.4%) | 31,026 |
+| instruction cache misses | 159 to 145 | 219 to 229 | 206 to 202 |
+| branch misses | 1.8 to 1.9 | 4.9 to 4.0 | 7.2 to 6.9 |
+| time, before | 1.379 µs | 3.004 µs | 3.597 µs |
+| time, after | 1.415 µs (+2.6%, faster in 0 of 10) | 2.844 µs (-5.3%, 10 of 10) | 3.566 µs (-0.9%, 10 of 10) |
+
+Allocation is the same (5,112, 9,807 and 31,736 bytes).
+
+Over sockets, six alternating runs of five seconds each:
+
+| | wrk's request: user | kernel | req/s | browser's request: user | kernel | req/s |
+|---|---|---|---|---|---|---|
+| before | 1.410 (1.392 to 1.447) | 4.786 | 754k | 2.406 (2.369 to 2.442) | 5.111 | 693k |
+| after | 1.421 (1.388 to 1.461) | 4.798 | 750k | 2.263 (2.238 to 2.286) | 5.074 | 700k |
+
+The browser's request has 5.9% less user time, with every run under
+the baseline's lowest. The minimal request is still slower in process,
+by 2.6% rather than 7.4%, and this time not from instruction cache
+misses, which went down; the counts taken do not say what it is. Over
+sockets its difference (0.8%) is inside the spread of the runs.
+
+Kept, for the browser's request. The patch file is removed.

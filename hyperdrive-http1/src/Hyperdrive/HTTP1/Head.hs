@@ -33,8 +33,9 @@ import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
 import Data.Maybe (fromJust)
 import qualified Data.Sequence as Seq
-import Data.Bits (complement, xor, (.&.), (.|.))
-import Data.Word (Word64, Word8)
+import Data.Bits (complement, countTrailingZeros, unsafeShiftL, unsafeShiftR, xor, (.&.), (.|.))
+import GHC.ByteOrder (ByteOrder(..), targetByteOrder)
+import Data.Word (Word64, Word8, byteSwap64)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (peekByteOff)
 import Hyperdrive.Semantics.Field (FieldName, FieldValue, FieldValueError, Fields, emptyFields, fieldsFromList, mkFieldName, mkFieldValue)
@@ -374,23 +375,61 @@ nameTable = B.pack [ if isTChar w then toLower w else 0 | w <- [minBound .. maxB
 {-# NOINLINE nameTable #-}
 
 -- | How many tchars the line begins with, negated if any of them is an
--- upper-case letter: one pass, with one look in 'nameTable' an octet.
+-- upper-case letter: one pass. Letters and "-", which most names are
+-- made of, are passed over eight at a time; any other octet is looked
+-- up in 'nameTable'.
 nameSpan :: ByteString -> Int
 nameSpan (BI.BS fp len) = BI.accursedUnutterablePerformIO $ BI.unsafeWithForeignPtr fp $ \p ->
   case nameTable of
     BI.BS tfp _ -> BI.unsafeWithForeignPtr tfp $ \table -> nameOctets table p len 0 0
 {-# INLINE nameSpan #-}
 
-nameOctets :: Ptr Word8 -> Ptr Word8 -> Int -> Int -> Word8 -> IO Int
+nameOctets :: Ptr Word8 -> Ptr Word8 -> Int -> Int -> Word64 -> IO Int
 nameOctets !table !p !len = go
   where
-    go !i !changed
-      | i >= len = done i changed
-      | otherwise = do
-          w <- peekByteOff p i :: IO Word8
+    go !i !upper
+      | i + 8 <= len = do
+          w <- littleEndian <$> peekByteOff p i
+          -- the octets before the first that is neither a letter nor "-"
+          let other = lettersAndHyphens w `xor` highBits
+              k = if other == 0 then 8 else countTrailingZeros other `unsafeShiftR` 3
+              -- of those, the upper-case letters: bit 5 is not set (taking
+              -- in the octets after them would only lower-case a name
+              -- that has no need of it)
+              before = if other == 0 then complement 0 else (1 `unsafeShiftL` (8 * k)) - 1
+              uppers = upper .|. (complement w .&. bit5s .&. before)
+          if k == 8 then go (i + 8) uppers else octet (i + k) uppers
+      | i >= len = done i upper
+      | otherwise = octet i upper
+      where
+        octet !j !upper' = do
+          w <- peekByteOff p j :: IO Word8
           lower <- peekByteOff table (fromIntegral w) :: IO Word8
-          if lower == 0 then done i changed else go (i + 1) (changed .|. xor w lower)
-    done i changed = pure (if changed == 0 then i else negate i)
+          if lower == 0 then done j upper' else go (j + 1) (upper' .|. fromIntegral (xor w lower))
+    done i upper = pure $! if upper == 0 then i else negate i
+    littleEndian w = case targetByteOrder of
+      LittleEndian -> w
+      BigEndian    -> byteSwap64 w
+
+-- | The high bit of each octet that is a letter or "-". Each test is
+-- exact for its octet: with the high bit cleared, no sum carries into
+-- the next.
+lettersAndHyphens :: Word64 -> Word64
+lettersAndHyphens w = (letter .|. hyphen) .&. highBits
+  where
+    lowered = (w .|. bit5s) .&. lows
+    -- "a" (0x61) to "z" (0x7A), and not an octet above 0x7F
+    letter = (lowered + 0x1F * ones) .&. complement (lowered + 0x05 * ones) .&. complement w
+    -- 0x2D: no bit differs
+    differs = w `xor` (0x2D * ones)
+    hyphen = complement (((differs .&. lows) + lows) .|. differs)
+    ones = 0x0101010101010101
+    lows = 0x7F * ones
+{-# INLINE lettersAndHyphens #-}
+
+highBits, bit5s :: Word64
+highBits = 0x8080808080808080
+bit5s = 0x2020202020202020
 
 -- | Whether every octet is a field-vchar, SP or HTAB, eight at a time:
 -- a word with no octet below 0x20 and none equal to 0x7F is all valid

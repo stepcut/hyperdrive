@@ -503,8 +503,8 @@ why: a line ends only at CRLF, not at a bare CR
 + | k + 1 < B.length s -> case fieldLine
 
 why: an upper-case letter anywhere in the name is noticed
-- done i changed = pure (if changed == 0 then i else negate i)
-+ done i changed = pure i
+- done i upper = pure $! if upper == 0 then i else negate i
++ done i upper = pure i
 
 why: every upper-case letter is lower-cased, Z too
 - where toLower w = if w >= 0x41 && w <= 0x5A then w + 0x20 else w
@@ -521,6 +521,22 @@ why: a well-known name is taken only for the same name: eight octets at a time
 why: a name that is not well known is lower-cased too
 - among [] = B.map lowerTChar name
 + among [] = name
+
+why: an upper-case letter among eight octets read together is noticed
+- uppers = upper .|. (complement w .&. bit5s .&. before)
++ uppers = upper .|. (complement w .&. bit5s .&. before .&. 0)
+
+why: only letters and "-" are passed over eight at a time: "@" and "[" are not letters
+- letter = (lowered + 0x1F * ones) .&. complement (lowered + 0x05 * ones) .&. complement w
++ letter = (lowered + 0x20 * ones) .&. complement (lowered + 0x04 * ones) .&. complement w
+
+why: an octet above 0x7F is not a letter
+- letter = (lowered + 0x1F * ones) .&. complement (lowered + 0x05 * ones) .&. complement w
++ letter = (lowered + 0x1F * ones) .&. complement (lowered + 0x05 * ones)
+
+why: "-" alone is passed over with the letters, not "," or "m"
+- differs = w `xor` (0x2D * ones)
++ differs = (w `xor` (0x2D * ones)) .&. complement (ones)
 
 why: field names are lower-cased
 - !n = if spanned < 0 then lowerName name else name
