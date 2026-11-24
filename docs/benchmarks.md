@@ -1502,3 +1502,62 @@ and 0.09), in every run. For the browser's request that is 1.8% more
 requests a second; for wrk's the rate is the same and the server uses
 less of the machine (4.58 cores from 4.73). ntex is 20% ahead for
 wrk's request and 11% for the browser's.
+
+## Experiments for later: what a large gain would take
+
+Not planned for soon (the user, 2026-11-24); set down so that they are
+not thought of again from nothing. The gains are estimates, not
+measurements.
+
+Of the 6.0 µs of the server's time for wrk's request, 4.7 is in the
+kernel and 1.3 is hyperdrive's. With no user time at all the gain is
+about 20%, which is where ntex is; more than that has to come from the
+kernel's share, or from entering it less often.
+
+1. **A loop for each core, and no thread for each connection.** Each
+   capability has a listening socket of its own (`SO_REUSEPORT`) and
+   an epoll or io_uring loop of its own, and drives the sans-IO core
+   as a state machine for each connection. That is without the
+   scheduler's wakeups, the `yield`, the futexes across capabilities
+   and the I/O manager's bookkeeping: most of the 0.6 µs of user time
+   between hyperdrive and ntex. The handler then runs on the loop, and
+   one that blocks holds up every connection of its core, so it would
+   be a second way to serve or a setting, not the default. Perhaps 15%
+   to 20%. A first step would be a throwaway loop for wrk's request
+   alone, to see how much of the difference it closes before the
+   question of the API is taken up.
+
+2. **io_uring for its batching.** Multishot receives into provided
+   buffers, and all the sends of a turn of the loop submitted with one
+   `io_uring_enter`: system calls for a request from 2 towards 0.2
+   under load. ntex with io_uring is no faster than ntex with epoll,
+   so using it as epoll is used gains nothing. Perhaps 5% to 10% more,
+   and it needs the first.
+
+3. **Past the kernel's network stack** (AF_XDP, or DPDK with TCP in
+   user space). The only way to a multiple and not a percentage. A
+   great deal of work for TCP, and not measurable over loopback. It
+   matters more for HTTP/3: QUIC is a transport in user space already,
+   and UDP with `sendmmsg` and `recvmmsg`, GSO and GRO, and AF_XDP
+   after them is its fast path.
+
+4. **Smaller things with a thread for each connection**, 0.05 to
+   0.15 µs each: the response's head rendered into the buffer that is
+   sent, in place of pieces that are then copied; receives into a
+   pinned buffer that the connection keeps, with an unsafe call to
+   `recv`, in place of a `ByteString` allocated each time; a whole
+   response kept rendered when the handler says it does not change;
+   something cheaper than the `yield` after a write (0.13 µs of the
+   scheduler).
+
+5. **The build and the sockets**, a few percent each and mostly on
+   real hardware: the LLVM backend, huge pages for the program's text,
+   `SO_BUSY_POLL`, connections steered to the core that has the
+   network card's queue.
+
+For measuring any of the first three: no server here uses more than 5
+of the 8 cores, and wrk has the same machine, so some of the limit is
+the client and the loopback, and a large gain in the server may be
+seen as idle cores and not as requests. It needs a harness that can
+fill the server: a second machine, or the client kept to cores of its
+own.
