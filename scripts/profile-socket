@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Record a perf profile of one server while wrk loads it over a socket.
+#
+#   nix develop .#bench -c nix shell nixpkgs#perf -c scripts/profile-socket NAME BINARY [ARGS ...]
+#
+# BINARY is run with ARGS (the port 18095 first, then say +RTS -N8) on
+# CPUs 0-7, wrk on 8-15; five seconds are recorded to
+# /tmp/psock-NAME.data, to be read with scripts/perf-summary. Use an
+# unstripped binary (docs/HANDOFF.md, or scripts/profile-servers, which
+# builds both servers that way and summarizes them).
+set -uo pipefail
+[ $# -ge 2 ] || { sed -n '2,10p' "$0"; exit 2; }
+name=$1; shift
+taskset -c 0-7 "$@" >/dev/null 2>&1 &
+pid=$!
+for _ in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/18095) 2>/dev/null && break; sleep 0.1; done
+taskset -c 8-15 wrk -t8 -c100 -d7s http://127.0.0.1:18095/ > "/tmp/psock-$name.wrk" &
+wrkpid=$!
+sleep 1
+perf record -q -F 5000 -p "$pid" -o "/tmp/psock-$name.data" -- sleep 5 2>/dev/null
+wait "$wrkpid"
+kill "$pid"; wait "$pid" 2>/dev/null
+grep Requests/sec "/tmp/psock-$name.wrk"

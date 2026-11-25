@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Time several servers against each other over sockets, in rotation,
+# and summarize: for each, requests a second (mean and range) and the
+# CPU a request costs, user and kernel, from /proc.
+#
+#   nix develop .#bench -c scripts/compare-servers [-r ROUNDS] [-k "minimal browser"] SERVER ...
+#
+# A SERVER is NAME, NAME:RTSFLAGS or NAME=PATH, each optionally with
+# :RTSFLAGS (which are added to -N8). NAME alone is bench-NAME on the
+# PATH: hyperdrive and warp in the bench shell, and ntex-uring and
+# ntex-polling in .#bench-ntex. To compare builds, copy each
+# bench-hyperdrive somewhere and name them:
+#
+#   scripts/compare-servers base=/tmp/bins/bench-base new=/tmp/bins/bench-new
+#   scripts/compare-servers hyperdrive:-A1m hyperdrive:-A32m warp
+#
+# Timings: ask for a quiet machine first. The server is pinned to CPUs
+# 0-7 and wrk (8 threads, 100 connections) to 8-15; each run takes
+# DURATION seconds (default 5). The browser kind sends a browser's
+# header fields (bench/wrk/browser.lua).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+ROUNDS=4
+KINDS="minimal browser"
+while getopts "r:k:" opt; do
+  case $opt in
+    r) ROUNDS=$OPTARG ;;
+    k) KINDS=$OPTARG ;;
+    *) exit 2 ;;
+  esac
+done
+shift $((OPTIND - 1))
+[ $# -gt 0 ] || { sed -n '2,21p' "$0"; exit 2; }
+DURATION=${DURATION:-5}
+PORT=${PORT:-18095}
+results=$(mktemp)
+trap 'rm -f "$results"' EXIT
+
+for kind in $KINDS; do
+  case $kind in
+    minimal) script=() ;;
+    browser) script=(-s bench/wrk/browser.lua) ;;
+    *) echo "unknown kind: $kind" >&2; exit 2 ;;
+  esac
+  for _ in $(seq "$ROUNDS"); do
+    for spec in "$@"; do
+      server=${spec%%:*}; flags=""; [ "$spec" != "$server" ] && flags=${spec#*:}
+      name=${server%%=*}; bin="bench-$name"; [ "$server" != "$name" ] && bin=${server#*=}
+      case $name in
+        ntex-*) taskset -c 0-7 "$bin" "$PORT" 8 & ;;
+        *)      # shellcheck disable=SC2086
+                taskset -c 0-7 "$bin" "$PORT" +RTS -N8 $flags -RTS & ;;
+      esac
+      pid=$!
+      for _ in $(seq 50); do (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && break; sleep 0.1; done
+      read -r u0 s0 < <(awk '{print $14, $15}' "/proc/$pid/stat")
+      rps=$(taskset -c 8-15 wrk -t8 -c100 -d"${DURATION}s" "${script[@]}" "http://127.0.0.1:$PORT/" | awk '/Requests\/sec/ {print $2}')
+      read -r u1 s1 < <(awk '{print $14, $15}' "/proc/$pid/stat")
+      # clock ticks are 10 ms: microseconds a request, and cores in use
+      awk -v k="$kind" -v n="$spec" -v r="$rps" -v d="$DURATION" -v u=$((u1 - u0)) -v s=$((s1 - s0)) \
+        'BEGIN { printf "%s|%s|%.0f|%.3f|%.3f|%.2f\n", k, n, r, u * 10000 / (r * d), s * 10000 / (r * d), (u + s) / (100 * d) }' \
+        | tee -a "$results" | awk -F'|' '{ printf "%-8s %-28s %8.0f req/s: user %.3f us, kernel %.3f us, cores %.2f\n", $1, $2, $3, $4, $5, $6 }'
+      kill "$pid"; wait "$pid" 2>/dev/null || true
+      sleep 1
+    done
+  done
+done
+
+echo
+awk -F'|' '
+  { k = $1 "|" $2; n[k]++; r[k] += $3; u[k] += $4; s[k] += $5; c[k] += $6
+    if (!(k in lo) || $3 < lo[k]) lo[k] = $3
+    if ($3 > hi[k]) hi[k] = $3
+    if (!(k in seen)) { seen[k] = 1; order[++m] = k } }
+  END { for (i = 1; i <= m; i++) { k = order[i]; split(k, p, "|")
+          printf "%-8s %-28s %4.0fk (%4.0fk to %4.0fk) user %.3f kernel %.3f cores %.2f\n",
+                 p[1], p[2], r[k] / n[k] / 1000, lo[k] / 1000, hi[k] / 1000, u[k] / n[k], s[k] / n[k], c[k] / n[k] } }' "$results"
