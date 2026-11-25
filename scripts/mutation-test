@@ -130,10 +130,15 @@ def selected(m, only):
 
 
 def test_suites(pkg_dir):
-    """The names of a package's test suites, from its .cabal file."""
+    """The names of a package's test suites, from its .cabal file,
+    without those that are only built with a flag (their stanza says
+    'buildable: False')."""
     names = []
     for cabal in pkg_dir.glob("*.cabal"):
-        names += re.findall(r"^test-suite\s+(\S+)", cabal.read_text(), re.MULTILINE)
+        for stanza in re.split(r"^(?=\S)", cabal.read_text(), flags=re.MULTILINE):
+            suite = re.match(r"test-suite\s+(\S+)", stanza)
+            if suite and not re.search(r"buildable:\s*False", stanza, re.IGNORECASE):
+                names.append(suite.group(1))
     return names
 
 
@@ -142,7 +147,7 @@ class Copy:
 
     def __init__(self, root, tmp, index):
         self.work = Path(tmp) / f"repo-{index}"
-        shutil.copytree(root, self.work, ignore=shutil.ignore_patterns("dist-newstyle", ".git", ".duvet"))
+        shutil.copytree(root, self.work, ignore=shutil.ignore_patterns("dist-newstyle", "dist-llhttp", ".git", ".duvet"))
         self.binaries = {}
 
     def build(self, pkg):
