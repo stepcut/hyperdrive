@@ -1,0 +1,20 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.3.2"
+
+# Response Pseudo-Header Fields
+#
+#    For HTTP/2 responses, a single ":status" pseudo-header field is
+#    defined that carries the HTTP status code field (see Section 15 of
+#    [HTTP]).  This pseudo-header field MUST be included in all responses,
+#    including interim responses; otherwise, the response is malformed
+#    (Section 8.1.1).
+# 
+#    HTTP/2 responses implicitly have a protocol version of "2.0".
+
+[[spec]]
+level = "MUST"
+quote = '''
+This pseudo-header field MUST be included in all responses,
+including interim responses; otherwise, the response is malformed
+(Section 8.1.1).
+'''
+

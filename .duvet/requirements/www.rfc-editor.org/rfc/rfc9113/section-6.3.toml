@@ -1,0 +1,66 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-6.3"
+
+# PRIORITY
+#
+#    The PRIORITY frame (type=0x02) is deprecated; see Section 5.3.2.  A
+#    PRIORITY frame can be sent in any stream state, including idle or
+#    closed streams.
+# 
+#    PRIORITY Frame {
+#      Length (24) = 0x05,
+#      Type (8) = 0x02,
+# 
+#      Unused Flags (8),
+# 
+#      Reserved (1),
+#      Stream Identifier (31),
+# 
+#      Exclusive (1),
+#      Stream Dependency (31),
+#      Weight (8),
+#    }
+# 
+#                       Figure 5: PRIORITY Frame Format
+# 
+#    The Length, Type, Unused Flag(s), Reserved, and Stream Identifier
+#    fields are described in Section 4.  The frame payload of a PRIORITY
+#    frame contains the following additional fields:
+# 
+#    Exclusive:  A single-bit flag.
+# 
+#    Stream Dependency:  A 31-bit stream identifier.
+# 
+#    Weight:  An unsigned 8-bit integer.
+# 
+#    The PRIORITY frame does not define any flags.
+# 
+#    The PRIORITY frame always identifies a stream.  If a PRIORITY frame
+#    is received with a stream identifier of 0x00, the recipient MUST
+#    respond with a connection error (Section 5.4.1) of type
+#    PROTOCOL_ERROR.
+# 
+#    Sending or receiving a PRIORITY frame does not affect the state of
+#    any stream (Section 5.1).  The PRIORITY frame can be sent on a stream
+#    in any state, including "idle" or "closed".  A PRIORITY frame cannot
+#    be sent between consecutive frames that comprise a single field block
+#    (Section 4.3).
+# 
+#    A PRIORITY frame with a length other than 5 octets MUST be treated as
+#    a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a PRIORITY frame
+is received with a stream identifier of 0x00, the recipient MUST
+respond with a connection error (Section 5.4.1) of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A PRIORITY frame with a length other than 5 octets MUST be treated as
+a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+'''
+

@@ -1,0 +1,18 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.2"
+
+# HTTP Fields
+#
+#    HTTP fields (Section 5 of [HTTP]) are conveyed by HTTP/2 in the
+#    HEADERS, CONTINUATION, and PUSH_PROMISE frames, compressed with HPACK
+#    [COMPRESSION].
+# 
+#    Field names MUST be converted to lowercase when constructing an
+#    HTTP/2 message.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Field names MUST be converted to lowercase when constructing an
+HTTP/2 message.
+'''
+

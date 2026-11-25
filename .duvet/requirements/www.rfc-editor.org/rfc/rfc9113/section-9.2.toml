@@ -1,0 +1,50 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-9.2"
+
+# Use of TLS Features
+#
+#    Implementations of HTTP/2 MUST use TLS version 1.2 [TLS12] or higher
+#    for HTTP/2 over TLS.  The general TLS usage guidance in [TLSBCP]
+#    SHOULD be followed, with some additional restrictions that are
+#    specific to HTTP/2.
+# 
+#    The TLS implementation MUST support the Server Name Indication (SNI)
+#    [TLS-EXT] extension to TLS.  If the server is identified by a domain
+#    name [DNS-TERMS], clients MUST send the server_name TLS extension
+#    unless an alternative mechanism to indicate the target host is used.
+# 
+#    Requirements for deployments of HTTP/2 that negotiate TLS 1.3 [TLS13]
+#    are included in Section 9.2.3.  Deployments of TLS 1.2 are subject to
+#    the requirements in Sections 9.2.1 and 9.2.2.  Implementations are
+#    encouraged to provide defaults that comply, but it is recognized that
+#    deployments are ultimately responsible for compliance.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Implementations of HTTP/2 MUST use TLS version 1.2 [TLS12] or higher
+for HTTP/2 over TLS.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+The general TLS usage guidance in [TLSBCP]
+SHOULD be followed, with some additional restrictions that are
+specific to HTTP/2.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The TLS implementation MUST support the Server Name Indication (SNI)
+[TLS-EXT] extension to TLS.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the server is identified by a domain
+name [DNS-TERMS], clients MUST send the server_name TLS extension
+unless an alternative mechanism to indicate the target host is used.
+'''
+

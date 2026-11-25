@@ -1,0 +1,31 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-3.2"
+
+# Starting HTTP/2 for "https" URIs
+#
+#    A client that makes a request to an "https" URI uses TLS [TLS13] with
+#    the ALPN extension [TLS-ALPN].
+# 
+#    HTTP/2 over TLS uses the "h2" protocol identifier.  The "h2c"
+#    protocol identifier MUST NOT be sent by a client or selected by a
+#    server; the "h2c" protocol identifier describes a protocol that does
+#    not use TLS.
+# 
+#    Once TLS negotiation is complete, both the client and the server MUST
+#    send a connection preface (Section 3.4).
+
+[[spec]]
+level = "MUST"
+quote = '''
+The "h2c"
+protocol identifier MUST NOT be sent by a client or selected by a
+server; the "h2c" protocol identifier describes a protocol that does
+not use TLS.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Once TLS negotiation is complete, both the client and the server MUST
+send a connection preface (Section 3.4).
+'''
+

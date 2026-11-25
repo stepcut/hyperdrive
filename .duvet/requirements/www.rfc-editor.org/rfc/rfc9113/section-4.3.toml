@@ -1,0 +1,93 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-4.3"
+
+# Field Section Compression and Decompression
+#
+#    Field section compression is the process of compressing a set of
+#    field lines (Section 5.2 of [HTTP]) to form a field block.  Field
+#    section decompression is the process of decoding a field block into a
+#    set of field lines.  Details of HTTP/2 field section compression and
+#    decompression are defined in [COMPRESSION], which, for historical
+#    reasons, refers to these processes as header compression and
+#    decompression.
+# 
+#    Each field block carries all of the compressed field lines of a
+#    single field section.  Header sections also include control data
+#    associated with the message in the form of pseudo-header fields
+#    (Section 8.3) that use the same format as a field line.
+# 
+#       |  Note: RFC 7540 [RFC7540] used the term "header block" in place
+#       |  of the more generic "field block".
+# 
+#    Field blocks carry control data and header sections for requests,
+#    responses, promised requests, and pushed responses (see Section 8.4).
+#    All these messages, except for interim responses and requests
+#    contained in PUSH_PROMISE (Section 6.6) frames, can optionally
+#    include a field block that carries a trailer section.
+# 
+#    A field section is a collection of field lines.  Each of the field
+#    lines in a field block carries a single value.  The serialized field
+#    block is then divided into one or more octet sequences, called field
+#    block fragments.  The first field block fragment is transmitted
+#    within the frame payload of HEADERS (Section 6.2) or PUSH_PROMISE
+#    (Section 6.6), each of which could be followed by CONTINUATION
+#    (Section 6.10) frames to carry subsequent field block fragments.
+# 
+#    The Cookie header field [COOKIE] is treated specially by the HTTP
+#    mapping (see Section 8.2.3).
+# 
+#    A receiving endpoint reassembles the field block by concatenating its
+#    fragments and then decompresses the block to reconstruct the field
+#    section.
+# 
+#    A complete field section consists of either:
+# 
+#    *  a single HEADERS or PUSH_PROMISE frame, with the END_HEADERS flag
+#       set, or
+# 
+#    *  a HEADERS or PUSH_PROMISE frame with the END_HEADERS flag unset
+#       and one or more CONTINUATION frames, where the last CONTINUATION
+#       frame has the END_HEADERS flag set.
+# 
+#    Each field block is processed as a discrete unit.  Field blocks MUST
+#    be transmitted as a contiguous sequence of frames, with no
+#    interleaved frames of any other type or from any other stream.  The
+#    last frame in a sequence of HEADERS or CONTINUATION frames has the
+#    END_HEADERS flag set.  The last frame in a sequence of PUSH_PROMISE
+#    or CONTINUATION frames has the END_HEADERS flag set.  This allows a
+#    field block to be logically equivalent to a single frame.
+# 
+#    Field block fragments can only be sent as the frame payload of
+#    HEADERS, PUSH_PROMISE, or CONTINUATION frames because these frames
+#    carry data that can modify the compression context maintained by a
+#    receiver.  An endpoint receiving HEADERS, PUSH_PROMISE, or
+#    CONTINUATION frames needs to reassemble field blocks and perform
+#    decompression even if the frames are to be discarded.  A receiver
+#    MUST terminate the connection with a connection error (Section 5.4.1)
+#    of type COMPRESSION_ERROR if it does not decompress a field block.
+# 
+#    A decoding error in a field block MUST be treated as a connection
+#    error (Section 5.4.1) of type COMPRESSION_ERROR.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Field blocks MUST
+be transmitted as a contiguous sequence of frames, with no
+interleaved frames of any other type or from any other stream.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A receiver
+MUST terminate the connection with a connection error (Section 5.4.1)
+of type COMPRESSION_ERROR if it does not decompress a field block.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A decoding error in a field block MUST be treated as a connection
+error (Section 5.4.1) of type COMPRESSION_ERROR.
+'''
+

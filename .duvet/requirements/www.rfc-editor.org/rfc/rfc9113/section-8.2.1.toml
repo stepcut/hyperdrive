@@ -1,0 +1,129 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.2.1"
+
+# Field Validity
+#
+#    The definitions of field names and values in HTTP prohibit some
+#    characters that HPACK might be able to convey.  HTTP/2
+#    implementations SHOULD validate field names and values according to
+#    their definitions in Sections 5.1 and 5.5 of [HTTP], respectively,
+#    and treat messages that contain prohibited characters as malformed
+#    (Section 8.1.1).
+# 
+#    Failure to validate fields can be exploited for request smuggling
+#    attacks.  In particular, unvalidated fields might enable attacks when
+#    messages are forwarded using HTTP/1.1 [HTTP/1.1], where characters
+#    such as carriage return (CR), line feed (LF), and COLON are used as
+#    delimiters.  Implementations MUST perform the following minimal
+#    validation of field names and values:
+# 
+#    *  A field name MUST NOT contain characters in the ranges 0x00-0x20,
+#       0x41-0x5a, or 0x7f-0xff (all ranges inclusive).  This specifically
+#       excludes all non-visible ASCII characters, ASCII SP (0x20), and
+#       uppercase characters ('A' to 'Z', ASCII 0x41 to 0x5a).
+# 
+#    *  With the exception of pseudo-header fields (Section 8.3), which
+#       have a name that starts with a single colon, field names MUST NOT
+#       include a colon (ASCII COLON, 0x3a).
+# 
+#    *  A field value MUST NOT contain the zero value (ASCII NUL, 0x00),
+#       line feed (ASCII LF, 0x0a), or carriage return (ASCII CR, 0x0d) at
+#       any position.
+# 
+#    *  A field value MUST NOT start or end with an ASCII whitespace
+#       character (ASCII SP or HTAB, 0x20 or 0x09).
+# 
+#       |  Note: An implementation that validates fields according to the
+#       |  definitions in Sections 5.1 and 5.5 of [HTTP] only needs an
+#       |  additional check that field names do not include uppercase
+#       |  characters.
+# 
+#    A request or response that contains a field that violates any of
+#    these conditions MUST be treated as malformed (Section 8.1.1).  In
+#    particular, an intermediary that does not process fields when
+#    forwarding messages MUST NOT forward fields that contain any of the
+#    values that are listed as prohibited above.
+# 
+#    When a request message violates one of these requirements, an
+#    implementation SHOULD generate a 400 (Bad Request) status code (see
+#    Section 15.5.1 of [HTTP]), unless a more suitable status code is
+#    defined or the status code cannot be sent (e.g., because the error
+#    occurs in a trailer field).
+# 
+#       |  Note: Field values that are not valid according to the
+#       |  definition of the corresponding field do not cause a request to
+#       |  be malformed; the requirements above only apply to the generic
+#       |  syntax for fields as defined in Section 5 of [HTTP].
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+HTTP/2
+implementations SHOULD validate field names and values according to
+their definitions in Sections 5.1 and 5.5 of [HTTP], respectively,
+and treat messages that contain prohibited characters as malformed
+(Section 8.1.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Implementations MUST perform the following minimal
+validation of field names and values:
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  A field name MUST NOT contain characters in the ranges 0x00-0x20,
+0x41-0x5a, or 0x7f-0xff (all ranges inclusive).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  With the exception of pseudo-header fields (Section 8.3), which
+have a name that starts with a single colon, field names MUST NOT
+include a colon (ASCII COLON, 0x3a).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  A field value MUST NOT contain the zero value (ASCII NUL, 0x00),
+line feed (ASCII LF, 0x0a), or carriage return (ASCII CR, 0x0d) at
+any position.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+*  A field value MUST NOT start or end with an ASCII whitespace
+character (ASCII SP or HTAB, 0x20 or 0x09).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A request or response that contains a field that violates any of
+these conditions MUST be treated as malformed (Section 8.1.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+In
+particular, an intermediary that does not process fields when
+forwarding messages MUST NOT forward fields that contain any of the
+values that are listed as prohibited above.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+When a request message violates one of these requirements, an
+implementation SHOULD generate a 400 (Bad Request) status code (see
+Section 15.5.1 of [HTTP]), unless a more suitable status code is
+defined or the status code cannot be sent (e.g., because the error
+occurs in a trailer field).
+'''
+

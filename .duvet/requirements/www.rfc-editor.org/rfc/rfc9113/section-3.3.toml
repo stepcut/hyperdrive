@@ -1,0 +1,37 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-3.3"
+
+# Starting HTTP/2 with Prior Knowledge
+#
+#    A client can learn that a particular server supports HTTP/2 by other
+#    means.  For example, a client could be configured with knowledge that
+#    a server supports HTTP/2.
+# 
+#    A client that knows that a server supports HTTP/2 can establish a TCP
+#    connection and send the connection preface (Section 3.4) followed by
+#    HTTP/2 frames.  Servers can identify these connections by the
+#    presence of the connection preface.  This only affects the
+#    establishment of HTTP/2 connections over cleartext TCP; HTTP/2
+#    connections over TLS MUST use protocol negotiation in TLS [TLS-ALPN].
+# 
+#    Likewise, the server MUST send a connection preface (Section 3.4).
+# 
+#    Without additional information, prior support for HTTP/2 is not a
+#    strong signal that a given server will support HTTP/2 for future
+#    connections.  For example, it is possible for server configurations
+#    to change, for configurations to differ between instances in
+#    clustered servers, or for network conditions to change.
+
+[[spec]]
+level = "MUST"
+quote = '''
+This only affects the
+establishment of HTTP/2 connections over cleartext TCP; HTTP/2
+connections over TLS MUST use protocol negotiation in TLS [TLS-ALPN].
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Likewise, the server MUST send a connection preface (Section 3.4).
+'''
+

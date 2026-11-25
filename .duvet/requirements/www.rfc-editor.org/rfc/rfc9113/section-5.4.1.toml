@@ -1,0 +1,53 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-5.4.1"
+
+# Connection Error Handling
+#
+#    A connection error is any error that prevents further processing of
+#    the frame layer or corrupts any connection state.
+# 
+#    An endpoint that encounters a connection error SHOULD first send a
+#    GOAWAY frame (Section 6.8) with the stream identifier of the last
+#    stream that it successfully received from its peer.  The GOAWAY frame
+#    includes an error code (Section 7) that indicates why the connection
+#    is terminating.  After sending the GOAWAY frame for an error
+#    condition, the endpoint MUST close the TCP connection.
+# 
+#    It is possible that the GOAWAY will not be reliably received by the
+#    receiving endpoint.  In the event of a connection error, GOAWAY only
+#    provides a best-effort attempt to communicate with the peer about why
+#    the connection is being terminated.
+# 
+#    An endpoint can end a connection at any time.  In particular, an
+#    endpoint MAY choose to treat a stream error as a connection error.
+#    Endpoints SHOULD send a GOAWAY frame when ending a connection,
+#    providing that circumstances permit it.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+An endpoint that encounters a connection error SHOULD first send a
+GOAWAY frame (Section 6.8) with the stream identifier of the last
+stream that it successfully received from its peer.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+After sending the GOAWAY frame for an error
+condition, the endpoint MUST close the TCP connection.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+In particular, an
+endpoint MAY choose to treat a stream error as a connection error.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Endpoints SHOULD send a GOAWAY frame when ending a connection,
+providing that circumstances permit it.
+'''
+

@@ -1,0 +1,114 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-6.5"
+
+# SETTINGS
+#
+#    The SETTINGS frame (type=0x04) conveys configuration parameters that
+#    affect how endpoints communicate, such as preferences and constraints
+#    on peer behavior.  The SETTINGS frame is also used to acknowledge the
+#    receipt of those settings.  Individually, a configuration parameter
+#    from a SETTINGS frame is referred to as a "setting".
+# 
+#    Settings are not negotiated; they describe characteristics of the
+#    sending peer, which are used by the receiving peer.  Different values
+#    for the same setting can be advertised by each peer.  For example, a
+#    client might set a high initial flow-control window, whereas a server
+#    might set a lower value to conserve resources.
+# 
+#    A SETTINGS frame MUST be sent by both endpoints at the start of a
+#    connection and MAY be sent at any other time by either endpoint over
+#    the lifetime of the connection.  Implementations MUST support all of
+#    the settings defined by this specification.
+# 
+#    Each parameter in a SETTINGS frame replaces any existing value for
+#    that parameter.  Settings are processed in the order in which they
+#    appear, and a receiver of a SETTINGS frame does not need to maintain
+#    any state other than the current value of each setting.  Therefore,
+#    the value of a SETTINGS parameter is the last value that is seen by a
+#    receiver.
+# 
+#    SETTINGS frames are acknowledged by the receiving peer.  To enable
+#    this, the SETTINGS frame defines the ACK flag:
+# 
+#    ACK (0x01):  When set, the ACK flag indicates that this frame
+#       acknowledges receipt and application of the peer's SETTINGS frame.
+#       When this bit is set, the frame payload of the SETTINGS frame MUST
+#       be empty.  Receipt of a SETTINGS frame with the ACK flag set and a
+#       length field value other than 0 MUST be treated as a connection
+#       error (Section 5.4.1) of type FRAME_SIZE_ERROR.  For more
+#       information, see Section 6.5.3 ("Settings Synchronization").
+# 
+#    SETTINGS frames always apply to a connection, never a single stream.
+#    The stream identifier for a SETTINGS frame MUST be zero (0x00).  If
+#    an endpoint receives a SETTINGS frame whose Stream Identifier field
+#    is anything other than 0x00, the endpoint MUST respond with a
+#    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#    The SETTINGS frame affects connection state.  A badly formed or
+#    incomplete SETTINGS frame MUST be treated as a connection error
+#    (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#    A SETTINGS frame with a length other than a multiple of 6 octets MUST
+#    be treated as a connection error (Section 5.4.1) of type
+#    FRAME_SIZE_ERROR.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A SETTINGS frame MUST be sent by both endpoints at the start of a
+connection and MAY be sent at any other time by either endpoint over
+the lifetime of the connection.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Implementations MUST support all of
+the settings defined by this specification.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+When this bit is set, the frame payload of the SETTINGS frame MUST
+be empty.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Receipt of a SETTINGS frame with the ACK flag set and a
+length field value other than 0 MUST be treated as a connection
+error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The stream identifier for a SETTINGS frame MUST be zero (0x00).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If
+an endpoint receives a SETTINGS frame whose Stream Identifier field
+is anything other than 0x00, the endpoint MUST respond with a
+connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A badly formed or
+incomplete SETTINGS frame MUST be treated as a connection error
+(Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A SETTINGS frame with a length other than a multiple of 6 octets MUST
+be treated as a connection error (Section 5.4.1) of type
+FRAME_SIZE_ERROR.
+'''
+

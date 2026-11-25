@@ -1,0 +1,77 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-7"
+
+# Error Codes
+#
+#    Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY
+#    frames to convey the reasons for the stream or connection error.
+# 
+#    Error codes share a common code space.  Some error codes apply only
+#    to either streams or the entire connection and have no defined
+#    semantics in the other context.
+# 
+#    The following error codes are defined:
+# 
+#    NO_ERROR (0x00):  The associated condition is not a result of an
+#       error.  For example, a GOAWAY might include this code to indicate
+#       graceful shutdown of a connection.
+# 
+#    PROTOCOL_ERROR (0x01):  The endpoint detected an unspecific protocol
+#       error.  This error is for use when a more specific error code is
+#       not available.
+# 
+#    INTERNAL_ERROR (0x02):  The endpoint encountered an unexpected
+#       internal error.
+# 
+#    FLOW_CONTROL_ERROR (0x03):  The endpoint detected that its peer
+#       violated the flow-control protocol.
+# 
+#    SETTINGS_TIMEOUT (0x04):  The endpoint sent a SETTINGS frame but did
+#       not receive a response in a timely manner.  See Section 6.5.3
+#       ("Settings Synchronization").
+# 
+#    STREAM_CLOSED (0x05):  The endpoint received a frame after a stream
+#       was half-closed.
+# 
+#    FRAME_SIZE_ERROR (0x06):  The endpoint received a frame with an
+#       invalid size.
+# 
+#    REFUSED_STREAM (0x07):  The endpoint refused the stream prior to
+#       performing any application processing (see Section 8.7 for
+#       details).
+# 
+#    CANCEL (0x08):  The endpoint uses this error code to indicate that
+#       the stream is no longer needed.
+# 
+#    COMPRESSION_ERROR (0x09):  The endpoint is unable to maintain the
+#       field section compression context for the connection.
+# 
+#    CONNECT_ERROR (0x0a):  The connection established in response to a
+#       CONNECT request (Section 8.5) was reset or abnormally closed.
+# 
+#    ENHANCE_YOUR_CALM (0x0b):  The endpoint detected that its peer is
+#       exhibiting a behavior that might be generating excessive load.
+# 
+#    INADEQUATE_SECURITY (0x0c):  The underlying transport has properties
+#       that do not meet minimum security requirements (see Section 9.2).
+# 
+#    HTTP_1_1_REQUIRED (0x0d):  The endpoint requires that HTTP/1.1 be
+#       used instead of HTTP/2.
+# 
+#    Unknown or unsupported error codes MUST NOT trigger any special
+#    behavior.  These MAY be treated by an implementation as being
+#    equivalent to INTERNAL_ERROR.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Unknown or unsupported error codes MUST NOT trigger any special
+behavior.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+These MAY be treated by an implementation as being
+equivalent to INTERNAL_ERROR.
+'''
+

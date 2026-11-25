@@ -1,0 +1,100 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-10.5"
+
+# Denial-of-Service Considerations
+#
+#    An HTTP/2 connection can demand a greater commitment of resources to
+#    operate than an HTTP/1.1 connection.  Both field section compression
+#    and flow control depend on a commitment of a greater amount of state.
+#    Settings for these features ensure that memory commitments for these
+#    features are strictly bounded.
+# 
+#    The number of PUSH_PROMISE frames is not constrained in the same
+#    fashion.  A client that accepts server push SHOULD limit the number
+#    of streams it allows to be in the "reserved (remote)" state.  An
+#    excessive number of server push streams can be treated as a stream
+#    error (Section 5.4.2) of type ENHANCE_YOUR_CALM.
+# 
+#    A number of HTTP/2 implementations were found to be vulnerable to
+#    denial of service [NFLX-2019-002].  Below is a list of known ways
+#    that implementations might be subject to denial-of-service attacks:
+# 
+#    *  Inefficient tracking of outstanding outbound frames can lead to
+#       overload if an adversary can cause large numbers of frames to be
+#       enqueued for sending.  A peer could use one of several techniques
+#       to cause large numbers of frames to be generated:
+# 
+#       -  Providing tiny increments to flow control in WINDOW_UPDATE
+#          frames can cause a sender to generate a large number of DATA
+#          frames.
+# 
+#       -  An endpoint is required to respond to a PING frame.
+# 
+#       -  Each SETTINGS frame requires acknowledgment.
+# 
+#       -  An invalid request (or server push) can cause a peer to send
+#          RST_STREAM frames in response.
+# 
+#    *  An attacker can provide large amounts of flow-control credit at
+#       the HTTP/2 layer but withhold credit at the TCP layer, preventing
+#       frames from being sent.  An endpoint that constructs and remembers
+#       frames for sending without considering TCP limits might be subject
+#       to resource exhaustion.
+# 
+#    *  Large numbers of small or empty frames can be abused to cause a
+#       peer to expend time processing frame headers.  Caution is required
+#       here as some uses of small frames are entirely legitimate, such as
+#       the sending of an empty DATA or CONTINUATION frame at the end of a
+#       stream.
+# 
+#    *  The SETTINGS frame might also be abused to cause a peer to expend
+#       additional processing time.  This might be done by pointlessly
+#       changing settings, sending multiple undefined settings, or
+#       changing the same setting multiple times in the same frame.
+# 
+#    *  Handling reprioritization with PRIORITY frames can require
+#       significant processing time and can lead to overload if many
+#       PRIORITY frames are sent.
+# 
+#    *  Field section compression also provides opportunities for an
+#       attacker to waste processing resources; see Section 7 of
+#       [COMPRESSION] for more details on potential abuses.
+# 
+#    *  Limits in SETTINGS cannot be reduced instantaneously, which leaves
+#       an endpoint exposed to behavior from a peer that could exceed the
+#       new limits.  In particular, immediately after establishing a
+#       connection, limits set by a server are not known to clients and
+#       could be exceeded without being an obvious protocol violation.
+# 
+#    Most of the features that might be exploited for denial of service --
+#    such as SETTINGS changes, small frames, field section compression --
+#    have legitimate uses.  These features become a burden only when they
+#    are used unnecessarily or to excess.
+# 
+#    An endpoint that doesn't monitor use of these features exposes itself
+#    to a risk of denial of service.  Implementations SHOULD track the use
+#    of these features and set limits on their use.  An endpoint MAY treat
+#    activity that is suspicious as a connection error (Section 5.4.1) of
+#    type ENHANCE_YOUR_CALM.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A client that accepts server push SHOULD limit the number
+of streams it allows to be in the "reserved (remote)" state.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Implementations SHOULD track the use
+of these features and set limits on their use.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An endpoint MAY treat
+activity that is suspicious as a connection error (Section 5.4.1) of
+type ENHANCE_YOUR_CALM.
+'''
+

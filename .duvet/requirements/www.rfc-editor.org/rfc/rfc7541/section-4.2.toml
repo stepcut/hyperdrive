@@ -1,0 +1,57 @@
+target = "https://www.rfc-editor.org/rfc/rfc7541#section-4.2"
+
+# Maximum Table Size
+#
+#    Protocols that use HPACK determine the maximum size that the encoder
+#    is permitted to use for the dynamic table.  In HTTP/2, this value is
+#    determined by the SETTINGS_HEADER_TABLE_SIZE setting (see
+#    Section 6.5.2 of [HTTP2]).
+# 
+#    An encoder can choose to use less capacity than this maximum size
+#    (see Section 6.3), but the chosen size MUST stay lower than or equal
+#    to the maximum set by the protocol.
+# 
+#    A change in the maximum size of the dynamic table is signaled via a
+#    dynamic table size update (see Section 6.3).  This dynamic table size
+#    update MUST occur at the beginning of the first header block
+#    following the change to the dynamic table size.  In HTTP/2, this
+#    follows a settings acknowledgment (see Section 6.5.3 of [HTTP2]).
+# 
+#    Multiple updates to the maximum table size can occur between the
+#    transmission of two header blocks.  In the case that this size is
+#    changed more than once in this interval, the smallest maximum table
+#    size that occurs in that interval MUST be signaled in a dynamic table
+#    size update.  The final maximum size is always signaled, resulting in
+#    at most two dynamic table size updates.  This ensures that the
+#    decoder is able to perform eviction based on reductions in dynamic
+#    table size (see Section 4.3).
+# 
+#    This mechanism can be used to completely clear entries from the
+#    dynamic table by setting a maximum size of 0, which can subsequently
+#    be restored.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An encoder can choose to use less capacity than this maximum size
+(see Section 6.3), but the chosen size MUST stay lower than or equal
+to the maximum set by the protocol.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+This dynamic table size
+update MUST occur at the beginning of the first header block
+following the change to the dynamic table size.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+In the case that this size is
+changed more than once in this interval, the smallest maximum table
+size that occurs in that interval MUST be signaled in a dynamic table
+size update.
+'''
+

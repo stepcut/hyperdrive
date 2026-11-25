@@ -1,0 +1,64 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.4.2"
+
+# Push Responses
+#
+#    After sending the PUSH_PROMISE frame, the server can begin delivering
+#    the pushed response as a response (Section 8.3.2) on a server-
+#    initiated stream that uses the promised stream identifier.  The
+#    server uses this stream to transmit an HTTP response, using the same
+#    sequence of frames as that defined in Section 8.1.  This stream
+#    becomes "half-closed" to the client (Section 5.1) after the initial
+#    HEADERS frame is sent.
+# 
+#    Once a client receives a PUSH_PROMISE frame and chooses to accept the
+#    pushed response, the client SHOULD NOT issue any requests for the
+#    promised response until after the promised stream has closed.
+# 
+#    If the client determines, for any reason, that it does not wish to
+#    receive the pushed response from the server or if the server takes
+#    too long to begin sending the promised response, the client can send
+#    a RST_STREAM frame, using either the CANCEL or REFUSED_STREAM code
+#    and referencing the pushed stream's identifier.
+# 
+#    A client can use the SETTINGS_MAX_CONCURRENT_STREAMS setting to limit
+#    the number of responses that can be concurrently pushed by a server.
+#    Advertising a SETTINGS_MAX_CONCURRENT_STREAMS value of zero prevents
+#    the server from opening the streams necessary to push responses.
+#    However, this does not prevent the server from reserving streams
+#    using PUSH_PROMISE frames, because reserved streams do not count
+#    toward the concurrent stream limit.  Clients that do not wish to
+#    receive pushed resources need to reset any unwanted reserved streams
+#    or set SETTINGS_ENABLE_PUSH to 0.
+# 
+#    Clients receiving a pushed response MUST validate that either the
+#    server is authoritative (see Section 10.1) or the proxy that provided
+#    the pushed response is configured for the corresponding request.  For
+#    example, a server that offers a certificate for only the example.com
+#    DNS-ID (see [RFC6125]) is not permitted to push a response for
+#    <https://www.example.org/doc>.
+# 
+#    The response for a PUSH_PROMISE stream begins with a HEADERS frame,
+#    which immediately puts the stream into the "half-closed (remote)"
+#    state for the server and "half-closed (local)" state for the client,
+#    and ends with a frame with the END_STREAM flag set, which places the
+#    stream in the "closed" state.
+# 
+#       |  Note: The client never sends a frame with the END_STREAM flag
+#       |  set for a server push.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Once a client receives a PUSH_PROMISE frame and chooses to accept the
+pushed response, the client SHOULD NOT issue any requests for the
+promised response until after the promised stream has closed.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Clients receiving a pushed response MUST validate that either the
+server is authoritative (see Section 10.1) or the proxy that provided
+the pushed response is configured for the corresponding request.
+'''
+

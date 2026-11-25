@@ -279,6 +279,78 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7405
     TEXT[implementation]:                            "%s" quoted-string
     TEXT[implementation,test]:          quoted-string  =  DQUOTE *(%x20-21 / %x23-7E) DQUOTE
 
+SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
+  SECTION: [Header List Ordering](#section-2.1)
+    TEXT[!MUST]:    An encoder MUST order header field representations in the header
+    TEXT[!MUST]:    block according to their ordering in the original header list.
+    TEXT[!MUST]:    decoder MUST order header fields in the decoded header list according
+    TEXT[!MUST]:    to their ordering in the header block.
+
+  SECTION: [Dynamic Table](#section-2.3.2)
+    TEXT[!MUST]: Therefore, duplicate entries MUST NOT
+    TEXT[!MUST]:    be treated as an error by a decoder.
+
+  SECTION: [Index Address Space](#section-2.3.3)
+    TEXT[!MUST]:    Indices strictly greater than the sum of the lengths of both tables
+    TEXT[!MUST]:    MUST be treated as a decoding error.
+
+  SECTION: [Header Field Representation Processing](#section-3.2)
+    TEXT[!MUST]: To ensure that the decoding will successfully
+    TEXT[!MUST]:    produce a header list, a decoder MUST obey the following rules.
+
+  SECTION: [Maximum Table Size](#section-4.2)
+    TEXT[!MUST]:    An encoder can choose to use less capacity than this maximum size
+    TEXT[!MUST]:    (see Section 6.3), but the chosen size MUST stay lower than or equal
+    TEXT[!MUST]:    to the maximum set by the protocol.
+    TEXT[!MUST]: This dynamic table size
+    TEXT[!MUST]:    update MUST occur at the beginning of the first header block
+    TEXT[!MUST]:    following the change to the dynamic table size.
+    TEXT[!MUST]: In the case that this size is
+    TEXT[!MUST]:    changed more than once in this interval, the smallest maximum table
+    TEXT[!MUST]:    size that occurs in that interval MUST be signaled in a dynamic table
+    TEXT[!MUST]:    size update.
+
+  SECTION: [Integer Representation](#section-5.1)
+    TEXT[!MUST]: Integer encodings that exceed implementation limits -- in
+    TEXT[!MUST]:    value or octet length -- MUST be treated as decoding errors.
+
+  SECTION: [String Literal Representation](#section-5.2)
+    TEXT[!MUST]: A padding strictly longer
+    TEXT[!MUST]:    than 7 bits MUST be treated as a decoding error.
+    TEXT[!MUST]: A padding not
+    TEXT[!MUST]:    corresponding to the most significant bits of the code for the EOS
+    TEXT[!MUST]:    symbol MUST be treated as a decoding error.
+    TEXT[!MUST]: A Huffman-encoded string
+    TEXT[!MUST]:    literal containing the EOS symbol MUST be treated as a decoding
+    TEXT[!MUST]:    error.
+
+  SECTION: [Indexed Header Field Representation](#section-6.1)
+    TEXT[!MUST]: It MUST be treated as a decoding
+    TEXT[!MUST]:    error if found in an indexed header field representation.
+
+  SECTION: [Literal Header Field Never Indexed](#section-6.2.3)
+    TEXT[!MUST,exception]: Intermediaries MUST use the same representation
+    TEXT[!MUST,exception]:    for encoding this header field.
+    TEXT[!MUST]:    When a header field is represented as a literal header field never
+    TEXT[!MUST]:    indexed, it MUST always be encoded with this specific literal
+    TEXT[!MUST]:    representation.
+    TEXT[!MUST]: In particular, when a peer sends a header field that
+    TEXT[!MUST]:    it received represented as a literal header field never indexed, it
+    TEXT[!MUST]:    MUST use the same representation to forward this header field.
+
+  SECTION: [Dynamic Table Size Update](#section-6.3)
+    TEXT[!MUST]:    The new maximum size MUST be lower than or equal to the limit
+    TEXT[!MUST]:    determined by the protocol using HPACK.
+    TEXT[!MUST]: A value that exceeds this
+    TEXT[!MUST]:    limit MUST be treated as a decoding error.
+
+  SECTION: [Never-Indexed Literals](#section-7.1.3)
+    TEXT[!MUST,exception]:    An intermediary MUST NOT re-encode a value that uses the never-
+    TEXT[!MUST,exception]:    indexed literal representation with another representation that would
+    TEXT[!MUST,exception]:    index it.
+    TEXT[!MUST]: If HPACK is used for re-encoding, the never-indexed
+    TEXT[!MUST]:    literal representation MUST be used.
+
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Syntax Notation](#section-2.1)
     TEXT[test]:    The following core rules are included by reference, as defined in
@@ -2714,3 +2786,911 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9112
     TEXT[!MUST,exception]: A recipient of "message/http" data MUST replace any obsolete
     TEXT[!MUST,exception]:    line folding with one or more SP characters when the message is
     TEXT[!MUST,exception]:    consumed.
+
+SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
+  SECTION: [Starting HTTP/2 for "https" URIs](#section-3.2)
+    TEXT[!MUST]: The "h2c"
+    TEXT[!MUST]:    protocol identifier MUST NOT be sent by a client or selected by a
+    TEXT[!MUST]:    server; the "h2c" protocol identifier describes a protocol that does
+    TEXT[!MUST]:    not use TLS.
+    TEXT[!MUST]:    Once TLS negotiation is complete, both the client and the server MUST
+    TEXT[!MUST]:    send a connection preface (Section 3.4).
+
+  SECTION: [Starting HTTP/2 with Prior Knowledge](#section-3.3)
+    TEXT[!MUST]: This only affects the
+    TEXT[!MUST]:    establishment of HTTP/2 connections over cleartext TCP; HTTP/2
+    TEXT[!MUST]:    connections over TLS MUST use protocol negotiation in TLS [TLS-ALPN].
+    TEXT[!MUST]:    Likewise, the server MUST send a connection preface (Section 3.4).
+
+  SECTION: [HTTP/2 Connection Preface](#section-3.4)
+    TEXT[!MUST]: This sequence MUST be followed by a
+    TEXT[!MUST]:    SETTINGS frame (Section 6.5), which MAY be empty.
+    TEXT[!MUST]:    The server connection preface consists of a potentially empty
+    TEXT[!MUST]:    SETTINGS frame (Section 6.5) that MUST be the first frame the server
+    TEXT[!MUST]:    sends in the HTTP/2 connection.
+    TEXT[!MUST]:    The SETTINGS frames received from a peer as part of the connection
+    TEXT[!MUST]:    preface MUST be acknowledged (see Section 6.5.3) after sending the
+    TEXT[!MUST]:    connection preface.
+    TEXT[!MUST]:    Clients and servers MUST treat an invalid connection preface as a
+    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MAY]: A GOAWAY
+    TEXT[!MAY]:    frame (Section 6.8) MAY be omitted in this case, since an invalid
+    TEXT[!MAY]:    preface indicates that the peer is not using HTTP/2.
+
+  SECTION: [Frame Format](#section-4.1)
+    TEXT[!MUST]: Values greater than 2^14
+    TEXT[!MUST]:       (16,384) MUST NOT be sent unless the receiver has set a larger
+    TEXT[!MUST]:       value for SETTINGS_MAX_FRAME_SIZE.
+    TEXT[!MUST]: Implementations MUST ignore and
+    TEXT[!MUST]:       discard frames of unknown types.
+    TEXT[!MUST]: Unused flags MUST be ignored on receipt
+    TEXT[!MUST]:       and MUST be left unset (0x00) when sending.
+    TEXT[!MUST]: The semantics of this bit are
+    TEXT[!MUST]:       undefined, and the bit MUST remain unset (0x00) when sending and
+    TEXT[!MUST]:       MUST be ignored when receiving.
+
+  SECTION: [Frame Size](#section-4.2)
+    TEXT[!MUST]:    All implementations MUST be capable of receiving and minimally
+    TEXT[!MUST]:    processing frames up to 2^14 octets in length, plus the 9-octet frame
+    TEXT[!MUST]:    header (Section 4.1).
+    TEXT[!MUST]:    An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
+    TEXT[!MUST]:    exceeds the size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any
+    TEXT[!MUST]:    limit defined for the frame type, or is too small to contain
+    TEXT[!MUST]:    mandatory frame data.
+    TEXT[!MUST]: A frame size error in a frame that could alter
+    TEXT[!MUST]:    the state of the entire connection MUST be treated as a connection
+    TEXT[!MUST]:    error (Section 5.4.1); this includes any frame carrying a field block
+    TEXT[!MUST]:    (Section 4.3) (that is, HEADERS, PUSH_PROMISE, and CONTINUATION), a
+    TEXT[!MUST]:    SETTINGS frame, and any frame with a stream identifier of 0.
+
+  SECTION: [Field Section Compression and Decompression](#section-4.3)
+    TEXT[!MUST]: Field blocks MUST
+    TEXT[!MUST]:    be transmitted as a contiguous sequence of frames, with no
+    TEXT[!MUST]:    interleaved frames of any other type or from any other stream.
+    TEXT[!MUST]: A receiver
+    TEXT[!MUST]:    MUST terminate the connection with a connection error (Section 5.4.1)
+    TEXT[!MUST]:    of type COMPRESSION_ERROR if it does not decompress a field block.
+    TEXT[!MUST]:    A decoding error in a field block MUST be treated as a connection
+    TEXT[!MUST]:    error (Section 5.4.1) of type COMPRESSION_ERROR.
+
+  SECTION: [Compression State](#section-4.3.1)
+    TEXT[!MUST]:    Once an endpoint acknowledges a change to SETTINGS_HEADER_TABLE_SIZE
+    TEXT[!MUST]:    that reduces the maximum below the current size of the dynamic table,
+    TEXT[!MUST]:    its HPACK encoder MUST start the next field block with a Dynamic
+    TEXT[!MUST]:    Table Size Update instruction that sets the dynamic table to a size
+    TEXT[!MUST]:    that is less than or equal to the reduced maximum; see Section 4.2 of
+    TEXT[!MUST]:    [COMPRESSION].
+    TEXT[!MUST]: An endpoint MUST treat a field block that follows an
+    TEXT[!MUST]:    acknowledgment of the reduction to the maximum dynamic table size as
+    TEXT[!MUST]:    a connection error (Section 5.4.1) of type COMPRESSION_ERROR if it
+    TEXT[!MUST]:    does not start with a conformant Dynamic Table Size Update
+    TEXT[!MUST]:    instruction.
+
+  SECTION: [Stream States](#section-5.1)
+    TEXT[!MUST]:       Receiving any frame other than HEADERS or PRIORITY on a stream in
+    TEXT[!MUST]:       this state MUST be treated as a connection error (Section 5.4.1)
+    TEXT[!MUST]:       of type PROTOCOL_ERROR.
+    TEXT[!MUST]: If this stream is initiated by the
+    TEXT[!MUST]:       server, as described in Section 5.1.1, then receiving a HEADERS
+    TEXT[!MUST]:       frame MUST also be treated as a connection error (Section 5.4.1)
+    TEXT[!MUST]:       of type PROTOCOL_ERROR.
+    TEXT[!MUST]:       An endpoint MUST NOT send any type of frame other than HEADERS,
+    TEXT[!MUST]:       RST_STREAM, or PRIORITY in this state.
+    TEXT[!MAY]:       A PRIORITY or WINDOW_UPDATE frame MAY be received in this state.
+    TEXT[!MUST]:       Receiving any type of frame other than RST_STREAM, PRIORITY, or
+    TEXT[!MUST]:       WINDOW_UPDATE on a stream in this state MUST be treated as a
+    TEXT[!MUST]:       connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:       An endpoint MUST NOT send any type of frame other than RST_STREAM,
+    TEXT[!MUST]:       WINDOW_UPDATE, or PRIORITY in this state.
+    TEXT[!MUST]:       Receiving any type of frame other than HEADERS, RST_STREAM, or
+    TEXT[!MUST]:       PRIORITY on a stream in this state MUST be treated as a connection
+    TEXT[!MUST]:       error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:       If an endpoint receives additional frames, other than
+    TEXT[!MUST]:       WINDOW_UPDATE, PRIORITY, or RST_STREAM, for a stream that is in
+    TEXT[!MUST]:       this state, it MUST respond with a stream error (Section 5.4.2) of
+    TEXT[!MUST]:       type STREAM_CLOSED.
+    TEXT[!MUST]:       An endpoint MUST NOT send frames other than PRIORITY on a closed
+    TEXT[!MUST]:       stream.
+    TEXT[!MAY]: An endpoint MAY treat receipt of any other type of frame
+    TEXT[!MAY]:       on a closed stream as a connection error (Section 5.4.1) of type
+    TEXT[!MAY]:       STREAM_CLOSED, except as noted below.
+    TEXT[!MUST]: An endpoint MUST
+    TEXT[!MUST]:       minimally process and then discard any frames it receives in this
+    TEXT[!MUST]:       state.
+    TEXT[!MAY]: Endpoints MAY use other signals
+    TEXT[!MAY]:       to detect that a peer has received the frames that caused the
+    TEXT[!MAY]:       stream to enter the "closed" state and treat receipt of any frame
+    TEXT[!MAY]:       other than PRIORITY as a connection error (Section 5.4.1) of type
+    TEXT[!MAY]:       PROTOCOL_ERROR.
+    TEXT[!SHOULD]: Endpoints
+    TEXT[!SHOULD]:       SHOULD NOT use timers for this purpose.
+    TEXT[!SHOULD]:    In the absence of more specific rules, implementations SHOULD treat
+    TEXT[!SHOULD]:    the receipt of a frame that is not expressly permitted in the
+    TEXT[!SHOULD]:    description of a state as a connection error (Section 5.4.1) of type
+    TEXT[!SHOULD]:    PROTOCOL_ERROR.
+
+  SECTION: [Stream Identifiers](#section-5.1.1)
+    TEXT[!MUST]: Streams
+    TEXT[!MUST]:    initiated by a client MUST use odd-numbered stream identifiers; those
+    TEXT[!MUST]:    initiated by the server MUST use even-numbered stream identifiers.
+    TEXT[!MUST]:    The identifier of a newly established stream MUST be numerically
+    TEXT[!MUST]:    greater than all streams that the initiating endpoint has opened or
+    TEXT[!MUST]:    reserved.
+    TEXT[!MUST]: An endpoint that
+    TEXT[!MUST]:    receives an unexpected stream identifier MUST respond with a
+    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+  SECTION: [Stream Concurrency](#section-5.1.2)
+    TEXT[!MUST]:    Endpoints MUST NOT exceed the limit set by their peer.
+    TEXT[!MUST]: An endpoint
+    TEXT[!MUST]:    that receives a HEADERS frame that causes its advertised concurrent
+    TEXT[!MUST]:    stream limit to be exceeded MUST treat this as a stream error
+    TEXT[!MUST]:    (Section 5.4.2) of type PROTOCOL_ERROR or REFUSED_STREAM.
+
+  SECTION: [Flow-Control Principles](#section-5.2.1)
+    TEXT[!MAY]: A receiver MAY choose to set any window size that it
+    TEXT[!MAY]:        desires for each stream and for the entire connection.
+    TEXT[!MUST]: A sender
+    TEXT[!MUST]:        MUST respect flow-control limits imposed by a receiver.
+
+  SECTION: [Appropriate Use of Flow Control](#section-5.2.2)
+    TEXT[!MUST]: Endpoints MUST read
+    TEXT[!MUST]:    and process HTTP/2 frames from the TCP receive buffer as soon as data
+    TEXT[!MUST]:    is available.
+
+  SECTION: [Priority Signaling in This Document](#section-5.3.2)
+    TEXT[!SHOULD]:    Servers SHOULD use other contextual information in determining
+    TEXT[!SHOULD]:    priority of requests in the absence of any priority signals.
+    TEXT[!MAY]: Servers
+    TEXT[!MAY]:    MAY interpret the complete absence of signals as an indication that
+    TEXT[!MAY]:    the client has not implemented the feature.
+
+  SECTION: [Error Handling](#section-5.4)
+    TEXT[!SHOULD]: Implementations MAY discover multiple errors
+    TEXT[!SHOULD]:    during processing, but they SHOULD report at most one stream and one
+    TEXT[!SHOULD]:    connection error as a result.
+    TEXT[!SHOULD]: In comparison, the
+    TEXT[!SHOULD]:    protocol permits multiple GOAWAY frames, though an endpoint SHOULD
+    TEXT[!SHOULD]:    report just one type of connection error unless an error is
+    TEXT[!SHOULD]:    encountered during graceful shutdown.
+    TEXT[!MAY]: If this occurs, an endpoint
+    TEXT[!MAY]:    MAY send an additional GOAWAY frame with the new error code, in
+    TEXT[!MAY]:    addition to any prior GOAWAY that contained NO_ERROR.
+    TEXT[!MAY]:    If an endpoint detects multiple different errors, it MAY choose to
+    TEXT[!MAY]:    report any one of those errors.
+    TEXT[!MUST]: If a frame causes a connection
+    TEXT[!MUST]:    error, that error MUST be reported.
+    TEXT[!MAY]: Additionally, an endpoint MAY
+    TEXT[!MAY]:    use any applicable error code when it detects an error condition; a
+    TEXT[!MAY]:    generic error code (such as PROTOCOL_ERROR or INTERNAL_ERROR) can
+    TEXT[!MAY]:    always be used in place of more specific error codes.
+
+  SECTION: [Connection Error Handling](#section-5.4.1)
+    TEXT[!SHOULD]:    An endpoint that encounters a connection error SHOULD first send a
+    TEXT[!SHOULD]:    GOAWAY frame (Section 6.8) with the stream identifier of the last
+    TEXT[!SHOULD]:    stream that it successfully received from its peer.
+    TEXT[!MUST]: After sending the GOAWAY frame for an error
+    TEXT[!MUST]:    condition, the endpoint MUST close the TCP connection.
+    TEXT[!MAY]: In particular, an
+    TEXT[!MAY]:    endpoint MAY choose to treat a stream error as a connection error.
+    TEXT[!SHOULD]:    Endpoints SHOULD send a GOAWAY frame when ending a connection,
+    TEXT[!SHOULD]:    providing that circumstances permit it.
+
+  SECTION: [Stream Error Handling](#section-5.4.2)
+    TEXT[!MUST]:    The peer that sends the RST_STREAM frame MUST be prepared to receive
+    TEXT[!MUST]:    any frames that were sent or enqueued for sending by the remote peer.
+    TEXT[!SHOULD]:    Normally, an endpoint SHOULD NOT send more than one RST_STREAM frame
+    TEXT[!SHOULD]:    for any stream.
+    TEXT[!MAY]: However, an endpoint MAY send additional RST_STREAM
+    TEXT[!MAY]:    frames if it receives frames on a closed stream after more than a
+    TEXT[!MAY]:    round-trip time.
+    TEXT[!MUST]:    To avoid looping, an endpoint MUST NOT send a RST_STREAM in response
+    TEXT[!MUST]:    to a RST_STREAM frame.
+
+  SECTION: [Extending HTTP/2](#section-5.5)
+    TEXT[!MUST]:    Implementations MUST ignore unknown or unsupported values in all
+    TEXT[!MUST]:    extensible protocol elements.
+    TEXT[!MUST]: Implementations MUST discard frames
+    TEXT[!MUST]:    that have unknown or unsupported types.
+    TEXT[!MUST]: However, extension frames that appear in
+    TEXT[!MUST]:    the middle of a field block (Section 4.3) are not permitted; these
+    TEXT[!MUST]:    MUST be treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!SHOULD]:    Extensions SHOULD avoid changing protocol elements defined in this
+    TEXT[!SHOULD]:    document or elements for which no extension mechanism is defined.
+    TEXT[!MUST]:    An extension that changes existing protocol elements or state MUST be
+    TEXT[!MUST]:    negotiated before being used.
+    TEXT[!MUST]: If
+    TEXT[!MUST]:    a setting is used for extension negotiation, the initial value MUST
+    TEXT[!MUST]:    be defined in such a fashion that the extension is initially
+    TEXT[!MUST]:    disabled.
+
+  SECTION: [DATA](#section-6.1)
+    TEXT[!MAY]:    DATA frames MAY also contain padding.
+    TEXT[!MUST]:       Padding octets MUST be set to zero when sending.
+    TEXT[!MAY]: A receiver is
+    TEXT[!MAY]:       not obligated to verify padding but MAY treat non-zero padding as
+    TEXT[!MAY]:       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:    DATA frames MUST be associated with a stream.
+    TEXT[!MUST]: If a DATA frame is
+    TEXT[!MUST]:    received whose Stream Identifier field is 0x00, the recipient MUST
+    TEXT[!MUST]:    respond with a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST]: If a DATA frame is received
+    TEXT[!MUST]:    whose stream is not in the "open" or "half-closed (local)" state, the
+    TEXT[!MUST]:    recipient MUST respond with a stream error (Section 5.4.2) of type
+    TEXT[!MUST]:    STREAM_CLOSED.
+    TEXT[!MUST]: If the length of the padding is the length of the
+    TEXT[!MUST]:    frame payload or greater, the recipient MUST treat this as a
+    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+  SECTION: [HEADERS](#section-6.2)
+    TEXT[!MUST]:       Padding octets MUST be set to zero when sending.
+    TEXT[!MAY]: A receiver is
+    TEXT[!MAY]:       not obligated to verify padding but MAY treat non-zero padding as
+    TEXT[!MAY]:       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:       A HEADERS frame without the END_HEADERS flag set MUST be followed
+    TEXT[!MUST]:       by a CONTINUATION frame for the same stream.
+    TEXT[!MUST]: A receiver MUST
+    TEXT[!MUST]:       treat the receipt of any other type of frame or a frame on a
+    TEXT[!MUST]:       different stream as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:       PROTOCOL_ERROR.
+    TEXT[!MUST]:    HEADERS frames MUST be associated with a stream.
+    TEXT[!MUST]: If a HEADERS frame
+    TEXT[!MUST]:    is received whose Stream Identifier field is 0x00, the recipient MUST
+    TEXT[!MUST]:    respond with a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST]: If the length of the padding is the length of the
+    TEXT[!MUST]:    frame payload or greater, the recipient MUST treat this as a
+    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+  SECTION: [PRIORITY](#section-6.3)
+    TEXT[!MUST]: If a PRIORITY frame
+    TEXT[!MUST]:    is received with a stream identifier of 0x00, the recipient MUST
+    TEXT[!MUST]:    respond with a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST]:    A PRIORITY frame with a length other than 5 octets MUST be treated as
+    TEXT[!MUST]:    a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+
+  SECTION: [RST_STREAM](#section-6.4)
+    TEXT[!MUST]: After receiving a RST_STREAM
+    TEXT[!MUST]:    on a stream, the receiver MUST NOT send additional frames for that
+    TEXT[!MUST]:    stream, except for PRIORITY.
+    TEXT[!MUST]: However, after sending the RST_STREAM,
+    TEXT[!MUST]:    the sending endpoint MUST be prepared to receive and process
+    TEXT[!MUST]:    additional frames sent on the stream that might have been sent by the
+    TEXT[!MUST]:    peer prior to the arrival of the RST_STREAM.
+    TEXT[!MUST]:    RST_STREAM frames MUST be associated with a stream.
+    TEXT[!MUST]: If a RST_STREAM
+    TEXT[!MUST]:    frame is received with a stream identifier of 0x00, the recipient
+    TEXT[!MUST]:    MUST treat this as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST]:    RST_STREAM frames MUST NOT be sent for a stream in the "idle" state.
+    TEXT[!MUST]:    If a RST_STREAM frame identifying an idle stream is received, the
+    TEXT[!MUST]:    recipient MUST treat this as a connection error (Section 5.4.1) of
+    TEXT[!MUST]:    type PROTOCOL_ERROR.
+    TEXT[!MUST]:    A RST_STREAM frame with a length other than 4 octets MUST be treated
+    TEXT[!MUST]:    as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+
+  SECTION: [SETTINGS](#section-6.5)
+    TEXT[!MUST]:    A SETTINGS frame MUST be sent by both endpoints at the start of a
+    TEXT[!MUST]:    connection and MAY be sent at any other time by either endpoint over
+    TEXT[!MUST]:    the lifetime of the connection.
+    TEXT[!MUST]: Implementations MUST support all of
+    TEXT[!MUST]:    the settings defined by this specification.
+    TEXT[!MUST]:       When this bit is set, the frame payload of the SETTINGS frame MUST
+    TEXT[!MUST]:       be empty.
+    TEXT[!MUST]: Receipt of a SETTINGS frame with the ACK flag set and a
+    TEXT[!MUST]:       length field value other than 0 MUST be treated as a connection
+    TEXT[!MUST]:       error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+    TEXT[!MUST]:    The stream identifier for a SETTINGS frame MUST be zero (0x00).
+    TEXT[!MUST]: If
+    TEXT[!MUST]:    an endpoint receives a SETTINGS frame whose Stream Identifier field
+    TEXT[!MUST]:    is anything other than 0x00, the endpoint MUST respond with a
+    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]: A badly formed or
+    TEXT[!MUST]:    incomplete SETTINGS frame MUST be treated as a connection error
+    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:    A SETTINGS frame with a length other than a multiple of 6 octets MUST
+    TEXT[!MUST]:    be treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    FRAME_SIZE_ERROR.
+
+  SECTION: [Defined Settings](#section-6.5.2)
+    TEXT[!MUST,exception]: A server MUST NOT send a PUSH_PROMISE frame
+    TEXT[!MUST,exception]:       if it receives this parameter set to a value of 0; see
+    TEXT[!MUST,exception]:       Section 8.4.
+    TEXT[!MUST,exception]: A client that has both set this parameter to 0 and
+    TEXT[!MUST,exception]:       had it acknowledged MUST treat the receipt of a PUSH_PROMISE frame
+    TEXT[!MUST,exception]:       as a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]: Any value other than 0 or 1 MUST be
+    TEXT[!MUST]:       treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:       PROTOCOL_ERROR.
+    TEXT[!MUST]:       A server MUST NOT explicitly set this value to 1.
+    TEXT[!MUST]: A server MAY
+    TEXT[!MUST]:       choose to omit this setting when it sends a SETTINGS frame, but if
+    TEXT[!MUST]:       a server does include a value, it MUST be 0.
+    TEXT[!MUST,exception]: A client MUST treat
+    TEXT[!MUST,exception]:       receipt of a SETTINGS frame with SETTINGS_ENABLE_PUSH set to 1 as
+    TEXT[!MUST,exception]:       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!SHOULD]:       A value of 0 for SETTINGS_MAX_CONCURRENT_STREAMS SHOULD NOT be
+    TEXT[!SHOULD]:       treated as special by endpoints.
+    TEXT[!SHOULD]: Servers SHOULD only
+    TEXT[!SHOULD]:       set a zero value for short durations; if a server does not wish to
+    TEXT[!SHOULD]:       accept requests, closing the connection is more appropriate.
+    TEXT[!MUST]:       Values above the maximum flow-control window size of 2^31-1 MUST
+    TEXT[!MUST]:       be treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:       FLOW_CONTROL_ERROR.
+    TEXT[!MUST]: The value advertised
+    TEXT[!MUST]:       by an endpoint MUST be between this initial value and the maximum
+    TEXT[!MUST]:       allowed frame size (2^24-1 or 16,777,215 octets), inclusive.
+    TEXT[!MUST]:       Values outside this range MUST be treated as a connection error
+    TEXT[!MUST]:       (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MAY]:       For any given request, a lower limit than what is advertised MAY
+    TEXT[!MAY]:       be enforced.
+    TEXT[!MUST]:    An endpoint that receives a SETTINGS frame with any unknown or
+    TEXT[!MUST]:    unsupported identifier MUST ignore that setting.
+
+  SECTION: [Settings Synchronization](#section-6.5.3)
+    TEXT[!MUST]:    In order to provide such synchronization timepoints, the recipient of
+    TEXT[!MUST]:    a SETTINGS frame in which the ACK flag is not set MUST apply the
+    TEXT[!MUST]:    updated settings as soon as possible upon receipt.
+    TEXT[!MUST]:    The values in the SETTINGS frame MUST be processed in the order they
+    TEXT[!MUST]:    appear, with no other frame processing between values.
+    TEXT[!MUST]: Unsupported
+    TEXT[!MUST]:    settings MUST be ignored.
+    TEXT[!MUST]: Once all values have been processed, the
+    TEXT[!MUST]:    recipient MUST immediately emit a SETTINGS frame with the ACK flag
+    TEXT[!MUST]:    set.
+    TEXT[!MAY]:    If the sender of a SETTINGS frame does not receive an acknowledgment
+    TEXT[!MAY]:    within a reasonable amount of time, it MAY issue a connection error
+    TEXT[!MAY]:    (Section 5.4.1) of type SETTINGS_TIMEOUT.
+
+  SECTION: [PUSH_PROMISE](#section-6.6)
+    TEXT[!MUST,exception]: The promised stream
+    TEXT[!MUST,exception]:       identifier MUST be a valid choice for the next stream sent by the
+    TEXT[!MUST,exception]:       sender (see "new stream identifier" in Section 5.1.1).
+    TEXT[!MUST]:       Padding octets MUST be set to zero when sending.
+    TEXT[!MAY]: A receiver is
+    TEXT[!MAY]:       not obligated to verify padding but MAY treat non-zero padding as
+    TEXT[!MAY]:       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,exception]:       A PUSH_PROMISE frame without the END_HEADERS flag set MUST be
+    TEXT[!MUST,exception]:       followed by a CONTINUATION frame for the same stream.
+    TEXT[!MUST]: A receiver
+    TEXT[!MUST]:       MUST treat the receipt of any other type of frame or a frame on a
+    TEXT[!MUST]:       different stream as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:       PROTOCOL_ERROR.
+    TEXT[!MUST,exception]:    PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that
+    TEXT[!MUST,exception]:    is in either the "open" or "half-closed (remote)" state.
+    TEXT[!MUST]: If the Stream Identifier field specifies the value
+    TEXT[!MUST]:    0x00, a recipient MUST respond with a connection error
+    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,exception]:    PUSH_PROMISE MUST NOT be sent if the SETTINGS_ENABLE_PUSH setting of
+    TEXT[!MUST,exception]:    the peer endpoint is set to 0.
+    TEXT[!MUST]: An endpoint that has set this setting
+    TEXT[!MUST]:    and has received acknowledgment MUST treat the receipt of a
+    TEXT[!MUST]:    PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST,exception]: A sender MUST NOT send a PUSH_PROMISE on a stream
+    TEXT[!MUST,exception]:    unless that stream is either "open" or "half-closed (remote)"; the
+    TEXT[!MUST,exception]:    sender MUST ensure that the promised stream is a valid choice for a
+    TEXT[!MUST,exception]:    new stream identifier (Section 5.1.1) (that is, the promised stream
+    TEXT[!MUST,exception]:    MUST be in the "idle" state).
+    TEXT[!MUST]: A receiver MUST
+    TEXT[!MUST]:    treat the receipt of a PUSH_PROMISE on a stream that is neither
+    TEXT[!MUST]:    "open" nor "half-closed (local)" as a connection error
+    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,exception]: However, an endpoint that
+    TEXT[!MUST,exception]:    has sent RST_STREAM on the associated stream MUST handle PUSH_PROMISE
+    TEXT[!MUST,exception]:    frames that might have been created before the RST_STREAM frame is
+    TEXT[!MUST,exception]:    received and processed.
+    TEXT[!MUST]:    A receiver MUST treat the receipt of a PUSH_PROMISE that promises an
+    TEXT[!MUST]:    illegal stream identifier (Section 5.1.1) as a connection error
+    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]: If the length of the padding is the length of the
+    TEXT[!MUST]:    frame payload or greater, the recipient MUST treat this as a
+    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+  SECTION: [PING](#section-6.7)
+    TEXT[!MUST]:    In addition to the frame header, PING frames MUST contain 8 octets of
+    TEXT[!MUST]:    opaque data in the frame payload.
+    TEXT[!MUST]:    Receivers of a PING frame that does not include an ACK flag MUST send
+    TEXT[!MUST]:    a PING frame with the ACK flag set in response, with an identical
+    TEXT[!MUST]:    frame payload.
+    TEXT[!SHOULD]: PING responses SHOULD be given higher priority than
+    TEXT[!SHOULD]:    any other frame.
+    TEXT[!MUST]: An endpoint MUST set this flag in PING
+    TEXT[!MUST]:       responses.
+    TEXT[!MUST]: An endpoint MUST NOT respond to PING frames containing
+    TEXT[!MUST]:       this flag.
+    TEXT[!MUST]: If a PING
+    TEXT[!MUST]:    frame is received with a Stream Identifier field value other than
+    TEXT[!MUST]:    0x00, the recipient MUST respond with a connection error
+    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:    Receipt of a PING frame with a length field value other than 8 MUST
+    TEXT[!MUST]:    be treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    FRAME_SIZE_ERROR.
+
+  SECTION: [GOAWAY](#section-6.8)
+    TEXT[!MUST]: Receivers of a
+    TEXT[!MUST]:    GOAWAY frame MUST NOT open additional streams on the connection,
+    TEXT[!MUST]:    although a new connection can be established for new streams.
+    TEXT[!SHOULD]:    Endpoints SHOULD always send a GOAWAY frame before closing a
+    TEXT[!SHOULD]:    connection so that the remote peer can know whether a stream has been
+    TEXT[!SHOULD]:    partially processed or not.
+    TEXT[!SHOULD]:    A GOAWAY frame might not immediately precede closing of the
+    TEXT[!SHOULD]:    connection; a receiver of a GOAWAY that has no more use for the
+    TEXT[!SHOULD]:    connection SHOULD still send a GOAWAY frame before terminating the
+    TEXT[!SHOULD]:    connection.
+    TEXT[!MUST]:    An endpoint MUST treat a GOAWAY frame with a stream identifier other
+    TEXT[!MUST]:    than 0x00 as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MAY]:    An endpoint MAY send multiple GOAWAY frames if circumstances change.
+    TEXT[!MUST]: Endpoints MUST NOT increase the
+    TEXT[!MUST]:    value they send in the last stream identifier, since the peers might
+    TEXT[!MUST]:    already have retried unprocessed requests on another connection.
+    TEXT[!SHOULD]: A server that is attempting to gracefully shut down a
+    TEXT[!SHOULD]:    connection SHOULD send an initial GOAWAY frame with the last stream
+    TEXT[!SHOULD]:    identifier set to 2^31-1 and a NO_ERROR code.
+    TEXT[!MAY]: After allowing time for any in-flight stream
+    TEXT[!MAY]:    creation (at least one round-trip time), the server MAY send another
+    TEXT[!MAY]:    GOAWAY frame with an updated last stream identifier.
+    TEXT[!MUST]: For instance, HEADERS,
+    TEXT[!MUST]:    PUSH_PROMISE, and CONTINUATION frames MUST be minimally processed to
+    TEXT[!MUST]:    ensure that the state maintained for field section compression is
+    TEXT[!MUST]:    consistent (see Section 4.3); similarly, DATA frames MUST be counted
+    TEXT[!MUST]:    toward the connection flow-control window.
+    TEXT[!MAY]:    Endpoints MAY append opaque data to the frame payload of any GOAWAY
+    TEXT[!MAY]:    frame.
+    TEXT[!MUST]: Logged or otherwise
+    TEXT[!MUST]:    persistently stored debug data MUST have adequate safeguards to
+    TEXT[!MUST]:    prevent unauthorized access.
+
+  SECTION: [WINDOW_UPDATE](#section-6.9)
+    TEXT[!MUST]: Frames that are exempt
+    TEXT[!MUST]:    from flow control MUST be accepted and processed, unless the receiver
+    TEXT[!MUST]:    is unable to assign resources to handling the frame.
+    TEXT[!MAY]: A receiver MAY
+    TEXT[!MAY]:    respond with a stream error (Section 5.4.2) or connection error
+    TEXT[!MAY]:    (Section 5.4.1) of type FLOW_CONTROL_ERROR if it is unable to accept
+    TEXT[!MAY]:    a frame.
+    TEXT[!MUST]:    A receiver MUST treat the receipt of a WINDOW_UPDATE frame with a
+    TEXT[!MUST]:    flow-control window increment of 0 as a stream error (Section 5.4.2)
+    TEXT[!MUST]:    of type PROTOCOL_ERROR; errors on the connection flow-control window
+    TEXT[!MUST]:    MUST be treated as a connection error (Section 5.4.1).
+    TEXT[!MUST]: A receiver MUST NOT treat this as an error (see
+    TEXT[!MUST]:    Section 5.1).
+    TEXT[!MUST]:    A receiver that receives a flow-controlled frame MUST always account
+    TEXT[!MUST]:    for its contribution against the connection flow-control window,
+    TEXT[!MUST]:    unless the receiver treats this as a connection error
+    TEXT[!MUST]:    (Section 5.4.1).
+    TEXT[!MUST]:    A WINDOW_UPDATE frame with a length other than 4 octets MUST be
+    TEXT[!MUST]:    treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    FRAME_SIZE_ERROR.
+
+  SECTION: [The Flow-Control Window](#section-6.9.1)
+    TEXT[!MUST]: The sender MUST NOT
+    TEXT[!MUST]:    send a flow-controlled frame with a length that exceeds the space
+    TEXT[!MUST]:    available in either of the flow-control windows advertised by the
+    TEXT[!MUST]:    receiver.
+    TEXT[!MAY]: Frames with zero length with the END_STREAM flag set (that
+    TEXT[!MAY]:    is, an empty DATA frame) MAY be sent if there is no available space
+    TEXT[!MAY]:    in either flow-control window.
+    TEXT[!MUST]:    A sender MUST NOT allow a flow-control window to exceed 2^31-1
+    TEXT[!MUST]:    octets.
+    TEXT[!MUST]: If a sender receives a WINDOW_UPDATE that causes a flow-
+    TEXT[!MUST]:    control window to exceed this maximum, it MUST terminate either the
+    TEXT[!MUST]:    stream or the connection, as appropriate.
+
+  SECTION: [Initial Flow-Control Window Size](#section-6.9.2)
+    TEXT[!MUST]: When the
+    TEXT[!MUST]:    value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
+    TEXT[!MUST]:    the size of all stream flow-control windows that it maintains by the
+    TEXT[!MUST]:    difference between the new value and the old value.
+    TEXT[!MUST]: A sender MUST
+    TEXT[!MUST]:    track the negative flow-control window and MUST NOT send new flow-
+    TEXT[!MUST]:    controlled frames until it receives WINDOW_UPDATE frames that cause
+    TEXT[!MUST]:    the flow-control window to become positive.
+    TEXT[!MUST]:    An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
+    TEXT[!MUST]:    causes any flow-control window to exceed the maximum size as a
+    TEXT[!MUST]:    connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
+
+  SECTION: [Reducing the Stream Window Size](#section-6.9.3)
+    TEXT[!MUST]: However, the receiver
+    TEXT[!MUST]:    MUST be prepared to receive data that exceeds this window size, since
+    TEXT[!MUST]:    the sender might send data that exceeds the lower limit prior to
+    TEXT[!MUST]:    processing the SETTINGS frame.
+    TEXT[!MAY]:    After sending a SETTINGS frame that reduces the initial flow-control
+    TEXT[!MAY]:    window size, a receiver MAY continue to process streams that exceed
+    TEXT[!MAY]:    flow-control limits.
+    TEXT[!MAY]: The receiver MAY instead send a RST_STREAM with an error
+    TEXT[!MAY]:    code of FLOW_CONTROL_ERROR for the affected streams.
+
+  SECTION: [CONTINUATION](#section-6.10)
+    TEXT[!MUST]:       If the END_HEADERS flag is not set, this frame MUST be followed by
+    TEXT[!MUST]:       another CONTINUATION frame.
+    TEXT[!MUST]: A receiver MUST treat the receipt of
+    TEXT[!MUST]:       any other type of frame or a frame on a different stream as a
+    TEXT[!MUST]:       connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:    CONTINUATION frames MUST be associated with a stream.
+    TEXT[!MUST]: If a
+    TEXT[!MUST]:    CONTINUATION frame is received with a Stream Identifier field of
+    TEXT[!MUST]:    0x00, the recipient MUST respond with a connection error
+    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:    A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
+    TEXT[!MUST]:    CONTINUATION frame without the END_HEADERS flag set.
+    TEXT[!MUST]: A recipient
+    TEXT[!MUST]:    that observes violation of this rule MUST respond with a connection
+    TEXT[!MUST]:    error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+  SECTION: [Error Codes](#section-7)
+    TEXT[!MUST]:    Unknown or unsupported error codes MUST NOT trigger any special
+    TEXT[!MUST]:    behavior.
+    TEXT[!MAY]: These MAY be treated by an implementation as being
+    TEXT[!MAY]:    equivalent to INTERNAL_ERROR.
+
+  SECTION: [HTTP Message Framing](#section-8.1)
+    TEXT[!MAY]:    For a response only, a server MAY send any number of interim
+    TEXT[!MAY]:    responses before the HEADERS frame containing a final response.
+    TEXT[!MUST]:    Other frames (from any stream) MUST NOT occur between the HEADERS
+    TEXT[!MUST]:    frame and any CONTINUATION frames that might follow.
+    TEXT[!MUST]: Trailers MUST NOT
+    TEXT[!MUST]:    include pseudo-header fields (Section 8.3).
+    TEXT[!MUST]: An endpoint that
+    TEXT[!MUST]:    receives pseudo-header fields in trailers MUST treat the request or
+    TEXT[!MUST]:    response as malformed (Section 8.1.1).
+    TEXT[!MUST]:    An endpoint that receives a HEADERS frame without the END_STREAM flag
+    TEXT[!MUST]:    set after receiving the HEADERS frame that opens a request or after
+    TEXT[!MUST]:    receiving a final (non-informational) status code MUST treat the
+    TEXT[!MUST]:    corresponding request or response as malformed (Section 8.1.1).
+    TEXT[!MAY]: When this is true, a server MAY
+    TEXT[!MAY]:    request that the client abort transmission of a request without error
+    TEXT[!MAY]:    by sending a RST_STREAM with an error code of NO_ERROR after sending
+    TEXT[!MAY]:    a complete response (i.e., a frame with the END_STREAM flag set).
+    TEXT[!MUST,exception]:    Clients MUST NOT discard responses as a result of receiving such a
+    TEXT[!MUST,exception]:    RST_STREAM, though clients can always discard responses at their
+    TEXT[!MUST,exception]:    discretion for other reasons.
+
+  SECTION: [Malformed Messages](#section-8.1.1)
+    TEXT[!MAY]:    A response that is defined to have no content, as described in
+    TEXT[!MAY]:    Section 6.4.1 of [HTTP], MAY have a non-zero content-length header
+    TEXT[!MAY]:    field, even though no content is included in DATA frames.
+    TEXT[!MUST,exception]:    Intermediaries that process HTTP requests or responses (i.e., any
+    TEXT[!MUST,exception]:    intermediary not acting as a tunnel) MUST NOT forward a malformed
+    TEXT[!MUST,exception]:    request or response.
+    TEXT[!MUST]: Malformed requests or responses that are
+    TEXT[!MUST]:    detected MUST be treated as a stream error (Section 5.4.2) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MAY]:    For malformed requests, a server MAY send an HTTP response prior to
+    TEXT[!MAY]:    closing or resetting the stream.
+    TEXT[!MUST,exception]: Clients MUST NOT accept a malformed
+    TEXT[!MUST,exception]:    response.
+    TEXT[!MAY]: A server MAY generate a final response
+    TEXT[!MAY]:    before receiving an entire request when the response does not depend
+    TEXT[!MAY]:    on the remainder of the request being correct.
+
+  SECTION: [HTTP Fields](#section-8.2)
+    TEXT[!MUST]:    Field names MUST be converted to lowercase when constructing an
+    TEXT[!MUST]:    HTTP/2 message.
+
+  SECTION: [Field Validity](#section-8.2.1)
+    TEXT[!SHOULD]: HTTP/2
+    TEXT[!SHOULD]:    implementations SHOULD validate field names and values according to
+    TEXT[!SHOULD]:    their definitions in Sections 5.1 and 5.5 of [HTTP], respectively,
+    TEXT[!SHOULD]:    and treat messages that contain prohibited characters as malformed
+    TEXT[!SHOULD]:    (Section 8.1.1).
+    TEXT[!MUST]: Implementations MUST perform the following minimal
+    TEXT[!MUST]:    validation of field names and values:
+    TEXT[!MUST]:    *  A field name MUST NOT contain characters in the ranges 0x00-0x20,
+    TEXT[!MUST]:       0x41-0x5a, or 0x7f-0xff (all ranges inclusive).
+    TEXT[!MUST]:    *  With the exception of pseudo-header fields (Section 8.3), which
+    TEXT[!MUST]:       have a name that starts with a single colon, field names MUST NOT
+    TEXT[!MUST]:       include a colon (ASCII COLON, 0x3a).
+    TEXT[!MUST]:    *  A field value MUST NOT contain the zero value (ASCII NUL, 0x00),
+    TEXT[!MUST]:       line feed (ASCII LF, 0x0a), or carriage return (ASCII CR, 0x0d) at
+    TEXT[!MUST]:       any position.
+    TEXT[!MUST]:    *  A field value MUST NOT start or end with an ASCII whitespace
+    TEXT[!MUST]:       character (ASCII SP or HTAB, 0x20 or 0x09).
+    TEXT[!MUST]:    A request or response that contains a field that violates any of
+    TEXT[!MUST]:    these conditions MUST be treated as malformed (Section 8.1.1).
+    TEXT[!MUST,exception]: In
+    TEXT[!MUST,exception]:    particular, an intermediary that does not process fields when
+    TEXT[!MUST,exception]:    forwarding messages MUST NOT forward fields that contain any of the
+    TEXT[!MUST,exception]:    values that are listed as prohibited above.
+    TEXT[!SHOULD]:    When a request message violates one of these requirements, an
+    TEXT[!SHOULD]:    implementation SHOULD generate a 400 (Bad Request) status code (see
+    TEXT[!SHOULD]:    Section 15.5.1 of [HTTP]), unless a more suitable status code is
+    TEXT[!SHOULD]:    defined or the status code cannot be sent (e.g., because the error
+    TEXT[!SHOULD]:    occurs in a trailer field).
+
+  SECTION: [Connection-Specific Header Fields](#section-8.2.2)
+    TEXT[!MUST]:    An endpoint MUST NOT generate an HTTP/2 message containing
+    TEXT[!MUST]:    connection-specific header fields.
+    TEXT[!MUST]: Any message containing connection-
+    TEXT[!MUST]:    specific header fields MUST be treated as malformed (Section 8.1.1).
+    TEXT[!MUST]:    The only exception to this is the TE header field, which MAY be
+    TEXT[!MUST]:    present in an HTTP/2 request; when it is, it MUST NOT contain any
+    TEXT[!MUST]:    value other than "trailers".
+    TEXT[!MUST,exception]:    An intermediary transforming an HTTP/1.x message to HTTP/2 MUST
+    TEXT[!MUST,exception]:    remove connection-specific header fields as discussed in
+    TEXT[!MUST,exception]:    Section 7.6.1 of [HTTP], or their messages will be treated by other
+    TEXT[!MUST,exception]:    HTTP/2 endpoints as malformed (Section 8.1.1).
+
+  SECTION: [Compressing the Cookie Header Field](#section-8.2.3)
+    TEXT[!MAY]:    To allow for better compression efficiency, the Cookie header field
+    TEXT[!MAY]:    MAY be split into separate header fields, each with one or more
+    TEXT[!MAY]:    cookie-pairs.
+    TEXT[!MUST]: If there are multiple Cookie header fields after
+    TEXT[!MUST]:    decompression, these MUST be concatenated into a single octet string
+    TEXT[!MUST]:    using the two-octet delimiter of 0x3b, 0x20 (the ASCII string "; ")
+    TEXT[!MUST]:    before being passed into a non-HTTP/2 context, such as an HTTP/1.1
+    TEXT[!MUST]:    connection, or a generic HTTP server application.
+
+  SECTION: [HTTP Control Data](#section-8.3)
+    TEXT[!MUST]: Endpoints MUST NOT
+    TEXT[!MUST]:    generate pseudo-header fields other than those defined in this
+    TEXT[!MUST]:    document.
+    TEXT[!MUST]: Pseudo-header fields defined for requests MUST NOT appear
+    TEXT[!MUST]:    in responses; pseudo-header fields defined for responses MUST NOT
+    TEXT[!MUST]:    appear in requests.
+    TEXT[!MUST]: Pseudo-header fields MUST NOT appear in a
+    TEXT[!MUST]:    trailer section.
+    TEXT[!MUST]: Endpoints MUST treat a request or response that
+    TEXT[!MUST]:    contains undefined or invalid pseudo-header fields as malformed
+    TEXT[!MUST]:    (Section 8.1.1).
+    TEXT[!MUST]:    All pseudo-header fields MUST appear in a field block before all
+    TEXT[!MUST]:    regular field lines.
+    TEXT[!MUST]: Any request or response that contains a pseudo-
+    TEXT[!MUST]:    header field that appears in a field block after a regular field line
+    TEXT[!MUST]:    MUST be treated as malformed (Section 8.1.1).
+    TEXT[!MUST]:    The same pseudo-header field name MUST NOT appear more than once in a
+    TEXT[!MUST]:    field block.
+    TEXT[!MUST]: A field block for an HTTP request or response that
+    TEXT[!MUST]:    contains a repeated pseudo-header field name MUST be treated as
+    TEXT[!MUST]:    malformed (Section 8.1.1).
+
+  SECTION: [Request Pseudo-Header Fields](#section-8.3.1)
+    TEXT[!MUST]: The recipient of an HTTP/2 request MUST NOT use the Host
+    TEXT[!MUST]:       header field to determine the target URI if ":authority" is
+    TEXT[!MUST]:       present.
+    TEXT[!MUST,exception]:       Clients that generate HTTP/2 requests directly MUST use the
+    TEXT[!MUST,exception]:       ":authority" pseudo-header field to convey authority information,
+    TEXT[!MUST,exception]:       unless there is no authority information to convey (in which case
+    TEXT[!MUST,exception]:       it MUST NOT generate ":authority").
+    TEXT[!MUST,exception]:       Clients MUST NOT generate a request with a Host header field that
+    TEXT[!MUST,exception]:       differs from the ":authority" pseudo-header field.
+    TEXT[!SHOULD]: A server
+    TEXT[!SHOULD]:       SHOULD treat a request as malformed if it contains a Host header
+    TEXT[!SHOULD]:       field that identifies an entity that differs from the entity in
+    TEXT[!SHOULD]:       the ":authority" pseudo-header field.
+    TEXT[!MUST]:       An origin server can apply any normalization method, whereas other
+    TEXT[!MUST]:       servers MUST perform scheme-based normalization (see Section 6.2.3
+    TEXT[!MUST]:       of [RFC3986]) of the two fields.
+    TEXT[!MUST,exception]:       An intermediary that forwards a request over HTTP/2 MUST construct
+    TEXT[!MUST,exception]:       an ":authority" pseudo-header field using the authority
+    TEXT[!MUST,exception]:       information from the control data of the original request, unless
+    TEXT[!MUST,exception]:       the original request's target URI does not contain authority
+    TEXT[!MUST,exception]:       information (in which case it MUST NOT generate ":authority").
+    TEXT[!MUST,exception]:       An intermediary that needs to generate a Host header field (which
+    TEXT[!MUST,exception]:       might be necessary to construct an HTTP/1.1 request) MUST use the
+    TEXT[!MUST,exception]:       value from the ":authority" pseudo-header field as the value of
+    TEXT[!MUST,exception]:       the Host field, unless the intermediary also changes the request
+    TEXT[!MUST,exception]:       target.
+    TEXT[!MAY,exception]:       An intermediary that forwards a request over HTTP/2 MAY retain any
+    TEXT[!MAY,exception]:       Host header field.
+    TEXT[!MUST]:       ":authority" MUST NOT include the deprecated userinfo subcomponent
+    TEXT[!MUST]:       for "http" or "https" schemed URIs.
+    TEXT[!MUST]:       This pseudo-header field MUST NOT be empty for "http" or "https"
+    TEXT[!MUST]:       URIs; "http" or "https" URIs that do not contain a path component
+    TEXT[!MUST]:       MUST include a value of '/'.
+    TEXT[!MUST]:       -  an OPTIONS request for an "http" or "https" URI that does not
+    TEXT[!MUST]:          include a path component; these MUST include a ":path" pseudo-
+    TEXT[!MUST]:          header field with a value of '*' (see Section 7.1 of [HTTP]).
+    TEXT[!MUST]:    All HTTP/2 requests MUST include exactly one valid value for the
+    TEXT[!MUST]:    ":method", ":scheme", and ":path" pseudo-header fields, unless they
+    TEXT[!MUST]:    are CONNECT requests (Section 8.5).
+
+  SECTION: [Response Pseudo-Header Fields](#section-8.3.2)
+    TEXT[!MUST]: This pseudo-header field MUST be included in all responses,
+    TEXT[!MUST]:    including interim responses; otherwise, the response is malformed
+    TEXT[!MUST]:    (Section 8.1.1).
+
+  SECTION: [Server Push](#section-8.4)
+    TEXT[!MUST,exception]:    Promised requests MUST be safe (see Section 9.2.1 of [HTTP]) and
+    TEXT[!MUST,exception]:    cacheable (see Section 9.2.3 of [HTTP]).
+    TEXT[!MUST,exception]: Clients that receive a
+    TEXT[!MUST,exception]:    promised request that is not cacheable, that is not known to be safe,
+    TEXT[!MUST,exception]:    or that indicates the presence of request content MUST reset the
+    TEXT[!MUST,exception]:    promised stream with a stream error (Section 5.4.2) of type
+    TEXT[!MUST,exception]:    PROTOCOL_ERROR.
+    TEXT[!MUST,exception]:    Pushed responses that are not cacheable MUST NOT be stored by any
+    TEXT[!MUST,exception]:    HTTP cache.
+    TEXT[!MAY]: They MAY be made available to the application
+    TEXT[!MAY]:    separately.
+    TEXT[!MUST]:    The server MUST include a value in the ":authority" pseudo-header
+    TEXT[!MUST]:    field for which the server is authoritative (see Section 10.1).
+    TEXT[!MUST,exception]:    client MUST treat a PUSH_PROMISE for which the server is not
+    TEXT[!MUST,exception]:    authoritative as a stream error (Section 5.4.2) of type
+    TEXT[!MUST,exception]:    PROTOCOL_ERROR.
+    TEXT[!MUST]: Thus, servers MUST treat the receipt of a
+    TEXT[!MUST]:    PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+
+  SECTION: [Push Requests](#section-8.4.1)
+    TEXT[!MUST,exception]:    The header fields in PUSH_PROMISE and any subsequent CONTINUATION
+    TEXT[!MUST,exception]:    frames MUST be a valid and complete set of request header fields
+    TEXT[!MUST,exception]:    (Section 8.3.1).
+    TEXT[!MUST]: The server MUST include a method in the ":method"
+    TEXT[!MUST]:    pseudo-header field that is safe and cacheable.
+    TEXT[!MUST,exception]: If a client receives
+    TEXT[!MUST,exception]:    a PUSH_PROMISE that does not include a complete and valid set of
+    TEXT[!MUST,exception]:    header fields or the ":method" pseudo-header field identifies a
+    TEXT[!MUST,exception]:    method that is not safe, it MUST respond on the promised stream with
+    TEXT[!MUST,exception]:    a stream error (Section 5.4.2) of type PROTOCOL_ERROR.
+    TEXT[!SHOULD,exception]:    The server SHOULD send PUSH_PROMISE (Section 6.6) frames prior to
+    TEXT[!SHOULD,exception]:    sending any frames that reference the promised responses.
+    TEXT[!MUST,exception]:    PUSH_PROMISE frames MUST NOT be sent by the client.
+    TEXT[!MUST,exception]:    PUSH_PROMISE frames can be sent by the server on any client-initiated
+    TEXT[!MUST,exception]:    stream, but the stream MUST be in either the "open" or "half-closed
+    TEXT[!MUST,exception]:    (remote)" state with respect to the server.
+
+  SECTION: [Push Responses](#section-8.4.2)
+    TEXT[!SHOULD,exception]:    Once a client receives a PUSH_PROMISE frame and chooses to accept the
+    TEXT[!SHOULD,exception]:    pushed response, the client SHOULD NOT issue any requests for the
+    TEXT[!SHOULD,exception]:    promised response until after the promised stream has closed.
+    TEXT[!MUST,exception]:    Clients receiving a pushed response MUST validate that either the
+    TEXT[!MUST,exception]:    server is authoritative (see Section 10.1) or the proxy that provided
+    TEXT[!MUST,exception]:    the pushed response is configured for the corresponding request.
+
+  SECTION: [The CONNECT Method](#section-8.5)
+    TEXT[!MUST]:    *  The ":scheme" and ":path" pseudo-header fields MUST be omitted.
+    TEXT[!MUST]: Frame types other than DATA
+    TEXT[!MUST]:    or stream management frames (RST_STREAM, WINDOW_UPDATE, and PRIORITY)
+    TEXT[!MUST]:    MUST NOT be sent on a connected stream and MUST be treated as a
+    TEXT[!MUST]:    stream error (Section 5.4.2) if received.
+    TEXT[!MUST,exception]: Correspondingly, a proxy MUST send a TCP segment
+    TEXT[!MUST,exception]:    with the RST bit set if it detects an error with the stream or the
+    TEXT[!MUST,exception]:    HTTP/2 connection.
+
+  SECTION: [Request Reliability](#section-8.7)
+    TEXT[!MAY,exception]:    Requests that have not been processed have not failed; clients MAY
+    TEXT[!MAY,exception]:    automatically retry them, even those with non-idempotent methods.
+    TEXT[!MUST]:    A server MUST NOT indicate that a stream has not been processed
+    TEXT[!MUST]:    unless it can guarantee that fact.
+    TEXT[!MUST]: If frames that are on a stream
+    TEXT[!MUST]:    are passed to the application layer for any stream, then
+    TEXT[!MUST]:    REFUSED_STREAM MUST NOT be used for that stream, and a GOAWAY frame
+    TEXT[!MUST]:    MUST include a stream identifier that is greater than or equal to the
+    TEXT[!MUST]:    given stream identifier.
+
+  SECTION: [Connection Management](#section-9.1)
+    TEXT[!SHOULD,exception]:    Clients SHOULD NOT open more than one HTTP/2 connection to a given
+    TEXT[!SHOULD,exception]:    host and port pair, where the host is derived from a URI, a selected
+    TEXT[!SHOULD,exception]:    alternative service [ALT-SVC], or a configured proxy.
+    TEXT[!SHOULD,exception]:    A client MAY open multiple connections to the same IP address and TCP
+    TEXT[!SHOULD,exception]:    port using different Server Name Indication [TLS-EXT] values or to
+    TEXT[!SHOULD,exception]:    provide different TLS client certificates but SHOULD avoid creating
+    TEXT[!SHOULD,exception]:    multiple connections with the same configuration.
+    TEXT[!SHOULD]: When either endpoint chooses to close the transport-layer
+    TEXT[!SHOULD]:    TCP connection, the terminating endpoint SHOULD first send a GOAWAY
+    TEXT[!SHOULD]:    (Section 6.8) frame so that both endpoints can reliably determine
+    TEXT[!SHOULD]:    whether previously sent frames have been processed and gracefully
+    TEXT[!SHOULD]:    complete or terminate any necessary remaining tasks.
+
+  SECTION: [Connection Reuse](#section-9.1.1)
+    TEXT[!MAY]:    Connections that are made to an origin server, either directly or
+    TEXT[!MAY]:    through a tunnel created using the CONNECT method (Section 8.5), MAY
+    TEXT[!MAY]:    be reused for requests with multiple different URI authority
+    TEXT[!MAY]:    components.
+    TEXT[!MUST]: The
+    TEXT[!MUST]:    certificate presented by the server MUST satisfy any checks that the
+    TEXT[!MUST]:    client would perform when forming a new TLS connection for the host
+    TEXT[!MUST]:    in the URI.
+
+  SECTION: [Use of TLS Features](#section-9.2)
+    TEXT[!MUST]:    Implementations of HTTP/2 MUST use TLS version 1.2 [TLS12] or higher
+    TEXT[!MUST]:    for HTTP/2 over TLS.
+    TEXT[!SHOULD]: The general TLS usage guidance in [TLSBCP]
+    TEXT[!SHOULD]:    SHOULD be followed, with some additional restrictions that are
+    TEXT[!SHOULD]:    specific to HTTP/2.
+    TEXT[!MUST]:    The TLS implementation MUST support the Server Name Indication (SNI)
+    TEXT[!MUST]:    [TLS-EXT] extension to TLS.
+    TEXT[!MUST,exception]: If the server is identified by a domain
+    TEXT[!MUST,exception]:    name [DNS-TERMS], clients MUST send the server_name TLS extension
+    TEXT[!MUST,exception]:    unless an alternative mechanism to indicate the target host is used.
+
+  SECTION: [TLS 1.2 Features](#section-9.2.1)
+    TEXT[!MAY]: An endpoint MAY immediately terminate an HTTP/2 connection that
+    TEXT[!MAY]:    does not meet these TLS requirements with a connection error
+    TEXT[!MAY]:    (Section 5.4.1) of type INADEQUATE_SECURITY.
+    TEXT[!MUST]:    A deployment of HTTP/2 over TLS 1.2 MUST disable compression.
+    TEXT[!MUST]:    A deployment of HTTP/2 over TLS 1.2 MUST disable renegotiation.
+    TEXT[!MUST]: An
+    TEXT[!MUST]:    endpoint MUST treat a TLS renegotiation as a connection error
+    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:    An endpoint MAY use renegotiation to provide confidentiality
+    TEXT[!MUST]:    protection for client credentials offered in the handshake, but any
+    TEXT[!MUST]:    renegotiation MUST occur prior to sending the connection preface.
+    TEXT[!SHOULD]:    server SHOULD request a client certificate if it sees a renegotiation
+    TEXT[!SHOULD]:    request immediately after establishing a connection.
+    TEXT[!MUST]:    Implementations MUST support ephemeral key exchange sizes of at least
+    TEXT[!MUST]:    2048 bits for cipher suites that use ephemeral finite field Diffie-
+    TEXT[!MUST]:    Hellman (DHE) (Section 8.1.2 of [TLS12]) and 224 bits for cipher
+    TEXT[!MUST]:    suites that use ephemeral elliptic curve Diffie-Hellman (ECDHE)
+    TEXT[!MUST]:    [RFC8422].
+    TEXT[!MUST,exception]: Clients MUST accept DHE sizes of up to 4096 bits.
+    TEXT[!MAY]:    Endpoints MAY treat negotiation of key sizes smaller than the lower
+    TEXT[!MAY]:    limits as a connection error (Section 5.4.1) of type
+    TEXT[!MAY]:    INADEQUATE_SECURITY.
+
+  SECTION: [TLS 1.2 Cipher Suites](#section-9.2.2)
+    TEXT[!SHOULD]:    A deployment of HTTP/2 over TLS 1.2 SHOULD NOT use any of the
+    TEXT[!SHOULD]:    prohibited cipher suites listed in Appendix A.
+    TEXT[!MAY]:    Endpoints MAY choose to generate a connection error (Section 5.4.1)
+    TEXT[!MAY]:    of type INADEQUATE_SECURITY if one of the prohibited cipher suites is
+    TEXT[!MAY]:    negotiated.
+    TEXT[!MUST]:    Implementations MUST NOT generate this error in reaction to the
+    TEXT[!MUST]:    negotiation of a cipher suite that is not prohibited.
+    TEXT[!MUST]: To avoid this
+    TEXT[!MUST]:    problem, which causes TLS handshake failures, deployments of HTTP/2
+    TEXT[!MUST]:    that use TLS 1.2 MUST support TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    TEXT[!MUST]:    [TLS-ECDHE] with the P-256 elliptic curve [RFC8422].
+
+  SECTION: [TLS 1.3 Features](#section-9.2.3)
+    TEXT[!MUST]:    HTTP/2 servers MUST NOT send post-handshake TLS 1.3
+    TEXT[!MUST]:    CertificateRequest messages.
+    TEXT[!MUST,exception]: HTTP/2 clients MUST treat a TLS post-
+    TEXT[!MUST,exception]:    handshake CertificateRequest message as a connection error
+    TEXT[!MUST,exception]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MAY]:    TLS early data MAY be used to send requests, provided that the
+    TEXT[!MAY]:    guidance in [RFC8470] is observed.
+
+  SECTION: [Intermediary Encapsulation Attacks](#section-10.3)
+    TEXT[!MUST,exception]: An intermediary that
+    TEXT[!MUST,exception]:    translates an HTTP/2 request or response MUST validate fields
+    TEXT[!MUST,exception]:    according to the rules in Section 8.2 before translating a message to
+    TEXT[!MUST,exception]:    another HTTP version.
+    TEXT[!MUST,exception]:    An intermediary that receives any fields that require removal before
+    TEXT[!MUST,exception]:    forwarding (see Section 7.6.1 of [HTTP]) MUST remove or replace those
+    TEXT[!MUST,exception]:    header fields when forwarding messages.
+
+  SECTION: [Cacheability of Pushed Responses](#section-10.4)
+    TEXT[!MUST,exception]:    Where multiple tenants share space on the same server, that server
+    TEXT[!MUST,exception]:    MUST ensure that tenants are not able to push representations of
+    TEXT[!MUST,exception]:    resources that they do not have authority over.
+    TEXT[!MUST,exception]:    Pushed responses for which an origin server is not authoritative (see
+    TEXT[!MUST,exception]:    Section 10.1) MUST NOT be used or cached.
+
+  SECTION: [Denial-of-Service Considerations](#section-10.5)
+    TEXT[!SHOULD,exception]: A client that accepts server push SHOULD limit the number
+    TEXT[!SHOULD,exception]:    of streams it allows to be in the "reserved (remote)" state.
+    TEXT[!SHOULD]: Implementations SHOULD track the use
+    TEXT[!SHOULD]:    of these features and set limits on their use.
+    TEXT[!MAY]: An endpoint MAY treat
+    TEXT[!MAY]:    activity that is suspicious as a connection error (Section 5.4.1) of
+    TEXT[!MAY]:    type ENHANCE_YOUR_CALM.
+
+  SECTION: [Limits on Field Block Size](#section-10.5.1)
+    TEXT[!MAY]:    This setting is only advisory, so endpoints MAY choose to send field
+    TEXT[!MAY]:    blocks that exceed this limit and risk the request or response being
+    TEXT[!MAY]:    treated as malformed.
+    TEXT[!MUST]: The field block MUST be processed to ensure a consistent
+    TEXT[!MUST]:    connection state, unless the connection is closed.
+
+  SECTION: [Use of Compression](#section-10.6)
+    TEXT[!MUST]:    Implementations communicating on a secure channel MUST NOT compress
+    TEXT[!MUST]:    content that includes both confidential and attacker-controlled data
+    TEXT[!MUST]:    unless separate compression dictionaries are used for each source of
+    TEXT[!MUST]:    data.
+    TEXT[!MUST]: Compression MUST NOT be used if the source of data cannot be
+    TEXT[!MUST]:    reliably determined.
+    TEXT[!MUST]: Generic stream compression, such as that
+    TEXT[!MUST]:    provided by TLS, MUST NOT be used with HTTP/2 (see Section 9.2).
+
+  SECTION: [Use of Padding](#section-10.7)
+    TEXT[!SHOULD,exception]:    Intermediaries SHOULD retain padding for DATA frames but MAY drop
+    TEXT[!SHOULD,exception]:    padding for HEADERS and PUSH_PROMISE frames.
+
+  SECTION: [Prohibited TLS 1.2 Cipher Suites](#appendix-A)
+    TEXT[!MAY]:    An HTTP/2 implementation MAY treat the negotiation of any of the
+    TEXT[!MAY]:    following cipher suites with TLS 1.2 as a connection error
+    TEXT[!MAY]:    (Section 5.4.1) of type INADEQUATE_SECURITY:

@@ -1,0 +1,62 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-4.3.1"
+
+# Compression State
+#
+#    Field compression is stateful.  Each endpoint has an HPACK encoder
+#    context and an HPACK decoder context that are used for encoding and
+#    decoding all field blocks on a connection.  Section 4 of
+#    [COMPRESSION] defines the dynamic table, which is the primary state
+#    for each context.
+# 
+#    The dynamic table has a maximum size that is set by an HPACK decoder.
+#    An endpoint communicates the size chosen by its HPACK decoder context
+#    using the SETTINGS_HEADER_TABLE_SIZE setting; see Section 6.5.2.
+#    When a connection is established, the dynamic table size for the
+#    HPACK decoder and encoder at both endpoints starts at 4,096 bytes,
+#    the initial value of the SETTINGS_HEADER_TABLE_SIZE setting.
+# 
+#    Any change to the maximum value set using SETTINGS_HEADER_TABLE_SIZE
+#    takes effect when the endpoint acknowledges settings (Section 6.5.3).
+#    The HPACK encoder at that endpoint can set the dynamic table to any
+#    size up to the maximum value set by the decoder.  An HPACK encoder
+#    declares the size of the dynamic table with a Dynamic Table Size
+#    Update instruction (Section 6.3 of [COMPRESSION]).
+# 
+#    Once an endpoint acknowledges a change to SETTINGS_HEADER_TABLE_SIZE
+#    that reduces the maximum below the current size of the dynamic table,
+#    its HPACK encoder MUST start the next field block with a Dynamic
+#    Table Size Update instruction that sets the dynamic table to a size
+#    that is less than or equal to the reduced maximum; see Section 4.2 of
+#    [COMPRESSION].  An endpoint MUST treat a field block that follows an
+#    acknowledgment of the reduction to the maximum dynamic table size as
+#    a connection error (Section 5.4.1) of type COMPRESSION_ERROR if it
+#    does not start with a conformant Dynamic Table Size Update
+#    instruction.
+# 
+#       |  Implementers are advised that reducing the value of
+#       |  SETTINGS_HEADER_TABLE_SIZE is not widely interoperable.  Use of
+#       |  the connection preface to reduce the value below the initial
+#       |  value of 4,096 is somewhat better supported, but this might
+#       |  fail with some implementations.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Once an endpoint acknowledges a change to SETTINGS_HEADER_TABLE_SIZE
+that reduces the maximum below the current size of the dynamic table,
+its HPACK encoder MUST start the next field block with a Dynamic
+Table Size Update instruction that sets the dynamic table to a size
+that is less than or equal to the reduced maximum; see Section 4.2 of
+[COMPRESSION].
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST treat a field block that follows an
+acknowledgment of the reduction to the maximum dynamic table size as
+a connection error (Section 5.4.1) of type COMPRESSION_ERROR if it
+does not start with a conformant Dynamic Table Size Update
+instruction.
+'''
+

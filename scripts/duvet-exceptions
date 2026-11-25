@@ -41,6 +41,7 @@ REASONS = {
     "media-type":   "Applies to processing the message/http media type, which hyperdrive does not do.",
     "response-recipient": "Applies to recipients of responses (clients, caches and proxies); hyperdrive only receives requests.",
     "unused-permission":  "A permission hyperdrive does not use: it does not cache responses.",
+    "no-push":      "Applies to sending server push, which hyperdrive does not do (docs/http2-core-design.md, D7).",
 }
 
 # subject patterns, in priority order
@@ -104,6 +105,32 @@ OVERRIDES = {
         # Section 7.3 is the IANA transfer coding registry
         ("7.3", ""): "registration",
         ("10.1",   "A recipient of \"message/http\" data"): "media-type",
+    },
+    "rfc9113": {
+        # the second half binds the server: its streams are even-numbered
+        ("5.1.1",  "Streams initiated by a client"): None,
+        # the subject mentions a server, but the requirement is on the
+        # client (a server's duty to reject PUSH_PROMISE is in 6.6)
+        ("8.4.1",  "PUSH_PROMISE frames MUST NOT be sent by the client"): "client",
+        ("9.2",    "If the server is identified by a domain name"): "client",
+        ("10.5",   "A client that accepts server push"): "client",
+        # D7: the server never pushes. The rules on receiving a
+        # PUSH_PROMISE stay in scope: the server refuses every one
+        # (8.4), which meets them.
+        ("6.5.2",  "A server MUST NOT send a PUSH_PROMISE frame"): "no-push",
+        ("6.6",    "The promised stream identifier MUST be"): "no-push",
+        ("6.6",    "A PUSH_PROMISE frame without the END_HEADERS flag"): "no-push",
+        ("6.6",    "PUSH_PROMISE frames MUST only be sent"): "no-push",
+        ("6.6",    "PUSH_PROMISE MUST NOT be sent if"): "no-push",
+        ("6.6",    "A sender MUST NOT send a PUSH_PROMISE"): "no-push",
+        ("6.6",    "However, an endpoint that has sent RST_STREAM"): "client",
+        ("8.4",    "Promised requests MUST be safe"): "no-push",
+        ("8.4",    "Pushed responses that are not cacheable"): "cache",
+        ("8.4.1",  "The header fields in PUSH_PROMISE"): "no-push",
+        ("8.4.1",  "The server SHOULD send PUSH_PROMISE"): "no-push",
+        ("8.4.1",  "PUSH_PROMISE frames can be sent by the server"): "no-push",
+        ("10.4",   "Where multiple tenants share space"): "no-push",
+        ("10.4",   "Pushed responses for which an origin server"): "client",
     },
 }
 

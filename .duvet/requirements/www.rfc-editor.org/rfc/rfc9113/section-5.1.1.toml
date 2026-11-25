@@ -1,0 +1,61 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-5.1.1"
+
+# Stream Identifiers
+#
+#    Streams are identified by an unsigned 31-bit integer.  Streams
+#    initiated by a client MUST use odd-numbered stream identifiers; those
+#    initiated by the server MUST use even-numbered stream identifiers.  A
+#    stream identifier of zero (0x00) is used for connection control
+#    messages; the stream identifier of zero cannot be used to establish a
+#    new stream.
+# 
+#    The identifier of a newly established stream MUST be numerically
+#    greater than all streams that the initiating endpoint has opened or
+#    reserved.  This governs streams that are opened using a HEADERS frame
+#    and streams that are reserved using PUSH_PROMISE.  An endpoint that
+#    receives an unexpected stream identifier MUST respond with a
+#    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#    A HEADERS frame will transition the client-initiated stream
+#    identified by the stream identifier in the frame header from "idle"
+#    to "open".  A PUSH_PROMISE frame will transition the server-initiated
+#    stream identified by the Promised Stream ID field in the frame
+#    payload from "idle" to "reserved (local)" or "reserved (remote)".
+#    When a stream transitions out of the "idle" state, all streams in the
+#    "idle" state that might have been opened by the peer with a lower-
+#    valued stream identifier immediately transition to "closed".  That
+#    is, an endpoint may skip a stream identifier, with the effect being
+#    that the skipped stream is immediately closed.
+# 
+#    Stream identifiers cannot be reused.  Long-lived connections can
+#    result in an endpoint exhausting the available range of stream
+#    identifiers.  A client that is unable to establish a new stream
+#    identifier can establish a new connection for new streams.  A server
+#    that is unable to establish a new stream identifier can send a GOAWAY
+#    frame so that the client is forced to open a new connection for new
+#    streams.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Streams
+initiated by a client MUST use odd-numbered stream identifiers; those
+initiated by the server MUST use even-numbered stream identifiers.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The identifier of a newly established stream MUST be numerically
+greater than all streams that the initiating endpoint has opened or
+reserved.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that
+receives an unexpected stream identifier MUST respond with a
+connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+

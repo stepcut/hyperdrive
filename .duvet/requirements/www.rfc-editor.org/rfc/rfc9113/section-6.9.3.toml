@@ -1,0 +1,43 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-6.9.3"
+
+# Reducing the Stream Window Size
+#
+#    A receiver that wishes to use a smaller flow-control window than the
+#    current size can send a new SETTINGS frame.  However, the receiver
+#    MUST be prepared to receive data that exceeds this window size, since
+#    the sender might send data that exceeds the lower limit prior to
+#    processing the SETTINGS frame.
+# 
+#    After sending a SETTINGS frame that reduces the initial flow-control
+#    window size, a receiver MAY continue to process streams that exceed
+#    flow-control limits.  Allowing streams to continue does not allow the
+#    receiver to immediately reduce the space it reserves for flow-control
+#    windows.  Progress on these streams can also stall, since
+#    WINDOW_UPDATE frames are needed to allow the sender to resume
+#    sending.  The receiver MAY instead send a RST_STREAM with an error
+#    code of FLOW_CONTROL_ERROR for the affected streams.
+
+[[spec]]
+level = "MUST"
+quote = '''
+However, the receiver
+MUST be prepared to receive data that exceeds this window size, since
+the sender might send data that exceeds the lower limit prior to
+processing the SETTINGS frame.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+After sending a SETTINGS frame that reduces the initial flow-control
+window size, a receiver MAY continue to process streams that exceed
+flow-control limits.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+The receiver MAY instead send a RST_STREAM with an error
+code of FLOW_CONTROL_ERROR for the affected streams.
+'''
+

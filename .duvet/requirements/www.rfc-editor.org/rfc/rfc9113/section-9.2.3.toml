@@ -1,0 +1,51 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-9.2.3"
+
+# TLS 1.3 Features
+#
+#    TLS 1.3 includes a number of features not available in earlier
+#    versions.  This section discusses the use of these features.
+# 
+#    HTTP/2 servers MUST NOT send post-handshake TLS 1.3
+#    CertificateRequest messages.  HTTP/2 clients MUST treat a TLS post-
+#    handshake CertificateRequest message as a connection error
+#    (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#    The prohibition on post-handshake authentication applies even if the
+#    client offered the "post_handshake_auth" TLS extension.  Post-
+#    handshake authentication support might be advertised independently of
+#    ALPN [TLS-ALPN].  Clients might offer the capability for use in other
+#    protocols, but inclusion of the extension cannot imply support within
+#    HTTP/2.
+# 
+#    [TLS13] defines other post-handshake messages, NewSessionTicket and
+#    KeyUpdate, which can be used as they have no direct interaction with
+#    HTTP/2.  Unless the use of a new type of TLS message depends on an
+#    interaction with the application-layer protocol, that TLS message can
+#    be sent after the handshake completes.
+# 
+#    TLS early data MAY be used to send requests, provided that the
+#    guidance in [RFC8470] is observed.  Clients send requests in early
+#    data assuming initial values for all server settings.
+
+[[spec]]
+level = "MUST"
+quote = '''
+HTTP/2 servers MUST NOT send post-handshake TLS 1.3
+CertificateRequest messages.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+HTTP/2 clients MUST treat a TLS post-
+handshake CertificateRequest message as a connection error
+(Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+TLS early data MAY be used to send requests, provided that the
+guidance in [RFC8470] is observed.
+'''
+

@@ -1,0 +1,122 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.4"
+
+# Server Push
+#
+#    HTTP/2 allows a server to preemptively send (or "push") responses
+#    (along with corresponding "promised" requests) to a client in
+#    association with a previous client-initiated request.
+# 
+#    Server push was designed to allow a server to improve client-
+#    perceived performance by predicting what requests will follow those
+#    that it receives, thereby removing a round trip for them.  For
+#    example, a request for HTML is often followed by requests for
+#    stylesheets and scripts referenced by that page.  When these requests
+#    are pushed, the client does not need to wait to receive the
+#    references to them in the HTML and issue separate requests.
+# 
+#    In practice, server push is difficult to use effectively, because it
+#    requires the server to correctly anticipate the additional requests
+#    the client will make, taking into account factors such as caching,
+#    content negotiation, and user behavior.  Errors in prediction can
+#    lead to performance degradation, due to the opportunity cost that the
+#    additional data on the wire represents.  In particular, pushing any
+#    significant amount of data can cause contention issues with responses
+#    that are more important.
+# 
+#    A client can request that server push be disabled, though this is
+#    negotiated for each hop independently.  The SETTINGS_ENABLE_PUSH
+#    setting can be set to 0 to indicate that server push is disabled.
+# 
+#    Promised requests MUST be safe (see Section 9.2.1 of [HTTP]) and
+#    cacheable (see Section 9.2.3 of [HTTP]).  Promised requests cannot
+#    include any content or a trailer section.  Clients that receive a
+#    promised request that is not cacheable, that is not known to be safe,
+#    or that indicates the presence of request content MUST reset the
+#    promised stream with a stream error (Section 5.4.2) of type
+#    PROTOCOL_ERROR.  Note that this could result in the promised stream
+#    being reset if the client does not recognize a newly defined method
+#    as being safe.
+# 
+#    Pushed responses that are cacheable (see Section 3 of [CACHING]) can
+#    be stored by the client, if it implements an HTTP cache.  Pushed
+#    responses are considered successfully validated on the origin server
+#    (e.g., if the "no-cache" cache response directive is present; see
+#    Section 5.2.2.4 of [CACHING]) while the stream identified by the
+#    promised stream identifier is still open.
+# 
+#    Pushed responses that are not cacheable MUST NOT be stored by any
+#    HTTP cache.  They MAY be made available to the application
+#    separately.
+# 
+#    The server MUST include a value in the ":authority" pseudo-header
+#    field for which the server is authoritative (see Section 10.1).  A
+#    client MUST treat a PUSH_PROMISE for which the server is not
+#    authoritative as a stream error (Section 5.4.2) of type
+#    PROTOCOL_ERROR.
+# 
+#    An intermediary can receive pushes from the server and choose not to
+#    forward them on to the client.  In other words, how to make use of
+#    the pushed information is up to that intermediary.  Equally, the
+#    intermediary might choose to make additional pushes to the client,
+#    without any action taken by the server.
+# 
+#    A client cannot push.  Thus, servers MUST treat the receipt of a
+#    PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+#    PROTOCOL_ERROR.  A server cannot set the SETTINGS_ENABLE_PUSH setting
+#    to a value other than 0 (see Section 6.5.2).
+
+[[spec]]
+level = "MUST"
+quote = '''
+Promised requests MUST be safe (see Section 9.2.1 of [HTTP]) and
+cacheable (see Section 9.2.3 of [HTTP]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Clients that receive a
+promised request that is not cacheable, that is not known to be safe,
+or that indicates the presence of request content MUST reset the
+promised stream with a stream error (Section 5.4.2) of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Pushed responses that are not cacheable MUST NOT be stored by any
+HTTP cache.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+They MAY be made available to the application
+separately.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The server MUST include a value in the ":authority" pseudo-header
+field for which the server is authoritative (see Section 10.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A
+client MUST treat a PUSH_PROMISE for which the server is not
+authoritative as a stream error (Section 5.4.2) of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Thus, servers MUST treat the receipt of a
+PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+PROTOCOL_ERROR.
+'''
+

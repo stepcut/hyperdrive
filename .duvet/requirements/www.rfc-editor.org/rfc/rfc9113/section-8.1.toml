@@ -1,0 +1,129 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.1"
+
+# HTTP Message Framing
+#
+#    A client sends an HTTP request on a new stream, using a previously
+#    unused stream identifier (Section 5.1.1).  A server sends an HTTP
+#    response on the same stream as the request.
+# 
+#    An HTTP message (request or response) consists of:
+# 
+#    1.  one HEADERS frame (followed by zero or more CONTINUATION frames)
+#        containing the header section (see Section 6.3 of [HTTP]),
+# 
+#    2.  zero or more DATA frames containing the message content (see
+#        Section 6.4 of [HTTP]), and
+# 
+#    3.  optionally, one HEADERS frame (followed by zero or more
+#        CONTINUATION frames) containing the trailer section, if present
+#        (see Section 6.5 of [HTTP]).
+# 
+#    For a response only, a server MAY send any number of interim
+#    responses before the HEADERS frame containing a final response.  An
+#    interim response consists of a HEADERS frame (which might be followed
+#    by zero or more CONTINUATION frames) containing the control data and
+#    header section of an interim (1xx) HTTP response (see Section 15 of
+#    [HTTP]).  A HEADERS frame with the END_STREAM flag set that carries
+#    an informational status code is malformed (Section 8.1.1).
+# 
+#    The last frame in the sequence bears an END_STREAM flag, noting that
+#    a HEADERS frame with the END_STREAM flag set can be followed by
+#    CONTINUATION frames that carry any remaining fragments of the field
+#    block.
+# 
+#    Other frames (from any stream) MUST NOT occur between the HEADERS
+#    frame and any CONTINUATION frames that might follow.
+# 
+#    HTTP/2 uses DATA frames to carry message content.  The chunked
+#    transfer encoding defined in Section 7.1 of [HTTP/1.1] cannot be used
+#    in HTTP/2; see Section 8.2.2.
+# 
+#    Trailer fields are carried in a field block that also terminates the
+#    stream.  That is, trailer fields comprise a sequence starting with a
+#    HEADERS frame, followed by zero or more CONTINUATION frames, where
+#    the HEADERS frame bears an END_STREAM flag.  Trailers MUST NOT
+#    include pseudo-header fields (Section 8.3).  An endpoint that
+#    receives pseudo-header fields in trailers MUST treat the request or
+#    response as malformed (Section 8.1.1).
+# 
+#    An endpoint that receives a HEADERS frame without the END_STREAM flag
+#    set after receiving the HEADERS frame that opens a request or after
+#    receiving a final (non-informational) status code MUST treat the
+#    corresponding request or response as malformed (Section 8.1.1).
+# 
+#    An HTTP request/response exchange fully consumes a single stream.  A
+#    request starts with the HEADERS frame that puts the stream into the
+#    "open" state.  The request ends with a frame with the END_STREAM flag
+#    set, which causes the stream to become "half-closed (local)" for the
+#    client and "half-closed (remote)" for the server.  A response stream
+#    starts with zero or more interim responses in HEADERS frames,
+#    followed by a HEADERS frame containing a final status code.
+# 
+#    An HTTP response is complete after the server sends -- or the client
+#    receives -- a frame with the END_STREAM flag set (including any
+#    CONTINUATION frames needed to complete a field block).  A server can
+#    send a complete response prior to the client sending an entire
+#    request if the response does not depend on any portion of the request
+#    that has not been sent and received.  When this is true, a server MAY
+#    request that the client abort transmission of a request without error
+#    by sending a RST_STREAM with an error code of NO_ERROR after sending
+#    a complete response (i.e., a frame with the END_STREAM flag set).
+#    Clients MUST NOT discard responses as a result of receiving such a
+#    RST_STREAM, though clients can always discard responses at their
+#    discretion for other reasons.
+
+[[spec]]
+level = "MAY"
+quote = '''
+For a response only, a server MAY send any number of interim
+responses before the HEADERS frame containing a final response.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Other frames (from any stream) MUST NOT occur between the HEADERS
+frame and any CONTINUATION frames that might follow.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Trailers MUST NOT
+include pseudo-header fields (Section 8.3).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that
+receives pseudo-header fields in trailers MUST treat the request or
+response as malformed (Section 8.1.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that receives a HEADERS frame without the END_STREAM flag
+set after receiving the HEADERS frame that opens a request or after
+receiving a final (non-informational) status code MUST treat the
+corresponding request or response as malformed (Section 8.1.1).
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+When this is true, a server MAY
+request that the client abort transmission of a request without error
+by sending a RST_STREAM with an error code of NO_ERROR after sending
+a complete response (i.e., a frame with the END_STREAM flag set).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Clients MUST NOT discard responses as a result of receiving such a
+RST_STREAM, though clients can always discard responses at their
+discretion for other reasons.
+'''
+

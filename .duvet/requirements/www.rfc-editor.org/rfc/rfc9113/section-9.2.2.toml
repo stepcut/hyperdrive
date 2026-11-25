@@ -1,0 +1,63 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-9.2.2"
+
+# TLS 1.2 Cipher Suites
+#
+#    A deployment of HTTP/2 over TLS 1.2 SHOULD NOT use any of the
+#    prohibited cipher suites listed in Appendix A.
+# 
+#    Endpoints MAY choose to generate a connection error (Section 5.4.1)
+#    of type INADEQUATE_SECURITY if one of the prohibited cipher suites is
+#    negotiated.  A deployment that chooses to use a prohibited cipher
+#    suite risks triggering a connection error unless the set of potential
+#    peers is known to accept that cipher suite.
+# 
+#    Implementations MUST NOT generate this error in reaction to the
+#    negotiation of a cipher suite that is not prohibited.  Consequently,
+#    when clients offer a cipher suite that is not prohibited, they have
+#    to be prepared to use that cipher suite with HTTP/2.
+# 
+#    The list of prohibited cipher suites includes the cipher suite that
+#    TLS 1.2 makes mandatory, which means that TLS 1.2 deployments could
+#    have non-intersecting sets of permitted cipher suites.  To avoid this
+#    problem, which causes TLS handshake failures, deployments of HTTP/2
+#    that use TLS 1.2 MUST support TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+#    [TLS-ECDHE] with the P-256 elliptic curve [RFC8422].
+# 
+#    Note that clients might advertise support of cipher suites that are
+#    prohibited in order to allow for connection to servers that do not
+#    support HTTP/2.  This allows servers to select HTTP/1.1 with a cipher
+#    suite that is prohibited in HTTP/2.  However, this can result in
+#    HTTP/2 being negotiated with a prohibited cipher suite if the
+#    application protocol and cipher suite are independently selected.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A deployment of HTTP/2 over TLS 1.2 SHOULD NOT use any of the
+prohibited cipher suites listed in Appendix A.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Endpoints MAY choose to generate a connection error (Section 5.4.1)
+of type INADEQUATE_SECURITY if one of the prohibited cipher suites is
+negotiated.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Implementations MUST NOT generate this error in reaction to the
+negotiation of a cipher suite that is not prohibited.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+To avoid this
+problem, which causes TLS handshake failures, deployments of HTTP/2
+that use TLS 1.2 MUST support TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+[TLS-ECDHE] with the P-256 elliptic curve [RFC8422].
+'''
+

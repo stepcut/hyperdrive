@@ -1,0 +1,74 @@
+target = "https://www.rfc-editor.org/rfc/rfc7541#section-6.2.3"
+
+# Literal Header Field Never Indexed
+#
+#    A literal header field never-indexed representation results in
+#    appending a header field to the decoded header list without altering
+#    the dynamic table.  Intermediaries MUST use the same representation
+#    for encoding this header field.
+# 
+#      0   1   2   3   4   5   6   7
+#    +---+---+---+---+---+---+---+---+
+#    | 0 | 0 | 0 | 1 |  Index (4+)   |
+#    +---+---+-----------------------+
+#    | H |     Value Length (7+)     |
+#    +---+---------------------------+
+#    | Value String (Length octets)  |
+#    +-------------------------------+
+# 
+#        Figure 10: Literal Header Field Never Indexed -- Indexed Name
+# 
+#      0   1   2   3   4   5   6   7
+#    +---+---+---+---+---+---+---+---+
+#    | 0 | 0 | 0 | 1 |       0       |
+#    +---+---+-----------------------+
+#    | H |     Name Length (7+)      |
+#    +---+---------------------------+
+#    |  Name String (Length octets)  |
+#    +---+---------------------------+
+#    | H |     Value Length (7+)     |
+#    +---+---------------------------+
+#    | Value String (Length octets)  |
+#    +-------------------------------+
+# 
+#          Figure 11: Literal Header Field Never Indexed -- New Name
+# 
+#    A literal header field never-indexed representation starts with the
+#    '0001' 4-bit pattern.
+# 
+#    When a header field is represented as a literal header field never
+#    indexed, it MUST always be encoded with this specific literal
+#    representation.  In particular, when a peer sends a header field that
+#    it received represented as a literal header field never indexed, it
+#    MUST use the same representation to forward this header field.
+# 
+#    This representation is intended for protecting header field values
+#    that are not to be put at risk by compressing them (see Section 7.1
+#    for more details).
+# 
+#    The encoding of the representation is identical to the literal header
+#    field without indexing (see Section 6.2.2).
+
+[[spec]]
+level = "MUST"
+quote = '''
+Intermediaries MUST use the same representation
+for encoding this header field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+When a header field is represented as a literal header field never
+indexed, it MUST always be encoded with this specific literal
+representation.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+In particular, when a peer sends a header field that
+it received represented as a literal header field never indexed, it
+MUST use the same representation to forward this header field.
+'''
+

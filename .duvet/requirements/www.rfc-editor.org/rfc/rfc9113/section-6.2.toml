@@ -1,0 +1,160 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-6.2"
+
+# HEADERS
+#
+#    The HEADERS frame (type=0x01) is used to open a stream (Section 5.1),
+#    and additionally carries a field block fragment.  Despite the name, a
+#    HEADERS frame can carry a header section or a trailer section.
+#    HEADERS frames can be sent on a stream in the "idle", "reserved
+#    (local)", "open", or "half-closed (remote)" state.
+# 
+#    HEADERS Frame {
+#      Length (24),
+#      Type (8) = 0x01,
+# 
+#      Unused Flags (2),
+#      PRIORITY Flag (1),
+#      Unused Flag (1),
+#      PADDED Flag (1),
+#      END_HEADERS Flag (1),
+#      Unused Flag (1),
+#      END_STREAM Flag (1),
+# 
+#      Reserved (1),
+#      Stream Identifier (31),
+# 
+#      [Pad Length (8)],
+#      [Exclusive (1)],
+#      [Stream Dependency (31)],
+#      [Weight (8)],
+#      Field Block Fragment (..),
+#      Padding (..2040),
+#    }
+# 
+#                        Figure 4: HEADERS Frame Format
+# 
+#    The Length, Type, Unused Flag(s), Reserved, and Stream Identifier
+#    fields are described in Section 4.  The HEADERS frame payload has the
+#    following additional fields:
+# 
+#    Pad Length:  An 8-bit field containing the length of the frame
+#       padding in units of octets.  This field is only present if the
+#       PADDED flag is set.
+# 
+#    Exclusive:  A single-bit flag.  This field is only present if the
+#       PRIORITY flag is set.  Priority signals in HEADERS frames are
+#       deprecated; see Section 5.3.2.
+# 
+#    Stream Dependency:  A 31-bit stream identifier.  This field is only
+#       present if the PRIORITY flag is set.
+# 
+#    Weight:  An unsigned 8-bit integer.  This field is only present if
+#       the PRIORITY flag is set.
+# 
+#    Field Block Fragment:  A field block fragment (Section 4.3).
+# 
+#    Padding:  Padding octets that contain no application semantic value.
+#       Padding octets MUST be set to zero when sending.  A receiver is
+#       not obligated to verify padding but MAY treat non-zero padding as
+#       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#    The HEADERS frame defines the following flags:
+# 
+#    PRIORITY (0x20):  When set, the PRIORITY flag indicates that the
+#       Exclusive, Stream Dependency, and Weight fields are present.
+# 
+#    PADDED (0x08):  When set, the PADDED flag indicates that the Pad
+#       Length field and any padding that it describes are present.
+# 
+#    END_HEADERS (0x04):  When set, the END_HEADERS flag indicates that
+#       this frame contains an entire field block (Section 4.3) and is not
+#       followed by any CONTINUATION frames.
+# 
+#       A HEADERS frame without the END_HEADERS flag set MUST be followed
+#       by a CONTINUATION frame for the same stream.  A receiver MUST
+#       treat the receipt of any other type of frame or a frame on a
+#       different stream as a connection error (Section 5.4.1) of type
+#       PROTOCOL_ERROR.
+# 
+#    END_STREAM (0x01):  When set, the END_STREAM flag indicates that the
+#       field block (Section 4.3) is the last that the endpoint will send
+#       for the identified stream.
+# 
+#       A HEADERS frame with the END_STREAM flag set signals the end of a
+#       stream.  However, a HEADERS frame with the END_STREAM flag set can
+#       be followed by CONTINUATION frames on the same stream.  Logically,
+#       the CONTINUATION frames are part of the HEADERS frame.
+# 
+#    The frame payload of a HEADERS frame contains a field block fragment
+#    (Section 4.3).  A field block that does not fit within a HEADERS
+#    frame is continued in a CONTINUATION frame (Section 6.10).
+# 
+#    HEADERS frames MUST be associated with a stream.  If a HEADERS frame
+#    is received whose Stream Identifier field is 0x00, the recipient MUST
+#    respond with a connection error (Section 5.4.1) of type
+#    PROTOCOL_ERROR.
+# 
+#    The HEADERS frame changes the connection state as described in
+#    Section 4.3.
+# 
+#    The total number of padding octets is determined by the value of the
+#    Pad Length field.  If the length of the padding is the length of the
+#    frame payload or greater, the recipient MUST treat this as a
+#    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#       |  Note: A frame can be increased in size by one octet by
+#       |  including a Pad Length field with a value of zero.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Padding octets MUST be set to zero when sending.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A receiver is
+not obligated to verify padding but MAY treat non-zero padding as
+a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A HEADERS frame without the END_HEADERS flag set MUST be followed
+by a CONTINUATION frame for the same stream.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A receiver MUST
+treat the receipt of any other type of frame or a frame on a
+different stream as a connection error (Section 5.4.1) of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+HEADERS frames MUST be associated with a stream.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a HEADERS frame
+is received whose Stream Identifier field is 0x00, the recipient MUST
+respond with a connection error (Section 5.4.1) of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the length of the padding is the length of the
+frame payload or greater, the recipient MUST treat this as a
+connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+

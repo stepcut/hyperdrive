@@ -1,0 +1,59 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.2.2"
+
+# Connection-Specific Header Fields
+#
+#    HTTP/2 does not use the Connection header field (Section 7.6.1 of
+#    [HTTP]) to indicate connection-specific header fields; in this
+#    protocol, connection-specific metadata is conveyed by other means.
+#    An endpoint MUST NOT generate an HTTP/2 message containing
+#    connection-specific header fields.  This includes the Connection
+#    header field and those listed as having connection-specific semantics
+#    in Section 7.6.1 of [HTTP] (that is, Proxy-Connection, Keep-Alive,
+#    Transfer-Encoding, and Upgrade).  Any message containing connection-
+#    specific header fields MUST be treated as malformed (Section 8.1.1).
+# 
+#    The only exception to this is the TE header field, which MAY be
+#    present in an HTTP/2 request; when it is, it MUST NOT contain any
+#    value other than "trailers".
+# 
+#    An intermediary transforming an HTTP/1.x message to HTTP/2 MUST
+#    remove connection-specific header fields as discussed in
+#    Section 7.6.1 of [HTTP], or their messages will be treated by other
+#    HTTP/2 endpoints as malformed (Section 8.1.1).
+# 
+#       |  Note: HTTP/2 purposefully does not support upgrade to another
+#       |  protocol.  The handshake methods described in Section 3 are
+#       |  believed sufficient to negotiate the use of alternative
+#       |  protocols.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST NOT generate an HTTP/2 message containing
+connection-specific header fields.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Any message containing connection-
+specific header fields MUST be treated as malformed (Section 8.1.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The only exception to this is the TE header field, which MAY be
+present in an HTTP/2 request; when it is, it MUST NOT contain any
+value other than "trailers".
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An intermediary transforming an HTTP/1.x message to HTTP/2 MUST
+remove connection-specific header fields as discussed in
+Section 7.6.1 of [HTTP], or their messages will be treated by other
+HTTP/2 endpoints as malformed (Section 8.1.1).
+'''
+

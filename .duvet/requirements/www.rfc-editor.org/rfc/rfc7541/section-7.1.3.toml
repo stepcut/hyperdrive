@@ -1,0 +1,52 @@
+target = "https://www.rfc-editor.org/rfc/rfc7541#section-7.1.3"
+
+# Never-Indexed Literals
+#
+#    Implementations can also choose to protect sensitive header fields by
+#    not compressing them and instead encoding their value as literals.
+# 
+#    Refusing to generate an indexed representation for a header field is
+#    only effective if compression is avoided on all hops.  The never-
+#    indexed literal (see Section 6.2.3) can be used to signal to
+#    intermediaries that a particular value was intentionally sent as a
+#    literal.
+# 
+#    An intermediary MUST NOT re-encode a value that uses the never-
+#    indexed literal representation with another representation that would
+#    index it.  If HPACK is used for re-encoding, the never-indexed
+#    literal representation MUST be used.
+# 
+#    The choice to use a never-indexed literal representation for a header
+#    field depends on several factors.  Since HPACK doesn't protect
+#    against guessing an entire header field value, short or low-entropy
+#    values are more readily recovered by an adversary.  Therefore, an
+#    encoder might choose not to index values with low entropy.
+# 
+#    An encoder might also choose not to index values for header fields
+#    that are considered to be highly valuable or sensitive to recovery,
+#    such as the Cookie or Authorization header fields.
+# 
+#    On the contrary, an encoder might prefer indexing values for header
+#    fields that have little or no value if they were exposed.  For
+#    instance, a User-Agent header field does not commonly vary between
+#    requests and is sent to any server.  In that case, confirmation that
+#    a particular User-Agent value has been used provides little value.
+# 
+#    Note that these criteria for deciding to use a never-indexed literal
+#    representation will evolve over time as new attacks are discovered.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An intermediary MUST NOT re-encode a value that uses the never-
+indexed literal representation with another representation that would
+index it.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If HPACK is used for re-encoding, the never-indexed
+literal representation MUST be used.
+'''
+

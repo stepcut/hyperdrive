@@ -1,0 +1,236 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-6.6"
+
+# PUSH_PROMISE
+#
+#    The PUSH_PROMISE frame (type=0x05) is used to notify the peer
+#    endpoint in advance of streams the sender intends to initiate.  The
+#    PUSH_PROMISE frame includes the unsigned 31-bit identifier of the
+#    stream the endpoint plans to create along with a field section that
+#    provides additional context for the stream.  Section 8.4 contains a
+#    thorough description of the use of PUSH_PROMISE frames.
+# 
+#    PUSH_PROMISE Frame {
+#      Length (24),
+#      Type (8) = 0x05,
+# 
+#      Unused Flags (4),
+#      PADDED Flag (1),
+#      END_HEADERS Flag (1),
+#      Unused Flags (2),
+# 
+#      Reserved (1),
+#      Stream Identifier (31),
+# 
+#      [Pad Length (8)],
+#      Reserved (1),
+#      Promised Stream ID (31),
+#      Field Block Fragment (..),
+#      Padding (..2040),
+#    }
+# 
+#                     Figure 8: PUSH_PROMISE Frame Format
+# 
+#    The Length, Type, Unused Flag(s), Reserved, and Stream Identifier
+#    fields are described in Section 4.  The PUSH_PROMISE frame payload
+#    has the following additional fields:
+# 
+#    Pad Length:  An 8-bit field containing the length of the frame
+#       padding in units of octets.  This field is only present if the
+#       PADDED flag is set.
+# 
+#    Promised Stream ID:  An unsigned 31-bit integer that identifies the
+#       stream that is reserved by the PUSH_PROMISE.  The promised stream
+#       identifier MUST be a valid choice for the next stream sent by the
+#       sender (see "new stream identifier" in Section 5.1.1).
+# 
+#    Field Block Fragment:  A field block fragment (Section 4.3)
+#       containing the request control data and a header section.
+# 
+#    Padding:  Padding octets that contain no application semantic value.
+#       Padding octets MUST be set to zero when sending.  A receiver is
+#       not obligated to verify padding but MAY treat non-zero padding as
+#       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#    The PUSH_PROMISE frame defines the following flags:
+# 
+#    PADDED (0x08):  When set, the PADDED flag indicates that the Pad
+#       Length field and any padding that it describes are present.
+# 
+#    END_HEADERS (0x04):  When set, the END_HEADERS flag indicates that
+#       this frame contains an entire field block (Section 4.3) and is not
+#       followed by any CONTINUATION frames.
+# 
+#       A PUSH_PROMISE frame without the END_HEADERS flag set MUST be
+#       followed by a CONTINUATION frame for the same stream.  A receiver
+#       MUST treat the receipt of any other type of frame or a frame on a
+#       different stream as a connection error (Section 5.4.1) of type
+#       PROTOCOL_ERROR.
+# 
+#    PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that
+#    is in either the "open" or "half-closed (remote)" state.  The stream
+#    identifier of a PUSH_PROMISE frame indicates the stream it is
+#    associated with.  If the Stream Identifier field specifies the value
+#    0x00, a recipient MUST respond with a connection error
+#    (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#    Promised streams are not required to be used in the order they are
+#    promised.  The PUSH_PROMISE only reserves stream identifiers for
+#    later use.
+# 
+#    PUSH_PROMISE MUST NOT be sent if the SETTINGS_ENABLE_PUSH setting of
+#    the peer endpoint is set to 0.  An endpoint that has set this setting
+#    and has received acknowledgment MUST treat the receipt of a
+#    PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+#    PROTOCOL_ERROR.
+# 
+#    Recipients of PUSH_PROMISE frames can choose to reject promised
+#    streams by returning a RST_STREAM referencing the promised stream
+#    identifier back to the sender of the PUSH_PROMISE.
+# 
+#    A PUSH_PROMISE frame modifies the connection state in two ways.
+#    First, the inclusion of a field block (Section 4.3) potentially
+#    modifies the state maintained for field section compression.  Second,
+#    PUSH_PROMISE also reserves a stream for later use, causing the
+#    promised stream to enter the "reserved (local)" or "reserved
+#    (remote)" state.  A sender MUST NOT send a PUSH_PROMISE on a stream
+#    unless that stream is either "open" or "half-closed (remote)"; the
+#    sender MUST ensure that the promised stream is a valid choice for a
+#    new stream identifier (Section 5.1.1) (that is, the promised stream
+#    MUST be in the "idle" state).
+# 
+#    Since PUSH_PROMISE reserves a stream, ignoring a PUSH_PROMISE frame
+#    causes the stream state to become indeterminate.  A receiver MUST
+#    treat the receipt of a PUSH_PROMISE on a stream that is neither
+#    "open" nor "half-closed (local)" as a connection error
+#    (Section 5.4.1) of type PROTOCOL_ERROR.  However, an endpoint that
+#    has sent RST_STREAM on the associated stream MUST handle PUSH_PROMISE
+#    frames that might have been created before the RST_STREAM frame is
+#    received and processed.
+# 
+#    A receiver MUST treat the receipt of a PUSH_PROMISE that promises an
+#    illegal stream identifier (Section 5.1.1) as a connection error
+#    (Section 5.4.1) of type PROTOCOL_ERROR.  Note that an illegal stream
+#    identifier is an identifier for a stream that is not currently in the
+#    "idle" state.
+# 
+#    The total number of padding octets is determined by the value of the
+#    Pad Length field.  If the length of the padding is the length of the
+#    frame payload or greater, the recipient MUST treat this as a
+#    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+# 
+#       |  Note: A frame can be increased in size by one octet by
+#       |  including a Pad Length field with a value of zero.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The promised stream
+identifier MUST be a valid choice for the next stream sent by the
+sender (see "new stream identifier" in Section 5.1.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Padding octets MUST be set to zero when sending.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+A receiver is
+not obligated to verify padding but MAY treat non-zero padding as
+a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A PUSH_PROMISE frame without the END_HEADERS flag set MUST be
+followed by a CONTINUATION frame for the same stream.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A receiver
+MUST treat the receipt of any other type of frame or a frame on a
+different stream as a connection error (Section 5.4.1) of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that
+is in either the "open" or "half-closed (remote)" state.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the Stream Identifier field specifies the value
+0x00, a recipient MUST respond with a connection error
+(Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+PUSH_PROMISE MUST NOT be sent if the SETTINGS_ENABLE_PUSH setting of
+the peer endpoint is set to 0.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint that has set this setting
+and has received acknowledgment MUST treat the receipt of a
+PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST NOT send a PUSH_PROMISE on a stream
+unless that stream is either "open" or "half-closed (remote)"; the
+sender MUST ensure that the promised stream is a valid choice for a
+new stream identifier (Section 5.1.1) (that is, the promised stream
+MUST be in the "idle" state).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A receiver MUST
+treat the receipt of a PUSH_PROMISE on a stream that is neither
+"open" nor "half-closed (local)" as a connection error
+(Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+However, an endpoint that
+has sent RST_STREAM on the associated stream MUST handle PUSH_PROMISE
+frames that might have been created before the RST_STREAM frame is
+received and processed.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A receiver MUST treat the receipt of a PUSH_PROMISE that promises an
+illegal stream identifier (Section 5.1.1) as a connection error
+(Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If the length of the padding is the length of the
+frame payload or greater, the recipient MUST treat this as a
+connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+'''
+

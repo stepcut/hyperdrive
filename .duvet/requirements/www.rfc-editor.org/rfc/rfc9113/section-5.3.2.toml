@@ -1,0 +1,50 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-5.3.2"
+
+# Priority Signaling in This Document
+#
+#    This update to HTTP/2 deprecates the priority signaling defined in
+#    RFC 7540 [RFC7540].  The bulk of the text related to priority signals
+#    is not included in this document.  The description of frame fields
+#    and some of the mandatory handling is retained to ensure that
+#    implementations of this document remain interoperable with
+#    implementations that use the priority signaling described in RFC
+#    7540.
+# 
+#    A thorough description of the RFC 7540 priority scheme remains in
+#    Section 5.3 of [RFC7540].
+# 
+#    Signaling priority information is necessary to attain good
+#    performance in many cases.  Where signaling priority information is
+#    important, endpoints are encouraged to use an alternative scheme,
+#    such as the scheme described in [HTTP-PRIORITY].
+# 
+#    Though the priority signaling from RFC 7540 was not widely adopted,
+#    the information it provides can still be useful in the absence of
+#    better information.  Endpoints that receive priority signals in
+#    HEADERS or PRIORITY frames can benefit from applying that
+#    information.  In particular, implementations that consume these
+#    signals would not benefit from discarding these priority signals in
+#    the absence of alternatives.
+# 
+#    Servers SHOULD use other contextual information in determining
+#    priority of requests in the absence of any priority signals.  Servers
+#    MAY interpret the complete absence of signals as an indication that
+#    the client has not implemented the feature.  The defaults described
+#    in Section 5.3.5 of [RFC7540] are known to have poor performance
+#    under most conditions, and their use is unlikely to be deliberate.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Servers SHOULD use other contextual information in determining
+priority of requests in the absence of any priority signals.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Servers
+MAY interpret the complete absence of signals as an indication that
+the client has not implemented the feature.
+'''
+

@@ -1,0 +1,75 @@
+target = "https://www.rfc-editor.org/rfc/rfc7541#section-5.2"
+
+# String Literal Representation
+#
+#    Header field names and header field values can be represented as
+#    string literals.  A string literal is encoded as a sequence of
+#    octets, either by directly encoding the string literal's octets or by
+#    using a Huffman code (see [HUFFMAN]).
+# 
+#      0   1   2   3   4   5   6   7
+#    +---+---+---+---+---+---+---+---+
+#    | H |    String Length (7+)     |
+#    +---+---------------------------+
+#    |  String Data (Length octets)  |
+#    +-------------------------------+
+# 
+#                   Figure 4: String Literal Representation
+# 
+#    A string literal representation contains the following fields:
+# 
+#    H: A one-bit flag, H, indicating whether or not the octets of the
+#       string are Huffman encoded.
+# 
+#    String Length:  The number of octets used to encode the string
+#       literal, encoded as an integer with a 7-bit prefix (see
+#       Section 5.1).
+# 
+#    String Data:  The encoded data of the string literal.  If H is '0',
+#       then the encoded data is the raw octets of the string literal.  If
+#       H is '1', then the encoded data is the Huffman encoding of the
+#       string literal.
+# 
+#    String literals that use Huffman encoding are encoded with the
+#    Huffman code defined in Appendix B (see examples for requests in
+#    Appendix C.4 and for responses in Appendix C.6).  The encoded data is
+#    the bitwise concatenation of the codes corresponding to each octet of
+#    the string literal.
+# 
+#    As the Huffman-encoded data doesn't always end at an octet boundary,
+#    some padding is inserted after it, up to the next octet boundary.  To
+#    prevent this padding from being misinterpreted as part of the string
+#    literal, the most significant bits of the code corresponding to the
+#    EOS (end-of-string) symbol are used.
+# 
+#    Upon decoding, an incomplete code at the end of the encoded data is
+#    to be considered as padding and discarded.  A padding strictly longer
+#    than 7 bits MUST be treated as a decoding error.  A padding not
+#    corresponding to the most significant bits of the code for the EOS
+#    symbol MUST be treated as a decoding error.  A Huffman-encoded string
+#    literal containing the EOS symbol MUST be treated as a decoding
+#    error.
+
+[[spec]]
+level = "MUST"
+quote = '''
+A padding strictly longer
+than 7 bits MUST be treated as a decoding error.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A padding not
+corresponding to the most significant bits of the code for the EOS
+symbol MUST be treated as a decoding error.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A Huffman-encoded string
+literal containing the EOS symbol MUST be treated as a decoding
+error.
+'''
+

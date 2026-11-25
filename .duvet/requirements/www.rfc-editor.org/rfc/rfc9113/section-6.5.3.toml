@@ -1,0 +1,64 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-6.5.3"
+
+# Settings Synchronization
+#
+#    Most values in SETTINGS benefit from or require an understanding of
+#    when the peer has received and applied the changed parameter values.
+#    In order to provide such synchronization timepoints, the recipient of
+#    a SETTINGS frame in which the ACK flag is not set MUST apply the
+#    updated settings as soon as possible upon receipt.  SETTINGS frames
+#    are acknowledged in the order in which they are received.
+# 
+#    The values in the SETTINGS frame MUST be processed in the order they
+#    appear, with no other frame processing between values.  Unsupported
+#    settings MUST be ignored.  Once all values have been processed, the
+#    recipient MUST immediately emit a SETTINGS frame with the ACK flag
+#    set.  Upon receiving a SETTINGS frame with the ACK flag set, the
+#    sender of the altered settings can rely on the values from the oldest
+#    unacknowledged SETTINGS frame having been applied.
+# 
+#    If the sender of a SETTINGS frame does not receive an acknowledgment
+#    within a reasonable amount of time, it MAY issue a connection error
+#    (Section 5.4.1) of type SETTINGS_TIMEOUT.  In setting a timeout, some
+#    allowance needs to be made for processing delays at the peer; a
+#    timeout that is solely based on the round-trip time between endpoints
+#    might result in spurious errors.
+
+[[spec]]
+level = "MUST"
+quote = '''
+In order to provide such synchronization timepoints, the recipient of
+a SETTINGS frame in which the ACK flag is not set MUST apply the
+updated settings as soon as possible upon receipt.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The values in the SETTINGS frame MUST be processed in the order they
+appear, with no other frame processing between values.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Unsupported
+settings MUST be ignored.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Once all values have been processed, the
+recipient MUST immediately emit a SETTINGS frame with the ACK flag
+set.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+If the sender of a SETTINGS frame does not receive an acknowledgment
+within a reasonable amount of time, it MAY issue a connection error
+(Section 5.4.1) of type SETTINGS_TIMEOUT.
+'''
+

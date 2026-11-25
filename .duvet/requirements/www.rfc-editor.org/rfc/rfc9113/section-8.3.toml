@@ -1,0 +1,92 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.3"
+
+# HTTP Control Data
+#
+#    HTTP/2 uses special pseudo-header fields beginning with a ':'
+#    character (ASCII 0x3a) to convey message control data (see
+#    Section 6.2 of [HTTP]).
+# 
+#    Pseudo-header fields are not HTTP header fields.  Endpoints MUST NOT
+#    generate pseudo-header fields other than those defined in this
+#    document.  Note that an extension could negotiate the use of
+#    additional pseudo-header fields; see Section 5.5.
+# 
+#    Pseudo-header fields are only valid in the context in which they are
+#    defined.  Pseudo-header fields defined for requests MUST NOT appear
+#    in responses; pseudo-header fields defined for responses MUST NOT
+#    appear in requests.  Pseudo-header fields MUST NOT appear in a
+#    trailer section.  Endpoints MUST treat a request or response that
+#    contains undefined or invalid pseudo-header fields as malformed
+#    (Section 8.1.1).
+# 
+#    All pseudo-header fields MUST appear in a field block before all
+#    regular field lines.  Any request or response that contains a pseudo-
+#    header field that appears in a field block after a regular field line
+#    MUST be treated as malformed (Section 8.1.1).
+# 
+#    The same pseudo-header field name MUST NOT appear more than once in a
+#    field block.  A field block for an HTTP request or response that
+#    contains a repeated pseudo-header field name MUST be treated as
+#    malformed (Section 8.1.1).
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints MUST NOT
+generate pseudo-header fields other than those defined in this
+document.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Pseudo-header fields defined for requests MUST NOT appear
+in responses; pseudo-header fields defined for responses MUST NOT
+appear in requests.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Pseudo-header fields MUST NOT appear in a
+trailer section.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Endpoints MUST treat a request or response that
+contains undefined or invalid pseudo-header fields as malformed
+(Section 8.1.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+All pseudo-header fields MUST appear in a field block before all
+regular field lines.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Any request or response that contains a pseudo-
+header field that appears in a field block after a regular field line
+MUST be treated as malformed (Section 8.1.1).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The same pseudo-header field name MUST NOT appear more than once in a
+field block.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A field block for an HTTP request or response that
+contains a repeated pseudo-header field name MUST be treated as
+malformed (Section 8.1.1).
+'''
+

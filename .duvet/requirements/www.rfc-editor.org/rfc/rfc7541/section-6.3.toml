@@ -1,0 +1,42 @@
+target = "https://www.rfc-editor.org/rfc/rfc7541#section-6.3"
+
+# Dynamic Table Size Update
+#
+#    A dynamic table size update signals a change to the size of the
+#    dynamic table.
+# 
+#      0   1   2   3   4   5   6   7
+#    +---+---+---+---+---+---+---+---+
+#    | 0 | 0 | 1 |   Max size (5+)   |
+#    +---+---------------------------+
+# 
+#                Figure 12: Maximum Dynamic Table Size Change
+# 
+#    A dynamic table size update starts with the '001' 3-bit pattern,
+#    followed by the new maximum size, represented as an integer with a
+#    5-bit prefix (see Section 5.1).
+# 
+#    The new maximum size MUST be lower than or equal to the limit
+#    determined by the protocol using HPACK.  A value that exceeds this
+#    limit MUST be treated as a decoding error.  In HTTP/2, this limit is
+#    the last value of the SETTINGS_HEADER_TABLE_SIZE parameter (see
+#    Section 6.5.2 of [HTTP2]) received from the decoder and acknowledged
+#    by the encoder (see Section 6.5.3 of [HTTP2]).
+# 
+#    Reducing the maximum size of the dynamic table can cause entries to
+#    be evicted (see Section 4.3).
+
+[[spec]]
+level = "MUST"
+quote = '''
+The new maximum size MUST be lower than or equal to the limit
+determined by the protocol using HPACK.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A value that exceeds this
+limit MUST be treated as a decoding error.
+'''
+

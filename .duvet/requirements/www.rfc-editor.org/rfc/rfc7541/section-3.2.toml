@@ -1,0 +1,40 @@
+target = "https://www.rfc-editor.org/rfc/rfc7541#section-3.2"
+
+# Header Field Representation Processing
+#
+#    The processing of a header block to obtain a header list is defined
+#    in this section.  To ensure that the decoding will successfully
+#    produce a header list, a decoder MUST obey the following rules.
+# 
+#    All the header field representations contained in a header block are
+#    processed in the order in which they appear, as specified below.
+#    Details on the formatting of the various header field representations
+#    and some additional processing instructions are found in Section 6.
+# 
+#    An _indexed representation_ entails the following actions:
+# 
+#    o  The header field corresponding to the referenced entry in either
+#       the static table or dynamic table is appended to the decoded
+#       header list.
+# 
+#    A _literal representation_ that is _not added_ to the dynamic table
+#    entails the following action:
+# 
+#    o  The header field is appended to the decoded header list.
+# 
+#    A _literal representation_ that is _added_ to the dynamic table
+#    entails the following actions:
+# 
+#    o  The header field is appended to the decoded header list.
+# 
+#    o  The header field is inserted at the beginning of the dynamic
+#       table.  This insertion could result in the eviction of previous
+#       entries in the dynamic table (see Section 4.4).
+
+[[spec]]
+level = "MUST"
+quote = '''
+To ensure that the decoding will successfully
+produce a header list, a decoder MUST obey the following rules.
+'''
+

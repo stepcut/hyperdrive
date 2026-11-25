@@ -1,0 +1,53 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-10.3"
+
+# Intermediary Encapsulation Attacks
+#
+#    HPACK permits encoding of field names and values that might be
+#    treated as delimiters in other HTTP versions.  An intermediary that
+#    translates an HTTP/2 request or response MUST validate fields
+#    according to the rules in Section 8.2 before translating a message to
+#    another HTTP version.  Translating a field that includes invalid
+#    delimiters could be used to cause recipients to incorrectly interpret
+#    a message, which could be exploited by an attacker.
+# 
+#    Section 8.2 does not include specific rules for validation of pseudo-
+#    header fields.  If the values of these fields are used, additional
+#    validation is necessary.  This is particularly important where
+#    ":scheme", ":authority", and ":path" are combined to form a single
+#    URI string [RFC3986].  Similar problems might occur when that URI or
+#    just ":path" is combined with ":method" to construct a request line
+#    (as in Section 3 of [HTTP/1.1]).  Simple concatenation is not secure
+#    unless the input values are fully validated.
+# 
+#    An intermediary can reject fields that contain invalid field names or
+#    values for other reasons -- in particular, those fields that do not
+#    conform to the HTTP ABNF grammar from Section 5 of [HTTP].
+#    Intermediaries that do not perform any validation of fields other
+#    than the minimum required by Section 8.2 could forward messages that
+#    contain invalid field names or values.
+# 
+#    An intermediary that receives any fields that require removal before
+#    forwarding (see Section 7.6.1 of [HTTP]) MUST remove or replace those
+#    header fields when forwarding messages.  Additionally, intermediaries
+#    should take care when forwarding messages containing Content-Length
+#    fields to ensure that the message is well-formed (Section 8.1.1).
+#    This ensures that if the message is translated into HTTP/1.1 at any
+#    point, the framing will be correct.
+
+[[spec]]
+level = "MUST"
+quote = '''
+An intermediary that
+translates an HTTP/2 request or response MUST validate fields
+according to the rules in Section 8.2 before translating a message to
+another HTTP version.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An intermediary that receives any fields that require removal before
+forwarding (see Section 7.6.1 of [HTTP]) MUST remove or replace those
+header fields when forwarding messages.
+'''
+

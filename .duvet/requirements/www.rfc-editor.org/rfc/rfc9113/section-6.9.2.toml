@@ -1,0 +1,71 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2"
+
+# Initial Flow-Control Window Size
+#
+#    When an HTTP/2 connection is first established, new streams are
+#    created with an initial flow-control window size of 65,535 octets.
+#    The connection flow-control window is also 65,535 octets.  Both
+#    endpoints can adjust the initial window size for new streams by
+#    including a value for SETTINGS_INITIAL_WINDOW_SIZE in the SETTINGS
+#    frame.  The connection flow-control window can only be changed using
+#    WINDOW_UPDATE frames.
+# 
+#    Prior to receiving a SETTINGS frame that sets a value for
+#    SETTINGS_INITIAL_WINDOW_SIZE, an endpoint can only use the default
+#    initial window size when sending flow-controlled frames.  Similarly,
+#    the connection flow-control window is set based on the default
+#    initial window size until a WINDOW_UPDATE frame is received.
+# 
+#    In addition to changing the flow-control window for streams that are
+#    not yet active, a SETTINGS frame can alter the initial flow-control
+#    window size for streams with active flow-control windows (that is,
+#    streams in the "open" or "half-closed (remote)" state).  When the
+#    value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
+#    the size of all stream flow-control windows that it maintains by the
+#    difference between the new value and the old value.
+# 
+#    A change to SETTINGS_INITIAL_WINDOW_SIZE can cause the available
+#    space in a flow-control window to become negative.  A sender MUST
+#    track the negative flow-control window and MUST NOT send new flow-
+#    controlled frames until it receives WINDOW_UPDATE frames that cause
+#    the flow-control window to become positive.
+# 
+#    For example, if the client sends 60 KB immediately on connection
+#    establishment and the server sets the initial window size to be 16
+#    KB, the client will recalculate the available flow-control window to
+#    be -44 KB on receipt of the SETTINGS frame.  The client retains a
+#    negative flow-control window until WINDOW_UPDATE frames restore the
+#    window to being positive, after which the client can resume sending.
+# 
+#    A SETTINGS frame cannot alter the connection flow-control window.
+# 
+#    An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
+#    causes any flow-control window to exceed the maximum size as a
+#    connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
+
+[[spec]]
+level = "MUST"
+quote = '''
+When the
+value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
+the size of all stream flow-control windows that it maintains by the
+difference between the new value and the old value.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+A sender MUST
+track the negative flow-control window and MUST NOT send new flow-
+controlled frames until it receives WINDOW_UPDATE frames that cause
+the flow-control window to become positive.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
+causes any flow-control window to exceed the maximum size as a
+connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
+'''
+

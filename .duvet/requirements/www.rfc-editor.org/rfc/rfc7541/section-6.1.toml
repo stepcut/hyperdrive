@@ -1,0 +1,31 @@
+target = "https://www.rfc-editor.org/rfc/rfc7541#section-6.1"
+
+# Indexed Header Field Representation
+#
+#    An indexed header field representation identifies an entry in either
+#    the static table or the dynamic table (see Section 2.3).
+# 
+#    An indexed header field representation causes a header field to be
+#    added to the decoded header list, as described in Section 3.2.
+# 
+#      0   1   2   3   4   5   6   7
+#    +---+---+---+---+---+---+---+---+
+#    | 1 |        Index (7+)         |
+#    +---+---------------------------+
+# 
+#                       Figure 5: Indexed Header Field
+# 
+#    An indexed header field starts with the '1' 1-bit pattern, followed
+#    by the index of the matching header field, represented as an integer
+#    with a 7-bit prefix (see Section 5.1).
+# 
+#    The index value of 0 is not used.  It MUST be treated as a decoding
+#    error if found in an indexed header field representation.
+
+[[spec]]
+level = "MUST"
+quote = '''
+It MUST be treated as a decoding
+error if found in an indexed header field representation.
+'''
+

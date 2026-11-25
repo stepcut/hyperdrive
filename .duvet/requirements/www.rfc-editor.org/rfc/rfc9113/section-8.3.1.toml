@@ -1,0 +1,191 @@
+target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.3.1"
+
+# Request Pseudo-Header Fields
+#
+#    The following pseudo-header fields are defined for HTTP/2 requests:
+# 
+#    *  The ":method" pseudo-header field includes the HTTP method
+#       (Section 9 of [HTTP]).
+# 
+#    *  The ":scheme" pseudo-header field includes the scheme portion of
+#       the request target.  The scheme is taken from the target URI
+#       (Section 3.1 of [RFC3986]) when generating a request directly, or
+#       from the scheme of a translated request (for example, see
+#       Section 3.3 of [HTTP/1.1]).  Scheme is omitted for CONNECT
+#       requests (Section 8.5).
+# 
+#       ":scheme" is not restricted to "http" and "https" schemed URIs.  A
+#       proxy or gateway can translate requests for non-HTTP schemes,
+#       enabling the use of HTTP to interact with non-HTTP services.
+# 
+#    *  The ":authority" pseudo-header field conveys the authority portion
+#       (Section 3.2 of [RFC3986]) of the target URI (Section 7.1 of
+#       [HTTP]).  The recipient of an HTTP/2 request MUST NOT use the Host
+#       header field to determine the target URI if ":authority" is
+#       present.
+# 
+#       Clients that generate HTTP/2 requests directly MUST use the
+#       ":authority" pseudo-header field to convey authority information,
+#       unless there is no authority information to convey (in which case
+#       it MUST NOT generate ":authority").
+# 
+#       Clients MUST NOT generate a request with a Host header field that
+#       differs from the ":authority" pseudo-header field.  A server
+#       SHOULD treat a request as malformed if it contains a Host header
+#       field that identifies an entity that differs from the entity in
+#       the ":authority" pseudo-header field.  The values of fields need
+#       to be normalized to compare them (see Section 6.2 of [RFC3986]).
+#       An origin server can apply any normalization method, whereas other
+#       servers MUST perform scheme-based normalization (see Section 6.2.3
+#       of [RFC3986]) of the two fields.
+# 
+#       An intermediary that forwards a request over HTTP/2 MUST construct
+#       an ":authority" pseudo-header field using the authority
+#       information from the control data of the original request, unless
+#       the original request's target URI does not contain authority
+#       information (in which case it MUST NOT generate ":authority").
+#       Note that the Host header field is not the sole source of this
+#       information; see Section 7.2 of [HTTP].
+# 
+#       An intermediary that needs to generate a Host header field (which
+#       might be necessary to construct an HTTP/1.1 request) MUST use the
+#       value from the ":authority" pseudo-header field as the value of
+#       the Host field, unless the intermediary also changes the request
+#       target.  This replaces any existing Host field to avoid potential
+#       vulnerabilities in HTTP routing.
+# 
+#       An intermediary that forwards a request over HTTP/2 MAY retain any
+#       Host header field.
+# 
+#       Note that request targets for CONNECT or asterisk-form OPTIONS
+#       requests never include authority information; see Sections 7.1 and
+#       7.2 of [HTTP].
+# 
+#       ":authority" MUST NOT include the deprecated userinfo subcomponent
+#       for "http" or "https" schemed URIs.
+# 
+#    *  The ":path" pseudo-header field includes the path and query parts
+#       of the target URI (the absolute-path production and, optionally, a
+#       '?' character followed by the query production; see Section 4.1 of
+#       [HTTP]).  A request in asterisk form (for OPTIONS) includes the
+#       value '*' for the ":path" pseudo-header field.
+# 
+#       This pseudo-header field MUST NOT be empty for "http" or "https"
+#       URIs; "http" or "https" URIs that do not contain a path component
+#       MUST include a value of '/'.  The exceptions to this rule are:
+# 
+#       -  an OPTIONS request for an "http" or "https" URI that does not
+#          include a path component; these MUST include a ":path" pseudo-
+#          header field with a value of '*' (see Section 7.1 of [HTTP]).
+# 
+#       -  CONNECT requests (Section 8.5), where the ":path" pseudo-header
+#          field is omitted.
+# 
+#    All HTTP/2 requests MUST include exactly one valid value for the
+#    ":method", ":scheme", and ":path" pseudo-header fields, unless they
+#    are CONNECT requests (Section 8.5).  An HTTP request that omits
+#    mandatory pseudo-header fields is malformed (Section 8.1.1).
+# 
+#    Individual HTTP/2 requests do not carry an explicit indicator of
+#    protocol version.  All HTTP/2 requests implicitly have a protocol
+#    version of "2.0" (see Section 6.2 of [HTTP]).
+
+[[spec]]
+level = "MUST"
+quote = '''
+The recipient of an HTTP/2 request MUST NOT use the Host
+header field to determine the target URI if ":authority" is
+present.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Clients that generate HTTP/2 requests directly MUST use the
+":authority" pseudo-header field to convey authority information,
+unless there is no authority information to convey (in which case
+it MUST NOT generate ":authority").
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Clients MUST NOT generate a request with a Host header field that
+differs from the ":authority" pseudo-header field.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A server
+SHOULD treat a request as malformed if it contains a Host header
+field that identifies an entity that differs from the entity in
+the ":authority" pseudo-header field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An origin server can apply any normalization method, whereas other
+servers MUST perform scheme-based normalization (see Section 6.2.3
+of [RFC3986]) of the two fields.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An intermediary that forwards a request over HTTP/2 MUST construct
+an ":authority" pseudo-header field using the authority
+information from the control data of the original request, unless
+the original request's target URI does not contain authority
+information (in which case it MUST NOT generate ":authority").
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+An intermediary that needs to generate a Host header field (which
+might be necessary to construct an HTTP/1.1 request) MUST use the
+value from the ":authority" pseudo-header field as the value of
+the Host field, unless the intermediary also changes the request
+target.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+An intermediary that forwards a request over HTTP/2 MAY retain any
+Host header field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+":authority" MUST NOT include the deprecated userinfo subcomponent
+for "http" or "https" schemed URIs.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+This pseudo-header field MUST NOT be empty for "http" or "https"
+URIs; "http" or "https" URIs that do not contain a path component
+MUST include a value of '/'.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+-  an OPTIONS request for an "http" or "https" URI that does not
+include a path component; these MUST include a ":path" pseudo-
+header field with a value of '*' (see Section 7.1 of [HTTP]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+All HTTP/2 requests MUST include exactly one valid value for the
+":method", ":scheme", and ":path" pseudo-header fields, unless they
+are CONNECT requests (Section 8.5).
+'''
+
