@@ -39,16 +39,22 @@ test-suite hyperdrive-http2-tests
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    DecodeTests
+  other-modules:    CorpusTests
+                    DecodeTests
                     EncodeTests
                     HuffmanTests
                     IntegerTests
                     RFC7541
   default-language: GHC2021
   build-depends:    base
+                  , aeson            >= 2.0  && < 2.3
+                  , base16-bytestring >= 1.0 && < 1.1
                   , bytestring
                   , containers
+                  , directory
+                  , filepath
                   , hyperdrive-http2
+                  , text
                   , QuickCheck       >= 2.14 && < 2.18
                   , tasty            >= 1.4  && < 1.6
                   , tasty-quickcheck >= 0.10 && < 0.12

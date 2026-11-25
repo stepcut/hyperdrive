@@ -2,8 +2,11 @@
   description = "hyperdrive: a high-assurance HTTP server";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # HPACK encodings of real header sets by several implementations, for
+  # hyperdrive-http2's tests (MIT licence)
+  inputs.hpack-test-case = { url = "github:http2jp/hpack-test-case"; flake = false; };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, hpack-test-case }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
@@ -14,7 +17,9 @@
           (final.callCabal2nix "hyperdrive-semantics" ./hyperdrive-semantics { }) [ pkgs.python3 ];
         hyperdrive-abnf = final.callCabal2nix "hyperdrive-abnf" ./hyperdrive-abnf { };
         hyperdrive-http1 = final.callCabal2nix "hyperdrive-http1" ./hyperdrive-http1 { };
-        hyperdrive-http2 = final.callCabal2nix "hyperdrive-http2" ./hyperdrive-http2 { };
+        # the tests read the hpack-test-case corpus from HPACK_TEST_CASE
+        hyperdrive-http2 = (final.callCabal2nix "hyperdrive-http2" ./hyperdrive-http2 { }).overrideAttrs
+          (_: { HPACK_TEST_CASE = "${hpack-test-case}"; });
         hyperdrive-server = final.callCabal2nix "hyperdrive-server" ./hyperdrive-server { };
         # not checked: run with `nix develop .#bench -c scripts/bench`
         hyperdrive-bench = final.callCabal2nix "hyperdrive-bench" ./bench { };
@@ -98,6 +103,7 @@
             pkgs.python3 # for scripts/mutation-test
             self.packages.${pkgs.stdenv.hostPlatform.system}.duvet
           ];
+          HPACK_TEST_CASE = "${hpack-test-case}";
         };
         # the default shell with llhttp's C library, for the differential
         # tests against it: scripts/differential-llhttp
