@@ -481,6 +481,14 @@ size did not change: an unneeded update is valid, and a missing one is
 a COMPRESSION_ERROR at the client. A client's 0 makes (b) behave as
 (a).
 
+**The decoder (decided, 2026-11-25).** Any number of dynamic table
+size updates may start a block; one after a field is refused. Section
+4.2's "resulting in at most two dynamic table size updates" describes
+what an encoder's requirements lead to, not a limit on decoders, and
+nghttp2 accepts more (the differential tests found this, the only
+difference between the two decoders in 100,000 generated sessions).
+Each update costs a resize, and a block's size is bounded (D9).
+
 **For HTTP/3.** QPACK can take H1's list and H2 unchanged; whether its
 encoder uses a dynamic table at all (which brings an encoder stream,
 acknowledgements and blocked streams) is a separate decision for

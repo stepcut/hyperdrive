@@ -123,34 +123,33 @@ modelLookup i (Model _ es)
 
 -- | Sections 3.2 and 6, one representation at a time.
 reference :: Int -> Int -> Model -> ByteString -> Either DecodeError (Decoded, Model)
-reference limit maxList model0 = go model0 [] (0 :: Int) True . B.unpack
+reference limit maxList model0 = go model0 [] True . B.unpack
   where
-    go model fields _ _ [] =
+    go model fields _ [] =
       let size = sum [B.length n + B.length v + 32 | (n, v) <- fields]
       in Right (if size > maxList then ListTooLarge else Fields fields, model)
-    go model fields updates atStart os@(b : _)
+    go model fields atStart os@(b : _)
       | b >= 0x80 = do
           (i, rest) <- int 7 os
           if i == 0 then Left IndexZero else do
             e <- maybe (Left (IndexOutOfRange i)) Right (modelLookup i model)
-            go model (fields ++ [e]) updates False rest
-      | b >= 0x40 = lit True 6 model fields updates os
+            go model (fields ++ [e]) False rest
+      | b >= 0x40 = lit True 6 model fields os
       | b >= 0x20 =
           if not atStart then Left TableSizeUpdateLate
-          else if updates >= 2 then Left TooManyTableSizeUpdates
           else do
             (m, rest) <- int 5 os
             if m > limit then Left (TableSizeAboveLimit m)
-              else go (modelResize m model) fields (updates + 1) True rest
-      | otherwise = lit False 4 model fields updates os
-    lit adds prefix model fields updates os = do
+              else go (modelResize m model) fields True rest
+      | otherwise = lit False 4 model fields os
+    lit adds prefix model fields os = do
       (i, rest) <- int prefix os
       (name, rest') <-
         if i == 0 then str rest
         else maybe (Left (IndexOutOfRange i)) (\(n, _) -> Right (n, rest)) (modelLookup i model)
       (value, rest'') <- str rest'
       let model' = if adds then modelInsert (name, value) model else model
-      go model' (fields ++ [(name, value)]) updates False rest''
+      go model' (fields ++ [(name, value)]) False rest''
     int n os = case decodeInteger n (B.pack os) 0 of
       Decoded v k -> Right (v, drop k os)
       Incomplete  -> Left Truncated
@@ -168,13 +167,13 @@ reference limit maxList model0 = go model0 [] (0 :: Int) True . B.unpack
 ------------------------------------------------------------------------------
 
 -- | A block for a decoder in the given state. Four in five are valid:
--- up to two size updates at the start, then fields that use every
+-- up to three size updates at the start, then fields that use every
 -- representation, each index chosen within the table as it is at that
 -- point. The fifth has one fault: index 0, an index beyond the tables,
--- an update above the limit, a third update, or one after a field.
+-- an update above the limit, or one after a field.
 genBlock :: Int -> Model -> Gen [Rep]
 genBlock limit model0 = do
-  updates <- frequency [(6, pure []), (3, vectorOf 1 update), (2, vectorOf 2 update)]
+  updates <- frequency [(6, pure []), (3, vectorOf 1 update), (2, vectorOf 2 update), (1, vectorOf 3 update)]
   n <- choose (0, 12)
   reps <- fieldsFrom (foldl (flip modelResize) model0 [m | SizeUpdate m <- updates]) n
   let valid = updates ++ reps
@@ -185,7 +184,6 @@ genBlock limit model0 = do
       [ pure (take pos valid ++ [Indexed 0] ++ drop pos valid)
       , pure (take pos valid ++ [Indexed (staticTableLength + 1000)] ++ drop pos valid)
       , pure (SizeUpdate (limit + 1) : valid)
-      , pure (SizeUpdate 0 : SizeUpdate 0 : SizeUpdate 0 : reps)
       , pure (valid ++ [Indexed 2, SizeUpdate 0]) ]
   where
     update = SizeUpdate <$> choose (0, limit)
@@ -280,7 +278,9 @@ prop_errors = once $ conjoin
   , dec [SizeUpdate 4097] === Left (TableSizeAboveLimit 4097)
   , fmap fst (dec [SizeUpdate 4096]) === Right (Fields [])
   , fmap fst (dec [SizeUpdate 0, SizeUpdate 4096, Indexed 2]) === Right (Fields [(":method", "GET")])
-  , dec [SizeUpdate 0, SizeUpdate 10, SizeUpdate 20] === Left TooManyTableSizeUpdates
+    -- any number of updates may start a block
+  , fmap (fmap (tableMaxSize . decoderTable)) (dec [SizeUpdate 0, SizeUpdate 10, SizeUpdate 20, Indexed 2])
+      === Right (Fields [(":method", "GET")], 20)
   , dec [Indexed 2, SizeUpdate 100] === Left TableSizeUpdateLate
   , decodeBlock maxBound d0 (B.pack [0x40, 0x05, 0x61]) === Left Truncated
   , decodeBlock maxBound d0 (B.pack [0x82, 0xFF]) === Left Truncated

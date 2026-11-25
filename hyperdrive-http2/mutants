@@ -113,16 +113,12 @@ why: literals without indexing and never indexed are not added to the table (Sec
 + let t' = insertEntry n v t
 
 why: a size update starts with 001 (Section 6.3)
-- else if b .&. 0xE0 == 0x20 then sizeUpdate t i updates listSize acc count
-+ else if b .&. 0xE0 == 0x60 then sizeUpdate t i updates listSize acc count
+- else if b .&. 0xE0 == 0x20 then sizeUpdate t i listSize acc count
++ else if b .&. 0xE0 == 0x60 then sizeUpdate t i listSize acc count
 
 why: a size update after a field is refused (Section 4.2)
-- | count > 0    = Left TableSizeUpdateLate
-+ | count > 1    = Left TableSizeUpdateLate
-
-why: at most two size updates (Section 4.2)
-- | otherwise = go table 0 2 0 [] 0
-+ | otherwise = go table 0 3 0 [] 0
+- | count > 0 = Left TableSizeUpdateLate
++ | count > 1 = Left TableSizeUpdateLate
 
 why: a size update above the limit is a decoding error (Section 6.3)
 - | m > limit -> Left (TableSizeAboveLimit m)

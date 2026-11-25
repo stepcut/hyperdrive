@@ -85,7 +85,6 @@ data DecodeError
   | BadHuffman !HuffmanError  -- ^ Section 5.2
   | TableSizeAboveLimit !Int  -- ^ a size update above the limit (Section 6.3)
   | TableSizeUpdateLate       -- ^ a size update after a field (Section 4.2)
-  | TooManyTableSizeUpdates   -- ^ more than two size updates (Section 4.2)
   | TableSizeUpdateMissing    -- ^ no size update after the limit fell (RFC 9113 Section 4.3.1)
   deriving (Eq, Show)
 
@@ -99,12 +98,12 @@ data DecodeError
 decodeBlock :: Int -> Decoder -> ByteString -> Either DecodeError (Decoded, Decoder)
 decodeBlock maxList (Decoder table limit required) bs
   | required && not startsWithUpdate = Left TableSizeUpdateMissing
-  | otherwise = go table 0 2 0 [] 0
+  | otherwise = go table 0 0 [] 0
   where
     startsWithUpdate = not (B.null bs) && BU.unsafeIndex bs 0 .&. 0xE0 == 0x20
-    -- i: the next octet; updates: size updates still allowed here;
-    -- listSize: the field list's size so far; acc: fields, last first
-    go !t !i !updates !listSize acc !count
+    -- i: the next octet; listSize: the field list's size so far; acc:
+    -- fields, last first; count: fields so far
+    go !t !i !listSize acc !count
       | i >= B.length bs =
           -- = https://www.rfc-editor.org/rfc/rfc7541#section-2.1
           -- # A decoder MUST order header fields in the decoded header list
@@ -115,14 +114,14 @@ decodeBlock maxList (Decoder table limit required) bs
           let b = BU.unsafeIndex bs i
           in if b .&. 0x80 /= 0 then indexed t i listSize acc count
              else if b .&. 0xC0 == 0x40 then literal True 6 t i listSize acc count
-             else if b .&. 0xE0 == 0x20 then sizeUpdate t i updates listSize acc count
+             else if b .&. 0xE0 == 0x20 then sizeUpdate t i listSize acc count
              else literal False 4 t i listSize acc count
 
     -- a field decoded: counted, and kept while the list is within the limit
     field t i' listSize acc count n v =
       let listSize' = listSize + entrySize n v
           acc' = if listSize' > maxList then [] else (n, v) : acc
-      in go t i' (0 :: Int) listSize' acc' (count + 1 :: Int)
+      in go t i' listSize' acc' (count + 1 :: Int)
 
     -- = https://www.rfc-editor.org/rfc/rfc7541#section-6.1
     -- # The index value of 0 is not used.  It MUST be treated as a decoding
@@ -159,16 +158,18 @@ decodeBlock maxList (Decoder table limit required) bs
     -- # update MUST occur at the beginning of the first header block
     -- # following the change to the dynamic table size.
     --
-    -- That requirement is on the encoder; the decoder holds it to it,
-    -- and to the same section's "at most two dynamic table size
-    -- updates", so that a block of nothing but updates is refused.
-    sizeUpdate t i updates listSize acc count
-      | count > 0    = Left TableSizeUpdateLate
-      | updates <= 0 = Left TooManyTableSizeUpdates
+    -- That requirement is on the encoder; the decoder holds it to it.
+    -- Any number of updates may start a block: the same section's
+    -- "resulting in at most two dynamic table size updates" describes
+    -- what an encoder's requirements lead to, not a limit on decoders,
+    -- and nghttp2 accepts more (decided 2026-11-25). Each costs a
+    -- resize, and the block's size is bounded (D9).
+    sizeUpdate t i listSize acc count
+      | count > 0 = Left TableSizeUpdateLate
       | otherwise = case decodeInteger 5 bs i of
           Decoded m i'
             | m > limit -> Left (TableSizeAboveLimit m)
-            | otherwise -> go (resizeTable m t) i' (updates - 1) listSize acc count
+            | otherwise -> go (resizeTable m t) i' listSize acc count
           Incomplete -> Left Truncated
           TooLarge   -> Left IntegerTooLarge
 
