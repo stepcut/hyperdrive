@@ -354,7 +354,7 @@ streams left, GOAWAY, the staged close, and the handlers' threads
 killed (one of the two places asynchronous exceptions are used).
 
 **D11. Pseudo-header fields to `Request` (decided, 2026-11-25: as
-below, with the additions after it).** `:method`, `:scheme`,
+below, with the additions after it; `:scheme` corrected the same day).** `:method`, `:scheme`,
 `:authority` and `:path` become the method and a `Target` through the
 existing target reconstruction, with the checks of RFC 9113 Section
 8.3.1 (required, single, before regular fields, no unknown ones, CONNECT's
@@ -377,11 +377,32 @@ names and values already separated.
   two RFCs say different things, and two sources for the authority are
   what routing and smuggling attacks use. `Host` is then left out of
   the `Request`, as on HTTP/1.1.
-- `:scheme`: only `http` and `https` (the RFC allows others, for
-  proxies; this is an origin server); anything else is malformed. The
-  target keeps the scheme the client sent, and `contextSecure` says
-  what the connection is: an application that cares about `https` over
-  h2c answers 421, as it would for an HTTP/1.1 absolute-form target.
+- `:scheme` (corrected 2026-11-25; the first version called other
+  schemes malformed): RFC 9113 allows any scheme ("':scheme' is not
+  restricted to 'http' and 'https' schemed URIs", Section 8.3.1), so
+  such a request is well formed. As HTTP/1.1 does for an absolute-form
+  target (design-notes P3), a scheme other than `http` or `https`, or
+  `https` on a cleartext connection, gets 421 (Misdirected Request) as
+  a normal response (D10's case 3).
+- Malformed (D10's case 2: 400, then RST_STREAM PROTOCOL_ERROR): what
+  Section 8 calls malformed. A field name that is not a token, has
+  upper case or a colon; a value with NUL, CR or LF, leading or
+  trailing whitespace, or characters outside field-value; an unknown or
+  repeated pseudo-header field, or one after a regular field; a missing
+  `:method`, `:scheme` or `:path`, or one without a valid value
+  ("exactly one valid value"); CONNECT with `:scheme` or `:path`, or
+  without `:authority`; connection-specific fields; `TE` other than
+  `trailers`; a `Host` that differs from `:authority`; in trailers,
+  pseudo-header fields, and `Content-Length` or `Transfer-Encoding`
+  (refused as HTTP/1.1 refuses them).
+- Refused (D10's case 3, a normal response, as HTTP/1.1 answers):
+  an invalid `:authority` or `Host` (userinfo, a bad port), more than
+  one `Host`, no authority and no default, `*` with a method other than
+  OPTIONS, an invalid `Content-Length` (400); the scheme cases above
+  (421).
+- `TargetContext` and the parsing of `Content-Length` move from
+  `hyperdrive-http1` to `hyperdrive-semantics`, re-exported where they
+  were, so that HTTP/2 does not depend on HTTP/1.1.
 - The result separates the two kinds of refusal (D10's cases 2 and 3),
   so that the core knows whether the error is PROTOCOL_ERROR: an error
   type with the class in it, as `Either PseudoError Request`.
@@ -571,5 +592,5 @@ the serializer has no way to.
 - **D8.** No RFC 7540 priorities; stream order first, then RFC 9218 after the warp benchmarks.
 - **D9.** The settings, a defence for each known attack, a nuisance budget with the coarse time as an input.
 - **D10.** HPACK errors close the connection; malformed 400 then PROTOCOL_ERROR; invalid 400; staged GOAWAY.
-- **D11.** The pseudo-header mapping in `hyperdrive-semantics`; a differing `Host` malformed; `http` and `https` only.
+- **D11.** The pseudo-header mapping in `hyperdrive-semantics`; a differing `Host` malformed; other schemes and `https` on cleartext 421, as HTTP/1.1.
 - **D12.** HPACK, frames, D11, `step`, h2c driver, RFC 9218, TLS (HTTP/1.1 first).
