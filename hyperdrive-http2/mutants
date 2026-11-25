@@ -297,3 +297,77 @@ why: a HEADERS frame followed by CONTINUATIONs does not set END_HEADERS (Section
 why: no CONTINUATION is longer than the peer's SETTINGS_MAX_FRAME_SIZE
 - | otherwise = let (c, r) = B.splitAt maxSize b
 + | otherwise = let (c, r) = B.splitAt (maxSize + 1) b
+
+file: src/Hyperdrive/HTTP2/Connection.hs
+
+why: octets that cannot start the preface end the connection at once, not after 24 have come
+- if cBuffer c `B.isPrefixOf` connectionPreface then result c outs else badPreface
++ result c outs
+
+why: an invalid preface is a connection error (RFC 9113 Section 3.4)
+- | not (connectionPreface `B.isPrefixOf` cBuffer c) -> badPreface
++ | False -> badPreface
+
+why: the preface must be followed by SETTINGS (Section 3.4)
+- _ -> prefix outs (goAway c' ProtocolError)
++ _ -> frame now c' { cPhase = Running, cHeadDeadline = Nothing } f outs
+
+why: a SETTINGS of more than 100 settings is refused (C10)
+- | count > configMaxSettings (cConfig c) || hasRepeats ss -> prefix outs (goAway c ProtocolError)
++ | count > configMaxSettings (cConfig c) + 1 || hasRepeats ss -> prefix outs (goAway c ProtocolError)
+
+why: a SETTINGS that repeats a setting is refused (C10, Section 10.5)
+- | count > configMaxSettings (cConfig c) || hasRepeats ss -> prefix outs (goAway c ProtocolError)
++ | count > configMaxSettings (cConfig c) -> prefix outs (goAway c ProtocolError)
+
+why: each setting after the first six costs budget (C10)
+- | otherwise -> charge (1 + fromIntegral (max 0 (count - 6))) c $ \c1 ->
++ | otherwise -> charge 1 c $ \c1 ->
+
+why: an acknowledgement of a SETTINGS we did not send is refused (C10)
+- [] -> prefix outs (goAway c ProtocolError)
++ [] -> next (c, [])
+
+why: a PING is answered with its own payload (Section 6.7)
+- PingFrame False d -> charge 1 c $ \c1 -> emit [renderPing True d] c1 >>> next
++ PingFrame False _ -> charge 1 c $ \c1 -> emit [renderPing True (B.replicate 8 0)] c1 >>> next
+
+why: a frame of unknown type costs budget (C10)
+- UnknownFrame _ _ _ -> charge 1 c $ \c1 -> next (c1, [])
++ UnknownFrame _ _ _ -> next (c, [])
+
+why: the budget may be spent to its last unit
+- | cBudget c < n * 1000 = goAway c EnhanceYourCalm
++ | cBudget c <= n * 1000 = goAway c EnhanceYourCalm
+
+why: the budget refills at the configured rate
+- gained = (now - cBudgetAt c) * configBudgetRate cfg
++ gained = (now - cBudgetAt c) * configBudgetRate cfg * 2
+
+why: the budget refills only to its burst
+- in c { cBudget = min (configBudgetBurst cfg * 1000) (cBudget c + gained), cBudgetAt = now }
++ in c { cBudget = cBudget c + gained, cBudgetAt = now }
+
+why: a client that never sends its preface is closed without a GOAWAY (Section 3.4 allows omitting it)
+- then close c []
++ then goAway c ProtocolError
+
+why: the SETTINGS timer starts when the client has started (C8)
+- let started = map (const (now + configSettingsTimeout (cConfig c'))) (cSettingsSent c')
++ let started = map (+ configSettingsTimeout (cConfig c')) (cSettingsSent c')
+
+why: before the client has started, only the head timeout runs
+- ++ (if cPhase c == Running then take 1 (cSettingsSent c) else []) of
++ ++ take 1 (cSettingsSent c) of
+
+why: Sent may not report more than was emitted
+- | n > cUnsent c -> misuse SentMoreThanEmitted c
++ | n > cUnsent c + 1 -> misuse SentMoreThanEmitted c
+
+why: the connection window starts at 65,535 (Section 6.9.2)
+- raise = fromIntegral (configConnectionWindow config) - 65535 :: Int
++ raise = fromIntegral (configConnectionWindow config) - 65536 :: Int
+
+why: INITIAL_WINDOW_SIZE is sent when it differs from 65,535
+- ++ [ InitialWindowSize (configStreamWindow config) | configStreamWindow config /= 65535 ]
++ ++ [ InitialWindowSize (configStreamWindow config) | configStreamWindow config /= 65536 ]

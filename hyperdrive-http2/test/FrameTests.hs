@@ -16,6 +16,7 @@ frameTests = testGroup "Frames (RFC 9113 Sections 4 and 6)"
   [ testProperty "every valid frame parses to what it says, whatever its unused flags and reserved bits" prop_valid
   , testProperty "a frame not all there asks for the octets it needs" prop_incomplete
   , testProperty "each rule broken once gives that rule's error" prop_nearMisses
+  , testProperty "the boundaries, by example" prop_boundaries
   , testProperty "rendered frames parse back" prop_render
   , testProperty "a field block is split into HEADERS and CONTINUATIONs of at most the peer's size" prop_renderHeaders
   ]
@@ -100,7 +101,7 @@ genValid = oneof
   , do -- SETTINGS, with settings this module does not know mixed in
       ss <- listOf genSetting
       fl <- withUnused 0x01 0; r <- arbitrary
-      pure (Wire 0x4 fl r 0 (B.concat [be16 i <> be32 v | (i, v, _) <- ss]), SettingsFrame (mapMaybe (\(_, _, s) -> s) ss))
+      pure (Wire 0x4 fl r 0 (B.concat [be16 i <> be32 v | (i, v, _) <- ss]), SettingsFrame (length ss) (mapMaybe (\(_, _, s) -> s) ss))
   , do -- SETTINGS acknowledgement
       fl <- withUnused 0x01 0x01; r <- arbitrary
       pure (Wire 0x4 fl r 0 "", SettingsAckFrame)
@@ -363,6 +364,41 @@ genNearMiss = oneof
 -- # CONTINUATION frame is received with a Stream Identifier field of
 -- # 0x00, the recipient MUST respond with a connection error
 -- # (Section 5.4.1) of type PROTOCOL_ERROR.
+-- the exact boundaries, which generated cases reach only by chance
+prop_boundaries :: Property
+prop_boundaries = once $ conjoin
+  [ counterexample "a length of 2^16 + 1, from the header alone" $
+      parseFrame ourMax (B.pack [1, 0, 1, 0, 0, 0, 0, 0, 1]) === conn FrameSizeError TooLong
+  , counterexample "a length of 2^24 - 1" $
+      parseFrame ourMax (B.pack [0xFF, 0xFF, 0xFF, 0, 0, 0, 0, 0, 1]) === conn FrameSizeError TooLong
+  , counterexample "the largest allowed, 2^14, is waited for" $
+      parseFrame ourMax (B.pack [0, 0x40, 0, 0, 0, 0, 0, 0, 1]) === Incomplete (9 + 16384)
+  , counterexample "SETTINGS_MAX_FRAME_SIZE of 2^14 - 1" $
+      parseFrame ourMax (settingsOne 5 0x3FFF) === conn ProtocolError BadMaxFrameSize
+  , counterexample "SETTINGS_MAX_FRAME_SIZE of 2^14" $
+      parseFrame ourMax (settingsOne 5 0x4000) === Parsed (SettingsFrame 1 [MaxFrameSize 0x4000]) 15
+  , counterexample "SETTINGS_MAX_FRAME_SIZE of 2^24 - 1 and 2^24" $
+      parseFrame ourMax (settingsOne 5 0xFFFFFF) === Parsed (SettingsFrame 1 [MaxFrameSize 0xFFFFFF]) 15
+      .&&. parseFrame ourMax (settingsOne 5 0x1000000) === conn ProtocolError BadMaxFrameSize
+  , counterexample "SETTINGS_ENABLE_PUSH of 1 and 2" $
+      parseFrame ourMax (settingsOne 2 1) === Parsed (SettingsFrame 1 [EnablePush True]) 15
+      .&&. parseFrame ourMax (settingsOne 2 2) === conn ProtocolError BadEnablePush
+  , counterexample "SETTINGS_INITIAL_WINDOW_SIZE of 2^31 - 1 and 2^31" $
+      parseFrame ourMax (settingsOne 4 0x7FFFFFFF) === Parsed (SettingsFrame 1 [InitialWindowSize 0x7FFFFFFF]) 15
+      .&&. parseFrame ourMax (settingsOne 4 0x80000000) === conn FlowControlError BadInitialWindowSize
+  , counterexample "each fixed length, one octet either side" $ conjoin
+      [ counterexample (show (t, n)) $ parseFrame ourMax (encodeWire (Wire t 0 False sid (B.replicate n 1))) === expected
+      | (t, sid, good) <- [(0x3, 1, 4), (0x6, 0, 8), (0x8, 1, 4), (0x2, 1, 5)]
+      , n <- [good - 1, good + 1]
+      , let expected = if t == 0x2 then Refused (FrameError (Stream (StreamId 1)) FrameSizeError WrongLength)
+                       else conn FrameSizeError WrongLength ]
+  , counterexample "GOAWAY of 7 and 8 octets" $
+      parseFrame ourMax (encodeWire (Wire 0x7 0 False 0 (B.replicate 7 0))) === conn FrameSizeError WrongLength
+      .&&. parseFrame ourMax (encodeWire (Wire 0x7 0 False 0 (B.replicate 8 0)))
+             === Parsed (GoAwayFrame (StreamId 0) NoError "") 17
+  ]
+  where settingsOne i v = encodeWire (Wire 0x4 0 False 0 (be16 i <> be32 v))
+
 prop_nearMisses :: Property
 prop_nearMisses = forAll genNearMiss $ \(rule, wire, expected) ->
   counterexample rule $ parseFrame ourMax wire === expected
@@ -378,7 +414,7 @@ genRendered = oneof
   , do sid <- streamId; c <- arbitrary
        pure (renderRstStream (StreamId sid) (ErrorCode c), RstStreamFrame (StreamId sid) (ErrorCode c))
   , do ss <- mapMaybe (\(_, _, s) -> s) <$> listOf genSetting
-       pure (renderSettings ss, SettingsFrame ss)
+       pure (renderSettings ss, SettingsFrame (length ss) ss)
   , pure (renderSettingsAck, SettingsAckFrame)
   , do ack <- arbitrary; d <- bytes 8
        pure (renderPing ack d, PingFrame ack d)

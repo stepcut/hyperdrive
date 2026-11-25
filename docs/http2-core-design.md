@@ -777,8 +777,9 @@ stream is half-closed (remote) (C4).
 **C8. Timers, each a setting (0 disables).**
 
 - The connection: the preface and first SETTINGS (the head timeout,
-  30 s); a field block left unfinished (30 s); our SETTINGS
-  unacknowledged (10 s, SETTINGS_TIMEOUT, Section 6.5.3); the shutdown
+  30 s); a field block left unfinished (30 s); our SETTINGS unacknowledged (10 s, SETTINGS_TIMEOUT, Section 6.5.3;
+  counted from the arrival of the client's preface and SETTINGS, since
+  a client cannot be faulted before it has started); the shutdown
   PING unanswered (1 s, as Go, after which shutdown goes on as if it
   had been answered); a connection with no streams (the idle timeout,
   60 s: GOAWAY NO_ERROR, then close), which a PING from the client

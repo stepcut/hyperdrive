@@ -98,8 +98,10 @@ data Frame
   | PriorityFrame !StreamId
     -- ^ deprecated (Section 5.3.2): checked, then ignored (D8)
   | RstStreamFrame !StreamId !ErrorCode
-  | SettingsFrame [Setting]
-    -- ^ in the order sent; settings this module does not know are dropped
+  | SettingsFrame !Int [Setting]
+    -- ^ the number of settings in the frame, and those this module
+    -- knows, in the order sent (the others are dropped, but counted,
+    -- so that the core can bound them; C10)
   | SettingsAckFrame
   | PushPromiseFrame !StreamId
     -- ^ only its stream: a server refuses every one (D7)
@@ -336,7 +338,7 @@ settingsFrame flags sid p
   -- # be treated as a connection error (Section 5.4.1) of type
   -- # FRAME_SIZE_ERROR.
   | B.length p `mod` 6 /= 0 = err FrameSizeError WrongLength
-  | otherwise = SettingsFrame <$> settings 0
+  | otherwise = SettingsFrame (B.length p `div` 6) <$> settings 0
   where
     settings i
       | i >= B.length p = Right []

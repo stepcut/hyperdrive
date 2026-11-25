@@ -2839,19 +2839,24 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    Likewise, the server MUST send a connection preface (Section 3.4).
 
   SECTION: [HTTP/2 Connection Preface](#section-3.4)
-    TEXT[!MUST]: This sequence MUST be followed by a
-    TEXT[!MUST]:    SETTINGS frame (Section 6.5), which MAY be empty.
-    TEXT[!MUST]:    The server connection preface consists of a potentially empty
-    TEXT[!MUST]:    SETTINGS frame (Section 6.5) that MUST be the first frame the server
-    TEXT[!MUST]:    sends in the HTTP/2 connection.
+    TEXT[implementation]:    The client connection preface starts with a sequence of 24 octets,
+    TEXT[implementation]:    which in hex notation is:
+    TEXT[implementation]:      0x505249202a20485454502f322e300d0a0d0a534d0d0a0d0a
+    TEXT[implementation]:    That is, the connection preface starts with the string "PRI *
+    TEXT[implementation]:    HTTP/2.0\r\n\r\nSM\r\n\r\n".
+    TEXT[!MUST,implementation]: This sequence MUST be followed by a
+    TEXT[!MUST,implementation]:    SETTINGS frame (Section 6.5), which MAY be empty.
+    TEXT[!MUST,implementation,test]:    The server connection preface consists of a potentially empty
+    TEXT[!MUST,implementation,test]:    SETTINGS frame (Section 6.5) that MUST be the first frame the server
+    TEXT[!MUST,implementation,test]:    sends in the HTTP/2 connection.
     TEXT[!MUST]:    The SETTINGS frames received from a peer as part of the connection
     TEXT[!MUST]:    preface MUST be acknowledged (see Section 6.5.3) after sending the
     TEXT[!MUST]:    connection preface.
-    TEXT[!MUST]:    Clients and servers MUST treat an invalid connection preface as a
-    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MAY]: A GOAWAY
-    TEXT[!MAY]:    frame (Section 6.8) MAY be omitted in this case, since an invalid
-    TEXT[!MAY]:    preface indicates that the peer is not using HTTP/2.
+    TEXT[!MUST,implementation]:    Clients and servers MUST treat an invalid connection preface as a
+    TEXT[!MUST,implementation]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MAY,implementation]: A GOAWAY
+    TEXT[!MAY,implementation]:    frame (Section 6.8) MAY be omitted in this case, since an invalid
+    TEXT[!MAY,implementation]:    preface indicates that the peer is not using HTTP/2.
 
   SECTION: [Frame Format](#section-4.1)
     TEXT[!MUST]: Values greater than 2^14
@@ -3008,9 +3013,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY]:    always be used in place of more specific error codes.
 
   SECTION: [Connection Error Handling](#section-5.4.1)
-    TEXT[!SHOULD]:    An endpoint that encounters a connection error SHOULD first send a
-    TEXT[!SHOULD]:    GOAWAY frame (Section 6.8) with the stream identifier of the last
-    TEXT[!SHOULD]:    stream that it successfully received from its peer.
+    TEXT[!SHOULD,implementation]:    An endpoint that encounters a connection error SHOULD first send a
+    TEXT[!SHOULD,implementation]:    GOAWAY frame (Section 6.8) with the stream identifier of the last
+    TEXT[!SHOULD,implementation]:    stream that it successfully received from its peer.
     TEXT[!MUST]: After sending the GOAWAY frame for an error
     TEXT[!MUST]:    condition, the endpoint MUST close the TCP connection.
     TEXT[!MAY]: In particular, an
@@ -3183,12 +3188,15 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    appear, with no other frame processing between values.
     TEXT[!MUST]: Unsupported
     TEXT[!MUST]:    settings MUST be ignored.
-    TEXT[!MUST]: Once all values have been processed, the
-    TEXT[!MUST]:    recipient MUST immediately emit a SETTINGS frame with the ACK flag
-    TEXT[!MUST]:    set.
-    TEXT[!MAY]:    If the sender of a SETTINGS frame does not receive an acknowledgment
-    TEXT[!MAY]:    within a reasonable amount of time, it MAY issue a connection error
-    TEXT[!MAY]:    (Section 5.4.1) of type SETTINGS_TIMEOUT.
+    TEXT[!MUST,implementation]: Once all values have been processed, the
+    TEXT[!MUST,implementation]:    recipient MUST immediately emit a SETTINGS frame with the ACK flag
+    TEXT[!MUST,implementation]:    set.
+    TEXT[implementation]: Upon receiving a SETTINGS frame with the ACK flag set, the
+    TEXT[implementation]:    sender of the altered settings can rely on the values from the oldest
+    TEXT[implementation]:    unacknowledged SETTINGS frame having been applied.
+    TEXT[!MAY,implementation]:    If the sender of a SETTINGS frame does not receive an acknowledgment
+    TEXT[!MAY,implementation]:    within a reasonable amount of time, it MAY issue a connection error
+    TEXT[!MAY,implementation]:    (Section 5.4.1) of type SETTINGS_TIMEOUT.
 
   SECTION: [PUSH_PROMISE](#section-6.6)
     TEXT[!MUST,exception]: The promised stream
@@ -3238,15 +3246,15 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
   SECTION: [PING](#section-6.7)
     TEXT[!MUST]:    In addition to the frame header, PING frames MUST contain 8 octets of
     TEXT[!MUST]:    opaque data in the frame payload.
-    TEXT[!MUST]:    Receivers of a PING frame that does not include an ACK flag MUST send
-    TEXT[!MUST]:    a PING frame with the ACK flag set in response, with an identical
-    TEXT[!MUST]:    frame payload.
+    TEXT[!MUST,implementation]:    Receivers of a PING frame that does not include an ACK flag MUST send
+    TEXT[!MUST,implementation]:    a PING frame with the ACK flag set in response, with an identical
+    TEXT[!MUST,implementation]:    frame payload.
     TEXT[!SHOULD]: PING responses SHOULD be given higher priority than
     TEXT[!SHOULD]:    any other frame.
     TEXT[!MUST]: An endpoint MUST set this flag in PING
     TEXT[!MUST]:       responses.
-    TEXT[!MUST]: An endpoint MUST NOT respond to PING frames containing
-    TEXT[!MUST]:       this flag.
+    TEXT[!MUST,implementation]: An endpoint MUST NOT respond to PING frames containing
+    TEXT[!MUST,implementation]:       this flag.
     TEXT[implementation,test]:    PING frames are not associated with any individual stream.
     TEXT[!MUST,implementation,test]: If a PING
     TEXT[!MUST,implementation,test]:    frame is received with a Stream Identifier field value other than
@@ -3726,6 +3734,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
   SECTION: [Denial-of-Service Considerations](#section-10.5)
     TEXT[!SHOULD,exception]: A client that accepts server push SHOULD limit the number
     TEXT[!SHOULD,exception]:    of streams it allows to be in the "reserved (remote)" state.
+    TEXT[implementation]: The SETTINGS frame might also be abused to cause a peer to expend
+    TEXT[implementation]:       additional processing time.  This might be done by pointlessly
+    TEXT[implementation]:       changing settings, sending multiple undefined settings, or
+    TEXT[implementation]:       changing the same setting multiple times in the same frame.
     TEXT[!SHOULD]: Implementations SHOULD track the use
     TEXT[!SHOULD]:    of these features and set limits on their use.
     TEXT[!MAY]: An endpoint MAY treat
