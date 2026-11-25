@@ -106,7 +106,7 @@ framingErrorStatus _                             = BadRequest
 --   any other gets 501.
 -- * Otherwise @Content-Length@, if present, gives the length. Repeated
 --   field lines or a list are accepted if every value is the same
---   number.
+--   number, and no element of a list is empty.
 -- * Otherwise there is no body.
 requestFraming :: HttpVersion -> Fields -> Either FramingError RequestFraming
 requestFraming version fields =
@@ -222,17 +222,25 @@ coding element = do
 -- one or more decimal numbers, all the same, and none too large for 64
 -- bits. "The same" is the same number, so @5, 05@ is 5: every reading
 -- that accepts it then agrees on the length.
+--
+-- The list is one a sender may generate, without empty elements: @5,@
+-- and an empty field line beside a @5@ are refused, though a recipient
+-- of a list is to ignore empty elements (RFC 9110 Section 5.6.1.2). A
+-- repeated length is what the RFC's exception is for, and nothing
+-- sends the others; other parsers refuse them.
 contentLength :: [FieldValue] -> Either FramingError Word64
-contentLength vs = do
-  elements <- concat <$> traverse (either (const (Left InvalidContentLength)) Right . splitList NoComments) vs
-  case traverse number elements of
+contentLength vs =
+  case traverse number (concatMap elements vs) of
     Just (n : ns) | all (== n) ns -> Right n
     _                              -> Left InvalidContentLength
   where
-    -- a decimal number that fits in 64 bits (splitList never returns an
-    -- empty element)
+    -- an empty value is one empty element, which B.split does not return
+    elements (FieldValue v)
+      | B.null v  = [v]
+      | otherwise = map (B.dropWhileEnd isOWS . B.dropWhile isOWS) (B.split 0x2C v)
+    -- a decimal number that fits in 64 bits
     number e
-      | not (B.all isDIGIT e) = Nothing
+      | B.null e || not (B.all isDIGIT e) = Nothing
       | otherwise = B.foldl' step (Just 0) e
     step acc w = do
       n <- acc

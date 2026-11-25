@@ -375,9 +375,6 @@ known reason h input = case reason of
     | mMethod h `notElem` llhttpMethods -> Just "a method llhttp has no name for"
   "HPE_INVALID_VERSION"
     | mVersion h `notElem` [(1, 0), (1, 1)] -> Just "a minor version above 1 (RFC 9110 Section 2.5)"
-  _ | reason `elem` ["HPE_INVALID_TRANSFER_ENCODING", "HPE_INVALID_CONTENT_LENGTH", "HPE_UNEXPECTED_CONTENT_LENGTH"]
-    , any ((`elem` ["transfer-encoding", "content-length"]) . fst) (mTrailers h) ->
-        Just "Content-Length or Transfer-Encoding in the trailer section, which is kept apart from the header section"
   "HPE_INVALID_TRANSFER_ENCODING"
     | any (\v -> not (B.null v) && isOWS (C.last v)) (sent "transfer-encoding") -> Just "whitespace after Transfer-Encoding's value"
     | any emptyElement (sent "transfer-encoding") -> Just "an empty element in Transfer-Encoding (RFC 9110 Section 5.6.1.2)"

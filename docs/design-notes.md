@@ -67,7 +67,9 @@ So:
   `Transfer-Encoding` alone, it rejects: that is the request smuggling
   pattern. A `Content-Length` list is accepted when every value is the
   same number (`5, 05` is 5), so every reading that accepts it agrees on
-  the length. The only transfer coding supported is chunked; any other
+  the length; a list with an empty element (`5,`) is rejected. A trailer
+  section with `Content-Length` or `Transfer-Encoding` makes the body
+  invalid. The only transfer coding supported is chunked; any other
   gets 501 (RFC 9112 Section 6.1).
 - The HTTP/1.1 request-head parser (`Hyperdrive.HTTP1.Head`) takes the
   strict choice wherever RFC 9112 allows leniency, since recipients that

@@ -106,8 +106,9 @@ ruleNearMisses r = either (error . show) id (nearMisses Recipient grammarLibrary
 -- whole input at once: each line is checked with the RFC's own grammar,
 -- and sizes are read as unbounded integers. It differs in one way
 -- that the decoder chose: the trailer section is checked once its end
--- has arrived, not line by line. "error" is any error; "overflow" is a
--- size too large for 64 bits.
+-- has arrived, not line by line. And a trailer section with a field of
+-- framing is an error. "error" is any error; "overflow" is a size too
+-- large for 64 bits.
 reference :: ByteString -> Either String (ByteString, [(ByteString, ByteString)], Int)
 reference input = sizes 0 []
   where
@@ -132,7 +133,9 @@ reference input = sizes 0 []
       _ <- endOfSection pos
       let go p acc = do
             (line, next) <- readLine p
-            if B.null line then Right (content, reverse acc, next)
+            if B.null line
+              then if any ((`elem` ["content-length", "transfer-encoding"]) . fst) acc
+                     then Left "error" else Right (content, reverse acc, next)
             else if isFieldLine line then go next (field line : acc)
             else Left "error"
       go pos []
@@ -192,6 +195,8 @@ genInput = do
     , (1, (<> "\r\n") <$> resize 10 (ruleNearMisses "size-line"))
     , (1, (\l -> l <> "\r\n" <> body) <$> elements ["10000000000000000", "FFFFFFFFFFFFFFFF", "0000000000000000001"])
     , (1, (\t -> "0\r\n" <> t <> "\r\n\r\n") <$> resize 8 (oneof [ruleStrings "field-line", ruleNearMisses "field-line"]))
+    , (1, (\ts -> "0\r\n" <> B.intercalate "\r\n" ts <> "\r\n\r\n") <$> (sublistOf
+             ["A: b", "Content-Length: 0", "content-length:3", "Transfer-Encoding: chunked", "TRANSFER-ENCODING:", "Content-Lengths: 1", "C: d"] >>= shuffle))
     , (1, pure (B.take (B.length body `div` 2) body)) ]
   trailing <- elements ["", "", "GET / HTTP/1.1\r\n\r\n", "\r\n", "0\r\n\r\n"]
   pure (damaged <> trailing)
@@ -370,6 +375,11 @@ prop_examples = once $ conjoin
   , result "0\r\nA : b\r\n\r\n" === Failed (InvalidTrailer WhitespaceBeforeColon)
   , result "0\r\nA\r\n\r\n" === Failed (InvalidTrailer InvalidFieldLine)
   , result "0\r\nA: b\nC: d\r\n\r\n" === Failed (InvalidTrailer BareLineFeed)
+    -- the fields of framing are not trailers
+  , result "0\r\nContent-Length: 0\r\n\r\n" === Failed FramingFieldInTrailers
+  , result "0\r\nA: b\r\ntransfer-encoding: chunked\r\n\r\n" === Failed FramingFieldInTrailers
+  , result "0\r\nA: b\r\nCONTENT-LENGTH: 5\r\nC: d\r\n\r\n" === Failed FramingFieldInTrailers
+  , complete "0\r\nContent-Lengths: 1\r\nContent-Type: a/b\r\n\r\n" "" [("content-lengths", "1"), ("content-type", "a/b")]
   ]
   where
     result s = decodeAll defaultChunkedLimits [s]

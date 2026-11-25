@@ -628,3 +628,31 @@ why: whitespace at the end of a line is not part of the value
 why: a value may follow the colon with no space, and its first octet is kept
 - | len >= 2, BU.unsafeIndex raw 0 == 0x20, not (isOWS (BU.unsafeIndex raw 1)), not (isOWS (BU.unsafeIndex raw (len - 1))) =
 + | len >= 2, not (isOWS (BU.unsafeIndex raw 1)), not (isOWS (BU.unsafeIndex raw (len - 1))) =
+
+file: src/Hyperdrive/HTTP1/Framing.hs
+
+why: a Content-Length list has no empty elements: "5," is not 5
+- | B.null e || not (B.all isDIGIT e) = Nothing
++ | not (B.all isDIGIT e) = Nothing
+
+why: the elements of a Content-Length list may have whitespace around them
+- | otherwise = map (B.dropWhileEnd isOWS . B.dropWhile isOWS) (B.split 0x2C v)
++ | otherwise = B.split 0x2C v
+
+why: an empty Content-Length line is not a length, even beside one that is
+- | B.null v  = [v]
++ | B.null v  = []
+
+file: src/Hyperdrive/HTTP1/Chunked.hs
+
+why: Content-Length in a trailer section is refused
+- isFramingField n = n == hContentLength || n == hTransferEncoding
++ isFramingField n = n == hTransferEncoding
+
+why: Transfer-Encoding in a trailer section is refused
+- isFramingField n = n == hContentLength || n == hTransferEncoding
++ isFramingField n = n == hContentLength
+
+why: a trailer section without the fields of framing is taken
+- isFramingField n = n == hContentLength || n == hTransferEncoding
++ isFramingField n = n == hContentLength || n == hTransferEncoding || True

@@ -434,6 +434,10 @@ prop_bodies = once $ conjoin
   , shown (outputs defaultConfig [Received (postChunked <> "3\r\nabcXY"), WantBody, WantBody])
       === [ "request POST Nothing", "data \"abc\""
           , "RequestAborted", "send \"HTTP/1.1 400 Bad Request\\r\\ncontent-length: 0\\r\\nconnection: close\\r\\n\\r\\n\"", "Close" ]
+    -- and so does a trailer section with a field of framing
+  , shown (outputs defaultConfig [Received (postChunked <> "3\r\nabc\r\n0\r\nContent-Length: 3\r\n\r\n"), WantBody, WantBody])
+      === [ "request POST Nothing", "data \"abc\""
+          , "RequestAborted", "send \"HTTP/1.1 400 Bad Request\\r\\ncontent-length: 0\\r\\nconnection: close\\r\\n\\r\\n\"", "Close" ]
     -- once a response has started, an aborted body cuts it off: no error response inside it
   , shown (outputs defaultConfig [Received (post "5" <> "ab"), Respond (response 200 Nothing), WantBody, WantBody, PeerClosed])
       === [ "request POST Just 5", "send \"HTTP/1.1 200 OK\\r\\ntransfer-encoding: chunked\\r\\n\\r\\n\""

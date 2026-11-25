@@ -21,7 +21,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Word (Word64)
 import Hyperdrive.HTTP1.Head (HeadError, breakCRLF, checkLine, indexCRLFCRLF, parseFieldLine)
-import Hyperdrive.Semantics.Field (Fields, emptyFields, fieldsFromList)
+import Hyperdrive.Semantics.Field (Fields, emptyFields, fieldsFromList, hContentLength, hTransferEncoding)
 import Hyperdrive.Semantics.FieldSyntax (parseQuotedString)
 import Hyperdrive.Semantics.Syntax (isHEXDIG, isOWS, isTChar)
 
@@ -84,6 +84,7 @@ data ChunkError
   | ChunkLineEnding           -- ^ a bare CR or LF in a chunk-size line
   | TrailerSectionTooLarge    -- ^ more than 'maxTrailerSection'
   | InvalidTrailer !HeadError -- ^ a trailer line that is not a field line
+  | FramingFieldInTrailers    -- ^ Content-Length or Transfer-Encoding in the trailer section
   deriving (Eq, Show)
 
 -- = https://www.rfc-editor.org/rfc/rfc9112#section-7.1
@@ -131,6 +132,12 @@ data ChunkError
 --
 -- The trailer section is returned on its own, never merged into the
 -- header section, and is checked only once all of it has arrived.
+--
+-- A trailer section with @Content-Length@ or @Transfer-Encoding@ is an
+-- error: a sender must not put the fields of framing there (RFC 9110
+-- Section 6.5.1), they would mislead whoever merged the trailers into
+-- the header section later, and the one who sends them is not to be
+-- trusted with the rest of the connection.
 decodeChunked :: ChunkedLimits -> Decoder -> ByteString -> Decoded
 decodeChunked limits = go 0
   where
@@ -176,10 +183,13 @@ decodeChunked limits = go 0
                 let section = B.take (start + before) input
                 in case traverse fieldLine (splitCRLF section) of
                      Left e   -> DecodeError (InvalidTrailer e)
-                     Right fs -> Finished (fieldsFromList fs) (used + B.length section + 4)
+                     Right fs
+                       | any (isFramingField . fst) fs -> DecodeError FramingFieldInTrailers
+                       | otherwise -> Finished (fieldsFromList fs) (used + B.length section + 4)
       where start = max 0 (searched - 3)
             limit = maxTrailerSection limits
     fieldLine l = checkLine l >> parseFieldLine l
+    isFramingField n = n == hContentLength || n == hTransferEncoding
 
 splitCRLF :: ByteString -> [ByteString]
 splitCRLF bs = case breakCRLF bs of

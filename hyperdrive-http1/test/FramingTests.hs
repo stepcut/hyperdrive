@@ -38,11 +38,12 @@ framingTests = testGroup "Framing (RFC 9112 Section 6)"
 
 -- | Content-Length values, each with the numbers it lists, or Nothing if
 -- it is not a list of decimal numbers. A value is read as a list
--- (RFC 9112 Section 6.3, rule 5), which may have empty elements.
+-- (RFC 9112 Section 6.3, rule 5), but one without empty elements.
 contentLengths :: [(ByteString, Maybe [Integer])]
 contentLengths =
   [ ("0", Just [0]), ("5", Just [5]), ("05", Just [5]), ("5, 5", Just [5, 5]), ("5,5", Just [5, 5])
-  , ("5, 05", Just [5, 5]), ("5, 6", Just [5, 6]), (", 5", Just [5]), ("", Just [])
+  , ("5, 05", Just [5, 5]), ("5, 6", Just [5, 6]), ("5 ,\t5", Just [5, 5]), ("5,5,5", Just [5, 5, 5])
+  , (", 5", Nothing), ("", Nothing), ("5,", Nothing), ("5,,5", Nothing), ("5, ,5", Nothing), (",", Nothing)
   , ("18446744073709551615", Just [18446744073709551615])
   , ("18446744073709551616", Just [18446744073709551616])
   , ("-1", Nothing), ("+5", Nothing), ("5.0", Nothing), ("0x10", Nothing), ("5 5", Nothing)
@@ -65,15 +66,17 @@ transferEncodings =
   , ("chunked x", Nothing), ("chunked;", Nothing), ("chunked;x", Nothing), ("chunked=1", Nothing)
   , ("\"chunked\"", Nothing), ("chunked;x=", Nothing) ]
 
--- | RFC 9110's grammars, in the form recipients accept lists:
--- @#Content-Length@ and @#transfer-coding@.
+-- | RFC 9110's grammars: @#transfer-coding@ in the form recipients
+-- accept lists, with empty elements, and @1#Content-Length@ in the form
+-- senders generate them, without.
 grammarMatches :: String -> ByteString -> Bool
 grammarMatches r = either (error . show) id . matches Recipient lib "L" (fromJust (mkRuleName (C.pack r)))
   where
     lib = library
       [ ("L", grammar [abnf|
-          lengths  = #length
+          lengths  = length *( ows "," ows length )
           length   = <Content-Length, see [HTTP], Section 8.6>
+          ows      = <OWS, see [HTTP], Section 5.6.3>
           codings  = #coding
           coding   = <transfer-coding, see [HTTP], Section 10.1.4>
           |])
@@ -160,6 +163,9 @@ prop_examples = once $ conjoin
   , framing HTTP_1_1 ["42"] [] === Right (ContentLength 42)
   , framing HTTP_1_1 ["42", "42"] [] === Right (ContentLength 42)
   , framing HTTP_1_1 ["42", "43"] [] === Left InvalidContentLength
+  , framing HTTP_1_1 ["42, 42"] [] === Right (ContentLength 42)
+  , framing HTTP_1_1 ["42,"] [] === Left InvalidContentLength
+  , framing HTTP_1_1 ["", "42"] [] === Left InvalidContentLength
   , framing HTTP_1_1 [] ["chunked"] === Right Chunked
   , framing HTTP_1_1 [] ["gzip", "chunked"] === Left (UnsupportedTransferCoding "gzip")
   , framing HTTP_1_1 [] ["gzip, chunked"] === Left (UnsupportedTransferCoding "gzip")

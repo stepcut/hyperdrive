@@ -409,10 +409,9 @@ hyperdrive takes, llhttp refuses:
 |---|---|---|
 | a method llhttp has no name for (`get`, `X-Custom`) | `INVALID_METHOD` | methods are open (RFC 9110 Section 9.1) |
 | HTTP/1.2 and above | `INVALID_VERSION` | to be read as 1.1 (Section 2.5) |
-| `Content-Length` repeated, or a list, with one value (`5, 5`) | `UNEXPECTED_`, `INVALID_CONTENT_LENGTH` | allowed (Section 8.6); also `5,` and an empty line beside `5`, see below |
+| `Content-Length` repeated, or a list, with one value (`5, 5`) | `UNEXPECTED_`, `INVALID_CONTENT_LENGTH` | allowed (Section 8.6) |
 | `Transfer-Encoding` with whitespace after it, or an empty element (`,chunked`) | `INVALID_TRANSFER_ENCODING` | allowed (Sections 5.5, 5.6.1.2) |
 | whitespace around a chunk extension (`8 ;a`, `2; a=b`) | `INVALID_CHUNK_SIZE`, `STRICT` | BWS (RFC 9112 Section 7.1.1) |
-| `Content-Length` or `Transfer-Encoding` in the trailer section | the same as in a head | given to the application as trailers, see below |
 
 llhttp takes, hyperdrive refuses (`stricter` in the test lists them by
 error): a line feed or carriage return alone before the request line; a
@@ -424,16 +423,19 @@ about `Host` and the target's form, which llhttp does not look at;
 an expectation other than `100-continue` (417); a `Connection` field
 that is not a list of tokens.
 
-Two of hyperdrive's leniencies are open questions:
+The first run found two more leniencies, which were then removed
+(decided 2026-11-24). Both are to be looked at again when the HTTP
+Garden's servers are added to these tests, which will show what the
+others do with the same requests:
 
-- `Content-Length` is read as a list, as Section 8.6 allows a recipient
-  to do for repeated values, and a list may have empty elements: so
-  `5,` and an empty `Content-Length` line beside a `5` are 5. llhttp
-  refuses them; a parser that took them with another length would make
-  them a way to smuggle a request, and none is known, but refusing
-  empty elements here would cost nothing.
-- A trailer section's `Content-Length` and `Transfer-Encoding` are
-  given to the application with the other trailers. They do not change
-  the framing, and trailers are kept apart from the header fields, but
-  Section 6.5.1 says a sender must not put framing fields there;
-  refusing or dropping them would be stricter.
+- `Content-Length` was read as a list in the form a recipient accepts,
+  with empty elements, so `5,` and an empty `Content-Length` line
+  beside a `5` were 5. Now a list without empty elements is required
+  (`InvalidContentLength` otherwise): `5, 5` and repeated lines are
+  still taken, as RFC 9112 Section 6.3 allows.
+- A trailer section's `Content-Length` and `Transfer-Encoding` were
+  given to the application with the other trailers. They did not
+  change the framing, but a sender must not put them there (RFC 9110
+  Section 6.5.1), and they would mislead whoever merged trailers into
+  the header fields later. Now the body is invalid
+  (`FramingFieldInTrailers`): 400, and the connection is closed.
