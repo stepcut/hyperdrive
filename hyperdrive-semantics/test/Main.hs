@@ -16,6 +16,7 @@ import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
 import ComplexityTests (complexityTests)
 import ExhaustiveTests (exhaustiveTests)
+import ControlDataTests (controlDataTests)
 import FieldSyntaxTests (fieldSyntaxTests)
 import GrammarTests (grammarTests)
 import IndependentTests (independentTests)
@@ -56,6 +57,7 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
   , exhaustiveTests
   , safePathTests
   , fieldSyntaxTests
+  , controlDataTests
   , securityTests
   , messageTests
   , thirdPartyTests

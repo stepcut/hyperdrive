@@ -182,7 +182,11 @@ Each item came from a security review of `hyperdrive-semantics`
   7.6.1), not just `Connection` itself. Note that attackers can list a
   field in `Connection` to make a proxy strip it, including fields the
   proxy itself adds, such as `X-Forwarded-For`: never treat the absence
-  of a proxy-added field as meaningful.
+  of a proxy-added field as meaningful. For HTTP/2 and HTTP/3,
+  `Hyperdrive.Semantics.ControlData` does all of this from the decoded
+  field list (docs/http2-core-design.md, D11): there connection-specific
+  fields make the request malformed rather than being removed, `Host`
+  must agree with `:authority`, and split `Cookie` fields are joined.
 - **M2. Framing on sending.** Generate `Content-Length` or the version's
   framing from the `Content`: the length of the bytes, of the file or
   range, or the length a stream declared. Send exactly that many bytes:

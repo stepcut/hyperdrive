@@ -431,3 +431,113 @@ why: the elements of a Content-Length list may have whitespace around them
 why: an empty Content-Length line is not a length, even beside one that is
 - | B.null v  = [v]
 + | B.null v  = []
+
+file: src/Hyperdrive/Semantics/ControlData.hs
+
+why: an HTTP/2 field name with upper case is malformed (RFC 9113 Section 8.2.1)
+- validName n = isToken n && not (B.any (\w -> w >= 0x41 && w <= 0x5A) n)
++ validName n = isToken n
+
+why: a value may not start with whitespace (Section 8.2.1)
+- | otherwise = isFieldVChar (B.head v) && isFieldVChar (B.last v) && B.all inner v
++ | otherwise = isFieldVChar (B.last v) && B.all inner v
+
+why: a value may not contain CR (Section 8.2.1)
+- where inner w = isFieldVChar w || w == 0x20 || w == 0x09
++ where inner w = isFieldVChar w || w == 0x20 || w == 0x09 || w == 0x0D
+
+why: Upgrade is connection-specific (Section 8.2.2)
+- n `elem` ["connection", "proxy-connection", "keep-alive", "transfer-encoding", "upgrade"]
++ n `elem` ["connection", "proxy-connection", "keep-alive", "transfer-encoding"]
+
+why: a pseudo-header field after a regular one is malformed (Section 8.3)
+- if regularSeen then Left (PseudoHeaderAfterField n) else Right ()
++ if False then Left (PseudoHeaderAfterField n) else Right ()
+
+why: a regular field ends the pseudo-header fields
+- sortFields True parts' rest
++ sortFields False parts' rest
+
+why: an unknown pseudo-header field is malformed (Section 8.3)
+- _            -> Left (UnknownPseudoHeader n)
++ _            -> Right parts
+
+why: a repeated pseudo-header field is malformed (Section 8.3)
+- Just _  -> Left (RepeatedPseudoHeader n)
++ Just _  -> Right (set (Just v))
+
+why: TE's "trailers" is case-insensitive
+- "te" | C.map toLower v == "trailers" -> Right parts { pTE = True }
++ "te" | v == "trailers" -> Right parts { pTE = True }
+
+why: TE other than "trailers" is malformed (Section 8.2.2)
+- | otherwise -> Left TENotTrailers
++ | otherwise -> Right parts
+
+why: split Cookie fields are joined with "; " (Section 8.2.3)
+- let cookie = B.intercalate "; " (reverse (pCookies parts))
++ let cookie = B.intercalate ";" (reverse (pCookies parts))
+
+why: the joined Cookie field is one field, where the first was
+- , pFields = if null (pCookies parts) then ("cookie", "") : pFields parts else pFields parts }
++ , pFields = ("cookie", "") : pFields parts }
+
+why: CONNECT has no :scheme or :path (Section 8.5)
+- _ -> Left (Malformed ConnectWithSchemeOrPath)
++ _ -> Right ()
+
+why: a Host that differs from :authority is malformed (D11)
+- if key host == key authority then Right authority
++ if True then Right authority
+
+why: Host and :authority are compared with the scheme's default port filled in
+- Just sc -> authorityKey sc a
++ Just _ -> (authorityHost a, authorityPort a)
+
+why: an empty Host is no authority, as in HTTP/1.1
+- [h] | B.null h -> fromDefault
++ [h] | False -> fromDefault
+
+why: only http and https are served (421)
+- if scheme /= HTTP && scheme /= HTTPS || scheme == HTTPS && contextScheme ctx /= HTTPS
++ if scheme == HTTPS && contextScheme ctx /= HTTPS
+
+why: https only on a secured connection (421)
+- if scheme /= HTTP && scheme /= HTTPS || scheme == HTTPS && contextScheme ctx /= HTTPS
++ if scheme /= HTTP && scheme /= HTTPS
+
+why: * only with OPTIONS
+- Nothing -> if validForMethod method TargetAsterisk then Right TargetAsterisk
++ Nothing -> if True then Right TargetAsterisk
+
+why: :path "*" is the asterisk-form (Section 8.3.1)
+- pathForm "*" = Right Nothing
++ pathForm "**" = Right Nothing
+
+why: the query follows the "?", which is not part of it
+- else maybe (Left (InvalidPseudoHeader ":path")) (Right . Just) (mkQuery (B.drop 1 rest))
++ else maybe (Left (InvalidPseudoHeader ":path")) (Right . Just) (mkQuery rest)
+
+why: an invalid Content-Length is refused
+- ls -> maybe (Left (Refused BadRequest InvalidContentLength)) (Right . Just)
++ ls -> maybe (Right Nothing) (Right . Just)
+
+why: an IPvFuture host cannot be served
+- HostIPvFuture _ -> Left (Refused BadRequest UnsupportedIPvFuture)
++ HostIPvFuture _ -> Right ()
+
+why: pseudo-header fields in trailers are malformed (Section 8.1)
+- | isPseudo n = Left (PseudoHeaderInTrailers n)
++ | False = Left (PseudoHeaderInTrailers n)
+
+why: Content-Length in trailers is refused, as in HTTP/1.1
+- | n == "content-length" = Left (FramingFieldInTrailers n)
++ | False = Left (FramingFieldInTrailers n)
+
+why: TE in trailers is connection-specific
+- | connectionSpecific n || n == "te" = Left (ConnectionSpecificField n)
++ | connectionSpecific n = Left (ConnectionSpecificField n)
+
+why: a response's field list starts with :status (Section 8.3.2)
+- (":status", C.pack (show (statusCode status))) : trailersToFields fields
++ trailersToFields fields

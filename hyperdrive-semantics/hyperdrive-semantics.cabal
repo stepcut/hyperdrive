@@ -33,7 +33,8 @@ library
   hs-source-dirs:   src
   default-language: GHC2021
   ghc-options:      -O2
-  exposed-modules:  Hyperdrive.Semantics.Field
+  exposed-modules:  Hyperdrive.Semantics.ControlData
+                    Hyperdrive.Semantics.Field
                     Hyperdrive.Semantics.FieldSyntax
                     Hyperdrive.Semantics.Internal
                     Hyperdrive.Semantics.Message
@@ -54,6 +55,7 @@ test-suite hyperdrive-semantics-tests
   main-is:          Main.hs
   other-modules:    ComplexityTests
                     ExhaustiveTests
+                    ControlDataTests
                     FieldSyntaxTests
                     Grammar
                     GrammarTests

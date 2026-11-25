@@ -3379,11 +3379,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY]:    responses before the HEADERS frame containing a final response.
     TEXT[!MUST]:    Other frames (from any stream) MUST NOT occur between the HEADERS
     TEXT[!MUST]:    frame and any CONTINUATION frames that might follow.
-    TEXT[!MUST]: Trailers MUST NOT
-    TEXT[!MUST]:    include pseudo-header fields (Section 8.3).
-    TEXT[!MUST]: An endpoint that
-    TEXT[!MUST]:    receives pseudo-header fields in trailers MUST treat the request or
-    TEXT[!MUST]:    response as malformed (Section 8.1.1).
+    TEXT[!MUST,implementation,test]: Trailers MUST NOT
+    TEXT[!MUST,implementation,test]:    include pseudo-header fields (Section 8.3).
+    TEXT[!MUST,implementation,test]: An endpoint that
+    TEXT[!MUST,implementation,test]:    receives pseudo-header fields in trailers MUST treat the request or
+    TEXT[!MUST,implementation,test]:    response as malformed (Section 8.1.1).
     TEXT[!MUST]:    An endpoint that receives a HEADERS frame without the END_STREAM flag
     TEXT[!MUST]:    set after receiving the HEADERS frame that opens a request or after
     TEXT[!MUST]:    receiving a final (non-informational) status code MUST treat the
@@ -3415,29 +3415,33 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY]:    on the remainder of the request being correct.
 
   SECTION: [HTTP Fields](#section-8.2)
-    TEXT[!MUST]:    Field names MUST be converted to lowercase when constructing an
-    TEXT[!MUST]:    HTTP/2 message.
+    TEXT[!MUST,implementation]:    Field names MUST be converted to lowercase when constructing an
+    TEXT[!MUST,implementation]:    HTTP/2 message.
 
   SECTION: [Field Validity](#section-8.2.1)
-    TEXT[!SHOULD]: HTTP/2
-    TEXT[!SHOULD]:    implementations SHOULD validate field names and values according to
-    TEXT[!SHOULD]:    their definitions in Sections 5.1 and 5.5 of [HTTP], respectively,
-    TEXT[!SHOULD]:    and treat messages that contain prohibited characters as malformed
-    TEXT[!SHOULD]:    (Section 8.1.1).
+    TEXT[!SHOULD,implementation]: HTTP/2
+    TEXT[!SHOULD,implementation]:    implementations SHOULD validate field names and values according to
+    TEXT[!SHOULD,implementation]:    their definitions in Sections 5.1 and 5.5 of [HTTP], respectively,
+    TEXT[!SHOULD,implementation]:    and treat messages that contain prohibited characters as malformed
+    TEXT[!SHOULD,implementation]:    (Section 8.1.1).
     TEXT[!MUST]: Implementations MUST perform the following minimal
     TEXT[!MUST]:    validation of field names and values:
-    TEXT[!MUST]:    *  A field name MUST NOT contain characters in the ranges 0x00-0x20,
-    TEXT[!MUST]:       0x41-0x5a, or 0x7f-0xff (all ranges inclusive).
-    TEXT[!MUST]:    *  With the exception of pseudo-header fields (Section 8.3), which
-    TEXT[!MUST]:       have a name that starts with a single colon, field names MUST NOT
-    TEXT[!MUST]:       include a colon (ASCII COLON, 0x3a).
-    TEXT[!MUST]:    *  A field value MUST NOT contain the zero value (ASCII NUL, 0x00),
-    TEXT[!MUST]:       line feed (ASCII LF, 0x0a), or carriage return (ASCII CR, 0x0d) at
-    TEXT[!MUST]:       any position.
-    TEXT[!MUST]:    *  A field value MUST NOT start or end with an ASCII whitespace
-    TEXT[!MUST]:       character (ASCII SP or HTAB, 0x20 or 0x09).
-    TEXT[!MUST]:    A request or response that contains a field that violates any of
-    TEXT[!MUST]:    these conditions MUST be treated as malformed (Section 8.1.1).
+    TEXT[!MUST]:    *
+    TEXT[!MUST,implementation]: A field name MUST NOT contain characters in the ranges 0x00-0x20,
+    TEXT[!MUST,implementation]:       0x41-0x5a, or 0x7f-0xff (all ranges inclusive).
+    TEXT[!MUST]:    *
+    TEXT[!MUST,implementation]: With the exception of pseudo-header fields (Section 8.3), which
+    TEXT[!MUST,implementation]:       have a name that starts with a single colon, field names MUST NOT
+    TEXT[!MUST,implementation]:       include a colon (ASCII COLON, 0x3a).
+    TEXT[!MUST]:    *
+    TEXT[!MUST,implementation]: A field value MUST NOT contain the zero value (ASCII NUL, 0x00),
+    TEXT[!MUST,implementation]:       line feed (ASCII LF, 0x0a), or carriage return (ASCII CR, 0x0d) at
+    TEXT[!MUST,implementation]:       any position.
+    TEXT[!MUST]:    *
+    TEXT[!MUST,implementation]: A field value MUST NOT start or end with an ASCII whitespace
+    TEXT[!MUST,implementation]:       character (ASCII SP or HTAB, 0x20 or 0x09).
+    TEXT[!MUST,implementation,test]:    A request or response that contains a field that violates any of
+    TEXT[!MUST,implementation,test]:    these conditions MUST be treated as malformed (Section 8.1.1).
     TEXT[!MUST,exception]: In
     TEXT[!MUST,exception]:    particular, an intermediary that does not process fields when
     TEXT[!MUST,exception]:    forwarding messages MUST NOT forward fields that contain any of the
@@ -3449,13 +3453,17 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!SHOULD]:    occurs in a trailer field).
 
   SECTION: [Connection-Specific Header Fields](#section-8.2.2)
-    TEXT[!MUST]:    An endpoint MUST NOT generate an HTTP/2 message containing
-    TEXT[!MUST]:    connection-specific header fields.
-    TEXT[!MUST]: Any message containing connection-
-    TEXT[!MUST]:    specific header fields MUST be treated as malformed (Section 8.1.1).
-    TEXT[!MUST]:    The only exception to this is the TE header field, which MAY be
-    TEXT[!MUST]:    present in an HTTP/2 request; when it is, it MUST NOT contain any
-    TEXT[!MUST]:    value other than "trailers".
+    TEXT[!MUST,implementation]:    An endpoint MUST NOT generate an HTTP/2 message containing
+    TEXT[!MUST,implementation]:    connection-specific header fields.
+    TEXT[implementation]:   This includes the Connection
+    TEXT[implementation]:    header field and those listed as having connection-specific semantics
+    TEXT[implementation]:    in Section 7.6.1 of [HTTP] (that is, Proxy-Connection, Keep-Alive,
+    TEXT[implementation]:    Transfer-Encoding, and Upgrade).
+    TEXT[!MUST,implementation,test]: Any message containing connection-
+    TEXT[!MUST,implementation,test]:    specific header fields MUST be treated as malformed (Section 8.1.1).
+    TEXT[!MUST,implementation,test]:    The only exception to this is the TE header field, which MAY be
+    TEXT[!MUST,implementation,test]:    present in an HTTP/2 request; when it is, it MUST NOT contain any
+    TEXT[!MUST,implementation,test]:    value other than "trailers".
     TEXT[!MUST,exception]:    An intermediary transforming an HTTP/1.x message to HTTP/2 MUST
     TEXT[!MUST,exception]:    remove connection-specific header fields as discussed in
     TEXT[!MUST,exception]:    Section 7.6.1 of [HTTP], or their messages will be treated by other
@@ -3465,11 +3473,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY]:    To allow for better compression efficiency, the Cookie header field
     TEXT[!MAY]:    MAY be split into separate header fields, each with one or more
     TEXT[!MAY]:    cookie-pairs.
-    TEXT[!MUST]: If there are multiple Cookie header fields after
-    TEXT[!MUST]:    decompression, these MUST be concatenated into a single octet string
-    TEXT[!MUST]:    using the two-octet delimiter of 0x3b, 0x20 (the ASCII string "; ")
-    TEXT[!MUST]:    before being passed into a non-HTTP/2 context, such as an HTTP/1.1
-    TEXT[!MUST]:    connection, or a generic HTTP server application.
+    TEXT[!MUST,implementation]: If there are multiple Cookie header fields after
+    TEXT[!MUST,implementation]:    decompression, these MUST be concatenated into a single octet string
+    TEXT[!MUST,implementation]:    using the two-octet delimiter of 0x3b, 0x20 (the ASCII string "; ")
+    TEXT[!MUST,implementation]:    before being passed into a non-HTTP/2 context, such as an HTTP/1.1
+    TEXT[!MUST,implementation]:    connection, or a generic HTTP server application.
 
   SECTION: [HTTP Control Data](#section-8.3)
     TEXT[!MUST]: Endpoints MUST NOT
@@ -3480,34 +3488,36 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    appear in requests.
     TEXT[!MUST]: Pseudo-header fields MUST NOT appear in a
     TEXT[!MUST]:    trailer section.
-    TEXT[!MUST]: Endpoints MUST treat a request or response that
-    TEXT[!MUST]:    contains undefined or invalid pseudo-header fields as malformed
-    TEXT[!MUST]:    (Section 8.1.1).
-    TEXT[!MUST]:    All pseudo-header fields MUST appear in a field block before all
-    TEXT[!MUST]:    regular field lines.
-    TEXT[!MUST]: Any request or response that contains a pseudo-
-    TEXT[!MUST]:    header field that appears in a field block after a regular field line
-    TEXT[!MUST]:    MUST be treated as malformed (Section 8.1.1).
-    TEXT[!MUST]:    The same pseudo-header field name MUST NOT appear more than once in a
-    TEXT[!MUST]:    field block.
-    TEXT[!MUST]: A field block for an HTTP request or response that
-    TEXT[!MUST]:    contains a repeated pseudo-header field name MUST be treated as
-    TEXT[!MUST]:    malformed (Section 8.1.1).
+    TEXT[!MUST,implementation,test]: Endpoints MUST treat a request or response that
+    TEXT[!MUST,implementation,test]:    contains undefined or invalid pseudo-header fields as malformed
+    TEXT[!MUST,implementation,test]:    (Section 8.1.1).
+    TEXT[!MUST,implementation,test]:    All pseudo-header fields MUST appear in a field block before all
+    TEXT[!MUST,implementation,test]:    regular field lines.
+    TEXT[!MUST,implementation,test]: Any request or response that contains a pseudo-
+    TEXT[!MUST,implementation,test]:    header field that appears in a field block after a regular field line
+    TEXT[!MUST,implementation,test]:    MUST be treated as malformed (Section 8.1.1).
+    TEXT[!MUST,implementation,test]:    The same pseudo-header field name MUST NOT appear more than once in a
+    TEXT[!MUST,implementation,test]:    field block.
+    TEXT[!MUST,implementation,test]: A field block for an HTTP request or response that
+    TEXT[!MUST,implementation,test]:    contains a repeated pseudo-header field name MUST be treated as
+    TEXT[!MUST,implementation,test]:    malformed (Section 8.1.1).
 
   SECTION: [Request Pseudo-Header Fields](#section-8.3.1)
-    TEXT[!MUST]: The recipient of an HTTP/2 request MUST NOT use the Host
-    TEXT[!MUST]:       header field to determine the target URI if ":authority" is
-    TEXT[!MUST]:       present.
+    TEXT[!MUST,implementation]: The recipient of an HTTP/2 request MUST NOT use the Host
+    TEXT[!MUST,implementation]:       header field to determine the target URI if ":authority" is
+    TEXT[!MUST,implementation]:       present.
     TEXT[!MUST,exception]:       Clients that generate HTTP/2 requests directly MUST use the
     TEXT[!MUST,exception]:       ":authority" pseudo-header field to convey authority information,
     TEXT[!MUST,exception]:       unless there is no authority information to convey (in which case
     TEXT[!MUST,exception]:       it MUST NOT generate ":authority").
     TEXT[!MUST,exception]:       Clients MUST NOT generate a request with a Host header field that
     TEXT[!MUST,exception]:       differs from the ":authority" pseudo-header field.
-    TEXT[!SHOULD]: A server
-    TEXT[!SHOULD]:       SHOULD treat a request as malformed if it contains a Host header
-    TEXT[!SHOULD]:       field that identifies an entity that differs from the entity in
-    TEXT[!SHOULD]:       the ":authority" pseudo-header field.
+    TEXT[!SHOULD,implementation]: A server
+    TEXT[!SHOULD,implementation]:       SHOULD treat a request as malformed if it contains a Host header
+    TEXT[!SHOULD,implementation]:       field that identifies an entity that differs from the entity in
+    TEXT[!SHOULD,implementation]:       the ":authority" pseudo-header field.
+    TEXT[implementation]:   The values of fields need
+    TEXT[implementation]:       to be normalized to compare them (see Section 6.2 of [RFC3986]).
     TEXT[!MUST]:       An origin server can apply any normalization method, whereas other
     TEXT[!MUST]:       servers MUST perform scheme-based normalization (see Section 6.2.3
     TEXT[!MUST]:       of [RFC3986]) of the two fields.
@@ -3525,20 +3535,25 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY,exception]:       Host header field.
     TEXT[!MUST]:       ":authority" MUST NOT include the deprecated userinfo subcomponent
     TEXT[!MUST]:       for "http" or "https" schemed URIs.
-    TEXT[!MUST]:       This pseudo-header field MUST NOT be empty for "http" or "https"
-    TEXT[!MUST]:       URIs; "http" or "https" URIs that do not contain a path component
-    TEXT[!MUST]:       MUST include a value of '/'.
+    TEXT[!MUST,implementation]:       This pseudo-header field MUST NOT be empty for "http" or "https"
+    TEXT[!MUST,implementation]:       URIs; "http" or "https" URIs that do not contain a path component
+    TEXT[!MUST,implementation]:       MUST include a value of '/'.
     TEXT[!MUST]:       -  an OPTIONS request for an "http" or "https" URI that does not
     TEXT[!MUST]:          include a path component; these MUST include a ":path" pseudo-
     TEXT[!MUST]:          header field with a value of '*' (see Section 7.1 of [HTTP]).
-    TEXT[!MUST]:    All HTTP/2 requests MUST include exactly one valid value for the
-    TEXT[!MUST]:    ":method", ":scheme", and ":path" pseudo-header fields, unless they
-    TEXT[!MUST]:    are CONNECT requests (Section 8.5).
+    TEXT[!MUST,implementation,test]:    All HTTP/2 requests MUST include exactly one valid value for the
+    TEXT[!MUST,implementation,test]:    ":method", ":scheme", and ":path" pseudo-header fields, unless they
+    TEXT[!MUST,implementation,test]:    are CONNECT requests (Section 8.5).
+    TEXT[implementation,test]:   An HTTP request that omits
+    TEXT[implementation,test]:    mandatory pseudo-header fields is malformed (Section 8.1.1).
 
   SECTION: [Response Pseudo-Header Fields](#section-8.3.2)
-    TEXT[!MUST]: This pseudo-header field MUST be included in all responses,
-    TEXT[!MUST]:    including interim responses; otherwise, the response is malformed
-    TEXT[!MUST]:    (Section 8.1.1).
+    TEXT[implementation]:    For HTTP/2 responses, a single ":status" pseudo-header field is
+    TEXT[implementation]:    defined that carries the HTTP status code field (see Section 15 of
+    TEXT[implementation]:    [HTTP]).
+    TEXT[!MUST,implementation]: This pseudo-header field MUST be included in all responses,
+    TEXT[!MUST,implementation]:    including interim responses; otherwise, the response is malformed
+    TEXT[!MUST,implementation]:    (Section 8.1.1).
 
   SECTION: [Server Push](#section-8.4)
     TEXT[!MUST,exception]:    Promised requests MUST be safe (see Section 9.2.1 of [HTTP]) and
@@ -3588,7 +3603,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,exception]:    the pushed response is configured for the corresponding request.
 
   SECTION: [The CONNECT Method](#section-8.5)
-    TEXT[!MUST]:    *  The ":scheme" and ":path" pseudo-header fields MUST be omitted.
+    TEXT[!MUST,implementation]:    *  The ":scheme" and ":path" pseudo-header fields MUST be omitted.
+    TEXT[implementation,test]:    A CONNECT request that does not conform to these restrictions is
+    TEXT[implementation,test]:    malformed (Section 8.1.1).
     TEXT[!MUST]: Frame types other than DATA
     TEXT[!MUST]:    or stream management frames (RST_STREAM, WINDOW_UPDATE, and PRIORITY)
     TEXT[!MUST]:    MUST NOT be sent on a connected stream and MUST be treated as a
