@@ -25,6 +25,7 @@ library
   default-language: GHC2021
   ghc-options:      -O2
   exposed-modules:  Hyperdrive.HPACK.Decode
+                    Hyperdrive.HPACK.Encode
                     Hyperdrive.HPACK.Huffman
                     Hyperdrive.HPACK.Integer
                     Hyperdrive.HPACK.Table
@@ -39,6 +40,7 @@ test-suite hyperdrive-http2-tests
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    DecodeTests
+                    EncodeTests
                     HuffmanTests
                     IntegerTests
                     RFC7541

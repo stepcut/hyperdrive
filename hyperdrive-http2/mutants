@@ -135,3 +135,49 @@ why: a list exactly at the limit is accepted
 why: fields are returned in the block's order (Section 2.1)
 - let d = if listSize > maxList then ListTooLarge else Fields (reverse acc)
 + let d = if listSize > maxList then ListTooLarge else Fields acc
+
+file: src/Hyperdrive/HPACK/Encode.hs
+
+why: sensitive fields are never-indexed literals (H2, RFC 7541 Section 7.1.3)
+- | n `elem` neverIndexedNames = (Literal 4 0x10 nameIndex n v, t)
++ | n `elem` neverIndexedNames = (Literal 4 0x00 nameIndex n v, t)
+
+why: a field sent with incremental indexing enters the encoder's copy of the table too, or the two sides' tables differ
+- | n `elem` indexedNames = (Literal 6 0x40 nameIndex n v, insertEntry n v t)
++ | n `elem` indexedNames = (Literal 6 0x40 nameIndex n v, t)
+
+why: the dynamic table's entries start at index 62
+- | Just i <- elemIndex (n, v) entries = (Index (staticTableLength + 1 + i), t)
++ | Just i <- elemIndex (n, v) entries = (Index (staticTableLength + i), t)
+
+why: a name from the dynamic table is indexed from 62 too
+- Nothing -> maybe 0 (\i -> staticTableLength + 1 + i) (findIndex ((== n) . fst) entries)
++ Nothing -> maybe 0 (\i -> staticTableLength + 2 + i) (findIndex ((== n) . fst) entries)
+
+why: Huffman only when strictly shorter (H3)
+- huffman = h < B.length s
++ huffman = h <= B.length s
+
+why: the smallest size since the last block is signalled (RFC 7541 Section 4.2)
+- smallest = maybe size (min size . fst) (encPending e)
++ smallest = maybe size (const size) (encPending e)
+
+why: the table never exceeds our cap, whatever the peer allows (H4, D9)
+- size = min peer (encCap e)
++ size = peer
+
+why: one update when the smallest and the current size are the same
+- | s == f    -> ([Update f], resizeTable f (encoderTable e))
++ | False    -> ([Update f], resizeTable f (encoderTable e))
+
+why: updates are sent once, at the start of the next block only
+- encodeBlock e fields = (render reps, e { encoderTable = table', encPending = Nothing })
++ encodeBlock e fields = (render reps, e { encoderTable = table' })
+
+why: a cap below the peer's initial 4,096 must be signalled in the first block
+- pending = if size < 4096 then Just (size, size) else Nothing
++ pending = Nothing
+
+why: a name taken from a table is not also sent as a string
+- integerLength prefix ni + (if ni == 0 then fst (stringLength n) else 0) + fst (stringLength v)
++ integerLength prefix ni + fst (stringLength n) + fst (stringLength v)

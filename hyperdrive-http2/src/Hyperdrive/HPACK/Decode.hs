@@ -16,6 +16,7 @@ module Hyperdrive.HPACK.Decode
   , newDecoder
   , decoderTable
   , decoderLimit
+  , setDecoderLimit
   , Decoded(..)
   , DecodeError(..)
   , decodeBlock
@@ -41,6 +42,12 @@ data Decoder = Decoder
 -- which is also the limit for updates.
 newDecoder :: Int -> Decoder
 newDecoder limit = Decoder (emptyTable limit) limit
+
+-- | A new limit for size updates (in HTTP/2, a new
+-- SETTINGS_HEADER_TABLE_SIZE, once the peer has acknowledged it). The
+-- table keeps its size until the peer's next size update.
+setDecoderLimit :: Int -> Decoder -> Decoder
+setDecoderLimit limit d = d { decoderLimit = limit }
 
 data Decoded
   = Fields [(ByteString, ByteString)]

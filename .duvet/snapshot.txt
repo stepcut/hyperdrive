@@ -281,8 +281,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7405
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
   SECTION: [Header List Ordering](#section-2.1)
-    TEXT[!MUST]:    An encoder MUST order header field representations in the header
-    TEXT[!MUST]:    block according to their ordering in the original header list.
+    TEXT[!MUST,implementation,test]:    An encoder MUST order header field representations in the header
+    TEXT[!MUST,implementation,test]:    block according to their ordering in the original header list.
     TEXT[!MUST,implementation,test]:    decoder MUST order header fields in the decoded header list according
     TEXT[!MUST,implementation,test]:    to their ordering in the header block.
 
@@ -309,16 +309,16 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
     TEXT[implementation]:    defined in Section 5.2), its value's length in octets, and 32.
 
   SECTION: [Maximum Table Size](#section-4.2)
-    TEXT[!MUST]:    An encoder can choose to use less capacity than this maximum size
-    TEXT[!MUST]:    (see Section 6.3), but the chosen size MUST stay lower than or equal
-    TEXT[!MUST]:    to the maximum set by the protocol.
+    TEXT[!MUST,implementation,test]:    An encoder can choose to use less capacity than this maximum size
+    TEXT[!MUST,implementation,test]:    (see Section 6.3), but the chosen size MUST stay lower than or equal
+    TEXT[!MUST,implementation,test]:    to the maximum set by the protocol.
     TEXT[!MUST,implementation]: This dynamic table size
     TEXT[!MUST,implementation]:    update MUST occur at the beginning of the first header block
     TEXT[!MUST,implementation]:    following the change to the dynamic table size.
-    TEXT[!MUST]: In the case that this size is
-    TEXT[!MUST]:    changed more than once in this interval, the smallest maximum table
-    TEXT[!MUST]:    size that occurs in that interval MUST be signaled in a dynamic table
-    TEXT[!MUST]:    size update.
+    TEXT[!MUST,implementation,test]: In the case that this size is
+    TEXT[!MUST,implementation,test]:    changed more than once in this interval, the smallest maximum table
+    TEXT[!MUST,implementation,test]:    size that occurs in that interval MUST be signaled in a dynamic table
+    TEXT[!MUST,implementation,test]:    size update.
 
   SECTION: [Entry Eviction When Dynamic Table Size Changes](#section-4.3)
     TEXT[implementation]:    Whenever the maximum size for the dynamic table is reduced, entries
@@ -364,9 +364,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
   SECTION: [Literal Header Field Never Indexed](#section-6.2.3)
     TEXT[!MUST,exception]: Intermediaries MUST use the same representation
     TEXT[!MUST,exception]:    for encoding this header field.
-    TEXT[!MUST]:    When a header field is represented as a literal header field never
-    TEXT[!MUST]:    indexed, it MUST always be encoded with this specific literal
-    TEXT[!MUST]:    representation.
+    TEXT[!MUST,implementation]:    When a header field is represented as a literal header field never
+    TEXT[!MUST,implementation]:    indexed, it MUST always be encoded with this specific literal
+    TEXT[!MUST,implementation]:    representation.
     TEXT[!MUST,exception]: In particular, when a peer sends a header field that
     TEXT[!MUST,exception]:    it received represented as a literal header field never indexed, it
     TEXT[!MUST,exception]:    MUST use the same representation to forward this header field.
@@ -383,6 +383,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
     TEXT[!MUST,exception]:    index it.
     TEXT[!MUST,exception]: If HPACK is used for re-encoding, the never-indexed
     TEXT[!MUST,exception]:    literal representation MUST be used.
+    TEXT[implementation]:    An encoder might also choose not to index values for header fields
+    TEXT[implementation]:    that are considered to be highly valuable or sensitive to recovery,
+    TEXT[implementation]:    such as the Cookie or Authorization header fields.
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Syntax Notation](#section-2.1)
