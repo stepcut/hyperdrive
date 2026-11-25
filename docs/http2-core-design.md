@@ -403,13 +403,16 @@ the next:
    fields are never indexed (`set-cookie`: an attacker who can inject
    into a response and see its compressed size can guess secrets, RFC
    7541 Section 7.1).
-3. Frames, with the differential test against nghttp2.
+3. Frames (the differential test against nghttp2 is in step 6).
 4. D11's mapping in `hyperdrive-semantics` (independent of 2 and 3,
    but HPACK settles the shape of what it receives).
 5. `step`: stream states, flow control, settings, errors, the scheduler;
    a reference model and generated sessions, as for HTTP/1.1.
-6. The driver over h2c (D2, D4); h2spec; h2load against warp. Then the
-   rest of RFC 9218 (D8).
+6. The driver over h2c (D2, D4); h2spec; h2load against warp; and the
+   differential test of frames against nghttp2, moved here from step 3
+   (the user, 2026-11-25): nghttp2 has no public function that parses
+   one frame, only a whole session, so the comparison needs the
+   connection core. Then the rest of RFC 9218 (D8).
 7. TLS (D3): HTTP/1.1 over TLS first, benchmarked against warp-tls, so
    that TLS's own cost is measured on the protocol already known; then
    HTTP/2 through ALPN, and benchmarks over TLS.
