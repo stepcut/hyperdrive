@@ -7,6 +7,7 @@
 -- fields. This module is what they reconstruct it into.
 module Hyperdrive.Semantics.Target
   ( Target(..)
+  , TargetContext(..)
   , connectTarget
   , validForMethod
   , normalizeEmptyPath
@@ -16,6 +17,30 @@ import Data.Word (Word16)
 import Hyperdrive.Semantics.Internal (Path(..))
 import Hyperdrive.Semantics.Method (Method, pattern CONNECT, pattern OPTIONS)
 import Hyperdrive.Semantics.URI
+
+-- = https://www.rfc-editor.org/rfc/rfc9112#section-3.3
+-- # A
+-- # server that can uniquely identify an authority from the request
+-- # context MAY use that identity as a default without this risk.
+
+-- | What the server knows about the connection that a target is
+-- reconstructed with.
+--
+-- RFC 9112 Section 3.3 warns that a default authority is unsafe on a
+-- secured connection unless the authority is certain, for example
+-- the one name its certificate is valid for.
+data TargetContext = TargetContext
+  { contextScheme           :: !Scheme
+    -- ^ the scheme of the target URI of requests in origin-form or
+    -- asterisk-form: @https@ if the connection is secured (or a trusted
+    -- gateway says it was), else @http@. A request in absolute-form for
+    -- an @https@ target (or, in HTTP/2 and HTTP/3, with @:scheme@
+    -- @https@) is accepted only if this is @https@.
+  , contextDefaultAuthority :: !(Maybe Authority)
+    -- ^ the authority to use when a request has no @Host@ (HTTP/1.0)
+    -- or an empty one, or (HTTP/2, HTTP/3) neither @:authority@ nor
+    -- @Host@. With 'Nothing', such requests are rejected.
+  } deriving (Eq, Show)
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-7.1
 -- # Upon receipt of a client's request, a server reconstructs the target

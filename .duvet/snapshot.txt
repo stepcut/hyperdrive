@@ -1074,9 +1074,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
     TEXT[!SHOULD,implementation]:    when the content size is known prior to sending the complete header
     TEXT[!SHOULD,implementation]:    section.
     TEXT[!MUST]: Since there is no predefined limit to the length of content,
-    TEXT[!MUST,implementation]:    a recipient MUST anticipate potentially large decimal numerals and
-    TEXT[!MUST,implementation]:    prevent parsing errors due to integer conversion overflows or
-    TEXT[!MUST,implementation]:    precision loss due to integer conversion
+    TEXT[!MUST,implementation,test]:    a recipient MUST anticipate potentially large decimal numerals and
+    TEXT[!MUST,implementation,test]:    prevent parsing errors due to integer conversion overflows or
+    TEXT[!MUST,implementation,test]:    precision loss due to integer conversion
     TEXT[!MUST]:  (Section 17.5).
     TEXT[!MUST,exception]:    As a result, a sender MUST NOT forward a message with a Content-
     TEXT[!MUST,exception]:    Length header field value that is known to be incorrect.

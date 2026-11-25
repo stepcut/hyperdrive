@@ -15,13 +15,15 @@ module Hyperdrive.Semantics.FieldSyntax
     -- * Parameters
   , parseParameters
   , lookupParameter
+    -- * Content-Length
+  , parseContentLength
   ) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import Data.Word (Word8)
+import Data.Word (Word64, Word8)
 import Hyperdrive.Semantics.Field (FieldName, FieldValue, Fields, fieldValueBytes, lookupAll)
-import Hyperdrive.Semantics.Syntax (isFieldVChar, isOWS, isTChar, isVChar, isObsText)
+import Hyperdrive.Semantics.Syntax (isDIGIT, isFieldVChar, isOWS, isTChar, isVChar, isObsText)
 
 data FieldSyntaxError
   = UnterminatedQuotedString
@@ -329,3 +331,45 @@ lookupParameter name ps =
     lname = B.map lower name
     lower w | w >= 0x41 && w <= 0x5A = w + 0x20
             | otherwise              = w
+
+------------------------------------------------------------------------------
+-- Content-Length
+------------------------------------------------------------------------------
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.6
+-- # Content-Length = 1*DIGIT
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.6
+-- # a recipient MUST anticipate potentially large decimal numerals and
+-- # prevent parsing errors due to integer conversion overflows or
+-- # precision loss due to integer conversion
+
+-- | The length from every @Content-Length@ field line: each a list of
+-- one or more decimal numbers, all the same, and none too large for 64
+-- bits. "The same" is the same number, so @5, 05@ is 5: every reading
+-- that accepts it then agrees on the length.
+--
+-- The list is one a sender may generate, without empty elements: @5,@
+-- and an empty field line beside a @5@ are refused, though a recipient
+-- of a list is to ignore empty elements (RFC 9110 Section 5.6.1.2). A
+-- repeated length is what the RFC's exception is for, and nothing
+-- sends the others; other parsers refuse them.
+parseContentLength :: [FieldValue] -> Maybe Word64
+parseContentLength vs =
+  case traverse number (concatMap elements vs) of
+    Just (n : ns) | all (== n) ns -> Just n
+    _                              -> Nothing
+  where
+    -- an empty value is one empty element, which B.split does not return
+    elements fv
+      | B.null v  = [v]
+      | otherwise = map (B.dropWhileEnd isOWS . B.dropWhile isOWS) (B.split 0x2C v)
+      where v = fieldValueBytes fv
+    -- a decimal number that fits in 64 bits
+    number e
+      | B.null e || not (B.all isDIGIT e) = Nothing
+      | otherwise = B.foldl' step (Just 0) e
+    step acc w = do
+      n <- acc
+      let d = fromIntegral (w - 0x30)
+      if n > (maxBound - d) `div` 10 then Nothing else Just (n * 10 + d)

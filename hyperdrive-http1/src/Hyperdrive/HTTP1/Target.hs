@@ -21,30 +21,8 @@ import Hyperdrive.Semantics.Field (FieldValue, Fields, fieldValueBytes, fieldsFr
 import Hyperdrive.Semantics.Message (HttpVersion, pattern HTTP_1_1)
 import Hyperdrive.Semantics.Method (Method, pattern CONNECT, pattern OPTIONS)
 import Hyperdrive.Semantics.Status (Status, pattern BadRequest, pattern MisdirectedRequest)
-import Hyperdrive.Semantics.Target (Target(..), connectTarget)
+import Hyperdrive.Semantics.Target (Target(..), TargetContext(..), connectTarget)
 import Hyperdrive.Semantics.URI
-
--- = https://www.rfc-editor.org/rfc/rfc9112#section-3.3
--- # A
--- # server that can uniquely identify an authority from the request
--- # context MAY use that identity as a default without this risk.
-
--- | What the server knows about the connection that a target is
--- reconstructed with.
---
--- RFC 9112 Section 3.3 warns that a default authority is unsafe on a
--- secured connection unless the authority is certain, for example
--- the one name its certificate is valid for.
-data TargetContext = TargetContext
-  { contextScheme           :: !Scheme
-    -- ^ the scheme of the target URI of requests in origin-form or
-    -- asterisk-form: @https@ if the connection is secured (or a trusted
-    -- gateway says it was), else @http@. A request in absolute-form for
-    -- an @https@ target is accepted only if this is @https@.
-  , contextDefaultAuthority :: !(Maybe Authority)
-    -- ^ the authority to use when a request has no @Host@ (HTTP/1.0)
-    -- or an empty one. With 'Nothing', such requests are rejected.
-  } deriving (Eq, Show)
 
 -- | Why a request's target cannot be reconstructed. Each is answered
 -- with 'targetErrorStatus', and the connection is closed.

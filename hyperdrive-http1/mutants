@@ -38,14 +38,6 @@ why: a transfer-parameter needs a value
 - in if B.null t then Left InvalidTransferEncoding else Right rest
 + in Right rest
 
-why: a list of lengths is accepted only when every value is the same
-- Just (n : ns) | all (== n) ns -> Right n
-+ Just (n : _) -> Right n
-
-why: a length too large for 64 bits is invalid, not wrapped around
-- if n > (maxBound - d) `div` 10 then Nothing else Just (n * 10 + d)
-+ Just (n * 10 + d)
-
 why: 501 is for a coding the server does not support; every other framing error is 400
 - framingErrorStatus (UnsupportedTransferCoding _) = NotImplemented
 + framingErrorStatus (UnsupportedTransferCoding _) = BadRequest
@@ -630,18 +622,6 @@ why: a value may follow the colon with no space, and its first octet is kept
 + | len >= 2, not (isOWS (BU.unsafeIndex raw 1)), not (isOWS (BU.unsafeIndex raw (len - 1))) =
 
 file: src/Hyperdrive/HTTP1/Framing.hs
-
-why: a Content-Length list has no empty elements: "5," is not 5
-- | B.null e || not (B.all isDIGIT e) = Nothing
-+ | not (B.all isDIGIT e) = Nothing
-
-why: the elements of a Content-Length list may have whitespace around them
-- | otherwise = map (B.dropWhileEnd isOWS . B.dropWhile isOWS) (B.split 0x2C v)
-+ | otherwise = B.split 0x2C v
-
-why: an empty Content-Length line is not a length, even beside one that is
-- | B.null v  = [v]
-+ | B.null v  = []
 
 file: src/Hyperdrive/HTTP1/Chunked.hs
 

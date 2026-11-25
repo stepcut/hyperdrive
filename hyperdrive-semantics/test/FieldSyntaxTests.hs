@@ -47,6 +47,10 @@ fieldSyntaxTests = testGroup "FieldSyntax"
     , testProperty "quoteString then parseQuotedString is the identity"     prop_quoteRoundTrip
     , testProperty "quoteString only escapes DQUOTE and backslash"          prop_quoteMinimal
     ]
+  , testGroup "Content-Length"
+    [ testProperty "the samples' labels agree with RFC 9110's grammar" prop_contentLengthLabels
+    , testProperty "parseContentLength agrees with the labels, for one or two field lines" prop_contentLength
+    ]
   , testGroup "Parameters"
     [ testProperty "RFC 9110 8.3.1 equivalent media types"      prop_rfcMediaTypes
     , testProperty "parseParameters agrees with the grammar (exhaustive)" prop_parametersExhaustive
@@ -394,3 +398,50 @@ prop_partitionFields =
         (yes, no) = partitionFields p fs
     in (pairs yes, pairs no)
          === ( [ x | x@(n, _) <- pairs fs, n `elem` chosen ], [ x | x@(n, _) <- pairs fs, n `notElem` chosen ] )
+
+------------------------------------------------------------------------------
+-- Content-Length
+------------------------------------------------------------------------------
+
+-- | Content-Length values, each with the numbers it lists, or Nothing if
+-- it is not a list of decimal numbers. A value is read as a list
+-- (RFC 9112 Section 6.3, rule 5), but one without empty elements.
+contentLengthSamples :: [(ByteString, Maybe [Integer])]
+contentLengthSamples =
+  [ ("0", Just [0]), ("5", Just [5]), ("05", Just [5]), ("5, 5", Just [5, 5]), ("5,5", Just [5, 5])
+  , ("5, 05", Just [5, 5]), ("5, 6", Just [5, 6]), ("5 ,\t5", Just [5, 5]), ("5,5,5", Just [5, 5, 5])
+  , (", 5", Nothing), ("", Nothing), ("5,", Nothing), ("5,,5", Nothing), ("5, ,5", Nothing), (",", Nothing)
+  , ("18446744073709551615", Just [18446744073709551615])
+  , ("18446744073709551616", Just [18446744073709551616])
+  , ("-1", Nothing), ("+5", Nothing), ("5.0", Nothing), ("0x10", Nothing), ("5 5", Nothing)
+  , ("5;q=1", Nothing), ("\"5\"", Nothing) ]
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.6
+-- # Content-Length = 1*DIGIT
+prop_contentLengthLabels :: Property
+prop_contentLengthLabels = once $ conjoin
+  [ counterexample (show v) $ lengths v === (lab /= Nothing) | (v, lab) <- contentLengthSamples ]
+  where
+    lengths = either (error . show) id . matches Recipient lib "L" (maybe (error "rule") id (mkRuleName "lengths"))
+    lib = library
+      [ ("L", grammar [abnf|
+          lengths  = length *( ows "," ows length )
+          length   = <Content-Length, see [HTTP], Section 8.6>
+          ows      = <OWS, see [HTTP], Section 5.6.3>
+          |])
+      , ("HTTP", grammar (withErrata rfc9110Errata rfc9110)), ("URI", grammar rfc3986) ]
+    grammar = either (error . show) id . mkGrammar
+
+-- = https://www.rfc-editor.org/rfc/rfc9110#section-8.6
+-- # a recipient MUST anticipate potentially large decimal numerals and
+-- # prevent parsing errors due to integer conversion overflows or
+-- # precision loss due to integer conversion
+prop_contentLength :: Property
+prop_contentLength = once $ conjoin
+  [ counterexample (show (map fst ls)) $
+      parseContentLength (map (value . fst) ls) === expectedLength (map snd ls)
+  | ls <- [[a] | a <- contentLengthSamples] ++ [[a, b] | a <- contentLengthSamples, b <- contentLengthSamples] ]
+  where
+    expectedLength labels = case concat <$> sequence labels of
+      Just (n : ns) | all (== n) ns, n < 2 ^ (64 :: Int) -> Just (fromInteger n)
+      _ -> Nothing
