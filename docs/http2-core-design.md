@@ -143,6 +143,19 @@ distribution's default are worth having); each is a few hundred lines
 of C, and benchmarks decide which is the default. rustls is the one to
 watch for assurance, once its C API has QUIC.
 
+Added 2026-11-25 after the second independent review. Signing happens
+inside the handshake, so it cannot be `safe` while the handshake call
+is `unsafe` unless the shim uses AWS-LC's asynchronous private key
+method (the key operation returns "retry", the signature is made in a
+separate `safe` call, the handshake resumes); that is the mechanism,
+and each `unsafe` call is held to a budget of about 100 µs (ECDHE fits,
+RSA does not). RFC 9113 Section 9.2 binds the shim's configuration:
+renegotiation off ("An endpoint MUST treat a TLS renegotiation as a
+connection error"), SNI supported, and TLS 1.2 limited to ephemeral
+key exchange with AEAD ciphers (Section 9.2.2 and Appendix A). A small
+spike of the shim comes well before step 7 of D12, since D3 is the
+decision costliest to reverse and the last one D12 tests.
+
 **D4. Streams and threads (decided, 2026-11-24: option A).** One owner
 thread per connection holds the `Conn` and does all transport I/O; each
 request's handler runs in a thread of its own and talks to the owner
@@ -177,10 +190,10 @@ messages to the owner, and wait for its answer on the stream's own
   answer is the same, stop, and the interface stays the same across
   versions). A handler computing without I/O runs until its next call.
   No asynchronous exceptions, as before.
-- A stream counts against the concurrency limit until its handler has
-  returned, not only until the protocol closes it: otherwise a client
-  can reset and reopen streams faster than handlers end, and pile up
-  running handlers (rapid reset, D9).
+- A stream reset while its handler runs keeps a slot until the handler
+  returns, so that a client cannot reset and reopen streams faster
+  than handlers end and pile up running handlers (rapid reset, D9);
+  how this is counted is C6.
 - `ContentFile` is read into frame-sized buffers: frames need a header
   every 16 KiB at most, and TLS rules out `sendfile` (short of kTLS).
   A known difference in speed from HTTP/1.1.
@@ -196,11 +209,15 @@ connection). A few stalled streams can then use up the connection
 window and stall the connection's other streams, but every stream on a
 connection is the same client's, so that harm is self-inflicted.
 
-- Initial windows, both settings: 64 KiB per stream, 1 MiB per
-  connection, starting points until measured. A fixed stream window
-  caps one upload at a window a round trip (about 1.3 MB/s at 50 ms);
-  growing a stream's window while its handler keeps up (as gRPC and
-  Chrome do) is in D13, to be decided by measurement.
+- Initial windows, both settings: 1 MiB per stream and 1 MiB per
+  connection, as Go (changed 2026-11-25 from 64 KiB per stream, after
+  the survey of implementations below: Go and hyper use 1 MiB, warp
+  256 KiB, Envoy 16 MiB; a 64 KiB window caps one upload at about 1.3
+  MB/s at 50 ms). Memory per connection stays bounded by the 1 MiB
+  connection window, credit being returned only as handlers read; the
+  cost, as in Go, is that one handler that stops reading can stall the
+  other uploads on its own connection. Growing windows (mod_http2 grows
+  them to 2 MiB) are in D13, to be decided by measurement.
 - WINDOW_UPDATE is sent once the credit not yet given back reaches half
   the window, not for every read; the core decides, so it is tested.
 - A handler that responds without reading all of the body: once the
@@ -276,7 +293,7 @@ server sends, each a setting of ours with this default:
 | HEADER_TABLE_SIZE | 4096 | the protocol's default, not sent |
 | MAX_FRAME_SIZE | 16384 | the protocol's default, not sent; the server's own frames stay at 16 KiB at most too, for fairness between streams |
 | MAX_HEADER_LIST_SIZE | 32 KiB | measured as RFC 9113 does (name, value and 32 for each field), so not exactly HTTP/1.1's measure; and HTTP/1.1's 100 fields (D4 there) |
-| INITIAL_WINDOW_SIZE | 64 KiB | D6 |
+| INITIAL_WINDOW_SIZE | 1 MiB | D6 |
 | NO_RFC7540_PRIORITIES | 1 | D8 |
 | ENABLE_PUSH | not sent | D7 |
 
@@ -324,25 +341,22 @@ long-lived connections.
    error).
 2. Malformed in RFC 9113's sense (Section 8.1.1: pseudo-header fields
    wrong, upper-case names, connection-specific fields, prohibited
-   characters, `TE` other than `trailers`, a `content-length` that
-   differs from the DATA received): a stream error PROTOCOL_ERROR,
-   and "a server MAY send an HTTP response prior to closing or
-   resetting the stream". If the request has not ended: 400, then
-   RST_STREAM PROTOCOL_ERROR, as HTTP/1.1 answers 400 (D3 there), so
-   that a developer with a broken client library sees a reason. If it
-   has ended (its HEADERS or last DATA carried END_STREAM): RST_STREAM
-   PROTOCOL_ERROR alone, as Go and nghttp2 do, because the 400 with
-   END_STREAM would close the stream and "An endpoint MUST NOT send
-   frames other than PRIORITY on a closed stream" (Section 5.1); the
-   reason is logged instead (changed 2026-11-25 after the independent
-   review). The same applies to 431 (D9) and to a `content-length`
-   that the DATA does not match; one found wrong once the handler has
-   started: RST_STREAM alone, and the handler's `readChunk` throws
-   `IncompleteBody` as on HTTP/1.1.
-3. Well-formed, but refused by `mkRequest` (the target's syntax,
-   userinfo, a port out of range: HTTP/1.1's checks): 400 with
-   END_STREAM, a normal response, and RST_STREAM NO_ERROR if the
-   request's body has not ended (D6). Not PROTOCOL_ERROR.
+   characters, `TE` other than `trailers`, an invalid `:authority`, a
+   `content-length` that differs from the DATA received): RST_STREAM
+   PROTOCOL_ERROR alone, the stream error Section 8.1.1 requires, and
+   the reason logged for the developer. This is what nghttp2, warp,
+   Rust's h2 and (for most malformations) Go send (decided 2026-11-25
+   after the survey of implementations below; the first version sent
+   a 400 before the reset, which no implementation does, and which a
+   400 with END_STREAM would make a frame on a closed stream). A
+   `content-length` found wrong once the handler has started: the
+   same, and the handler's `readChunk` throws `IncompleteBody` as on
+   HTTP/1.1.
+3. Well-formed, but refused (the 400 and 421 of D11, and D9's 431): the
+   response with END_STREAM, then RST_STREAM NO_ERROR only if the
+   request is still sending (Section 8.1 allows it after a complete
+   response). This is what Go, nginx, nghttpx and mod_http2 do with
+   the responses they send. Not PROTOCOL_ERROR.
 4. The handler fails: before its response starts, 500, as on HTTP/1.1;
    after (`Abort`, or a `ContentStream` of the wrong length),
    RST_STREAM INTERNAL_ERROR.
@@ -385,29 +399,48 @@ names and values already separated.
   two RFCs say different things, and two sources for the authority are
   what routing and smuggling attacks use. `Host` is then left out of
   the `Request`, as on HTTP/1.1.
-- `:scheme` (corrected 2026-11-25; the first version called other
-  schemes malformed): RFC 9113 allows any scheme ("':scheme' is not
-  restricted to 'http' and 'https' schemed URIs", Section 8.3.1), so
-  such a request is well formed. As HTTP/1.1 does for an absolute-form
-  target (design-notes P3), a scheme other than `http` or `https`, or
-  `https` on a cleartext connection, gets 421 (Misdirected Request) as
-  a normal response (D10's case 3).
-- Malformed (D10's case 2: 400, then RST_STREAM PROTOCOL_ERROR): what
-  Section 8 calls malformed. A field name that is not a token, has
-  upper case or a colon; a value with NUL, CR or LF, leading or
-  trailing whitespace, or characters outside field-value; an unknown or
-  repeated pseudo-header field, or one after a regular field; a missing
-  `:method`, `:scheme` or `:path`, or one without a valid value
-  ("exactly one valid value"); CONNECT with `:scheme` or `:path`, or
-  without `:authority`; connection-specific fields; `TE` other than
-  `trailers`; a `Host` that differs from `:authority`; in trailers,
-  pseudo-header fields, and `Content-Length` or `Transfer-Encoding`
-  (refused as HTTP/1.1 refuses them).
-- Refused (D10's case 3, a normal response, as HTTP/1.1 answers):
-  an invalid `:authority` or `Host` (userinfo, a bad port), more than
-  one `Host`, no authority and no default, `*` with a method other than
-  OPTIONS, an invalid `Content-Length` (400); the scheme cases above
-  (421).
+- `:scheme` (corrected twice on 2026-11-25): RFC 9113 allows any
+  scheme ("':scheme' is not restricted to 'http' and 'https' schemed
+  URIs", Section 8.3.1), so such a request is well formed. As HTTP/1.1
+  does for an absolute-form target (design-notes P3), a scheme other
+  than `http` or `https`, or `https` on a cleartext connection, gets
+  421 (Misdirected Request) as a normal response (D10's case 3),
+  unless the listener is set to trust its peer as a gateway (RFC 9110
+  Section 7.4: "Unless the connection is from a trusted gateway, an
+  origin server MUST reject..."), in which case `:scheme` (or the
+  absolute-form's scheme, on HTTP/1.1) is taken as sent. That setting
+  is off by default, which keeps the MUST; a proxy speaking h2c to the
+  server (D2's use) needs it on, and the 421 is logged saying so. The
+  connection's own security is `contextSecure` either way. All nine
+  implementations surveyed accept `https` over cleartext; only nghttpx
+  can refuse it, with an option that is off by default.
+- Whitespace around a field value is removed, as HTTP/1.1 removes it,
+  rather than making the request malformed (decided 2026-11-25 after
+  the survey): RFC 9113 Section 8.2.1 says "A field value MUST NOT
+  start or end with an ASCII whitespace character" and calls such a
+  message malformed, but of nine implementations only h2o refuses it
+  (Go, warp, nginx, Rust's h2 and Envoy pass it through, mod_http2
+  strips it, nghttp2 drops the field), and when nghttp2 began to
+  enforce it, Envoy turned the check off after "widespread" failures
+  at Lyft (Envoy issue 23266). A known deviation, recorded in duvet as
+  an exception with this reason. NUL, CR, LF and other control
+  characters remain malformed.
+- Malformed (D10's case 2: RST_STREAM PROTOCOL_ERROR): what Section 8
+  calls malformed. A field name that is not a token, has upper case or
+  a colon; a value with NUL, CR, LF or another character outside
+  field-value; an unknown or repeated pseudo-header field, or one
+  after a regular field; a missing `:method`, `:scheme` or `:path`, or
+  one without a valid value ("exactly one valid value"), and an
+  `:authority` that is not `uri-host [ ":" port ]` ("invalid
+  pseudo-header fields", Section 8.3; as nghttp2 and Go); CONNECT with
+  `:scheme` or `:path`, or without `:authority`; connection-specific
+  fields; `TE` other than `trailers`; a `Host` that differs from
+  `:authority`; in trailers, pseudo-header fields, and `Content-Length`
+  or `Transfer-Encoding` (refused as HTTP/1.1 refuses them).
+- Refused (D10's case 3, a normal response, as HTTP/1.1 answers): an
+  invalid `Host` (userinfo, a bad port), more than one `Host`, no
+  authority and no default, `*` with a method other than OPTIONS, an
+  invalid `Content-Length` (400); the scheme cases above (421).
 - `TargetContext` and the parsing of `Content-Length` move from
   `hyperdrive-http1` to `hyperdrive-semantics`, re-exported where they
   were, so that HTTP/2 does not depend on HTTP/1.1.
@@ -482,7 +515,17 @@ sent plain or Huffman-coded. The server encodes responses only.
   shares a context with the rest.
 
 Recommended: (b). The list is fixed in the code at first; making it a
-setting can wait for an application that needs one. Measured against
+setting can wait for an application that needs one. Amended 2026-11-25
+after the second independent review: an entry is indexed only if it
+is at most a quarter of the table (one larger empties both sides'
+tables, as nghttp2's encoder also avoids); the long security fields
+that repeat on every response are added (`content-security-policy`,
+`permissions-policy`, `referrer-policy`, `x-frame-options`,
+`cross-origin-opener-policy`, `cross-origin-embedder-policy`,
+`cross-origin-resource-policy`, `accept-ranges`); and
+`access-control-allow-origin` is removed, since it usually reflects
+the request's `Origin`, which would put a value the client chose into
+the table. Measured against
 (a) on the benchmark app's responses (bytes a response, µs a response,
 and h2load's "space savings"): if (b) costs measurable CPU for the
 bytes it saves, (a).
@@ -557,13 +600,13 @@ some types (Section 4.2) and allows it for all; a stream error would
 still oblige the server to read and discard up to 16 MB, and to count a
 DATA frame's length against the connection window.
 
-**F4. Non-zero padding is refused** (a connection error
-PROTOCOL_ERROR). Section 6.1: "A receiver is not obligated to verify
-padding but MAY treat non-zero padding as a connection error". The
-sender MUST set it to zero, so only a broken or hostile client sends
-anything else; checking costs a scan of at most 255 octets. As with
-HTTP/1.1, a message that breaks a sender's MUST is refused rather than
-passed over.
+**F4. The contents of padding are not checked** (changed 2026-11-25
+after the survey of implementations below: the first version refused
+non-zero padding). Section 6.1: "A receiver is not obligated to verify
+padding but MAY treat non-zero padding as a connection error". None of
+the nine implementations surveyed checks it, so a server that did
+would be the only one to reset a client for it, for no gain in
+safety; only the Pad Length is checked.
 
 **F5. Payloads are slices of the received octets.** DATA's content and
 HEADERS' and CONTINUATION's fragments are not copied; the core joins a
@@ -705,10 +748,16 @@ C6) and the highest identifier opened.
 
 **C5. Response content is buffered per stream, the scheduler sends it,
 and the transport paces it.** `WriteBody` is accepted, whatever its
-size, while the stream's buffer holds less than 64 KiB (D6); then the
-driver waits for `Writable` (writing more is a misuse), so a handler
-blocks on its `MVar` while its buffer is full. The core does not copy
-the application's chunks.
+size, while the stream's buffer holds less than 16 KiB and the
+connection's response buffers together less than 256 KiB (changed
+2026-11-25 from 64 KiB per stream and no connection-wide bound, after
+the second review and the survey: Go holds 4 KiB a stream, mod_http2
+32 KiB, h2o bounds its output at 80 KiB; 100 streams of 64 KiB were
+6.4 MB a connection for a client that stops reading); then the driver
+waits for `Writable` (writing more is a misuse), so a handler blocks
+on its `MVar` while its buffer is full, and `Writable` goes to the
+waiting streams in turn. The core does not copy the application's
+chunks.
 
 - The core emits DATA only while what it has emitted and the driver
   has not yet reported written (`Sent`) is under a bound (64 KiB, a
@@ -822,9 +871,9 @@ RST_STREAM from the client before our response ended (rapid reset).
 Not counted: other WINDOW_UPDATEs (a client with generous windows
 sends many) and PRIORITY_UPDATE (type 0x10, RFC 9218, ignored until
 RFC 9218 is supported, D8). Over budget: GOAWAY ENHANCE_YOUR_CALM.
-Refused outright, as Go and nghttp2 do: a SETTINGS acknowledgement for
-a SETTINGS we did not send, and a SETTINGS that repeats a setting or
-has more than 100 (connection errors PROTOCOL_ERROR; Section 10.5
+Refused outright: a SETTINGS acknowledgement for a SETTINGS we did not
+send (as Go and nghttp2), and a SETTINGS that repeats a setting or has
+more than 100 (as Go; nghttp2 keeps the last value) (connection errors PROTOCOL_ERROR; Section 10.5
 names "changing the same setting multiple times in the same frame").
 The budget, the slots and the threads are per connection; the server's
 limit on connections is what bounds them together, so its default
@@ -886,9 +935,38 @@ all, and time.
   `WriteBody` queued when a reset arrives; `HandlerDone` after `Close`)
   are tested in `hyperdrive-server`'s in-memory tests with scripted
   interleavings, since the core alone cannot show them.
-- h2spec's expected failures are listed by name from its first run
-  (C4), as the llhttp differences are.
+- h2spec's expected failures are listed by name from its first run,
+  as the llhttp differences are: the four "closed" cases of C4, and
+  the two self-dependency cases of Section 5.3.1 (RFC 9113 dropped
+  that rule, and the parser keeps no dependency).
 - Mutants for every check.
+
+## Other implementations (surveyed 2026-11-25)
+
+Five questions the second review raised were settled by what other
+servers do, read from their current source: Go's x/net/http2, Kazu
+Yamamoto's http2 (warp), nginx, h2o, Rust's h2 and hyper, and nghttp2
+with nghttpx, Apache's mod_http2 and Envoy.
+
+- Malformed requests: the libraries (nghttp2, warp, h2, most of Go)
+  send RST_STREAM PROTOCOL_ERROR alone; nginx and parts of Go,
+  nghttpx and mod_http2 send 400; h2o mostly GOAWAY; Envoy closes the
+  connection. No one sends a 400 and then PROTOCOL_ERROR. A response,
+  when sent, ends with END_STREAM, and RST_STREAM NO_ERROR follows if
+  the request is still sending (Go, nginx, nghttpx, mod_http2). An
+  oversized header list: 431 (Go, h2, nghttpx, mod_http2) or a reset.
+  (D10.)
+- `:scheme` `https` over cleartext: all accept; nghttpx can refuse it
+  with an option, off by default; warp and nginx take security from
+  the transport. (D11.)
+- Whitespace around values: passed through by Go, warp, nginx, h2 and
+  Envoy (which turned nghttp2's check off), stripped by mod_http2,
+  the field dropped by nghttp2, refused only by h2o. (D11.)
+- Non-zero padding: no one checks it. (F4.)
+- Buffers and windows: per-stream response buffering from 4 KiB (Go)
+  to 16 MiB (Envoy); receive windows from 64 KiB (nghttpx, nginx and
+  h2o before a body is read) through 1 MiB (Go, hyper) and 256 KiB
+  (warp) to 16 MiB (Envoy); only mod_http2 grows windows. (D6, C5.)
 
 ## Testing
 
@@ -917,7 +995,7 @@ all, and time.
 - **D7.** No server push; the MUSTs on receiving push signals kept.
 - **D8.** No RFC 7540 priorities; round robin first (changed after review), then RFC 9218 after the warp benchmarks.
 - **D9.** The settings, a defence for each known attack, a nuisance budget with the coarse time as an input.
-- **D10.** HPACK errors close the connection; malformed: 400 then PROTOCOL_ERROR, or the reset alone once the request has ended (changed after review); invalid 400; staged GOAWAY.
-- **D11.** The pseudo-header mapping in `hyperdrive-semantics`; a differing `Host` malformed; other schemes and `https` on cleartext 421, as HTTP/1.1.
+- **D10.** HPACK errors close the connection; malformed: RST_STREAM PROTOCOL_ERROR alone; refused: the response, then RST_STREAM NO_ERROR if the request is still sending (both after the survey); staged GOAWAY.
+- **D11.** The pseudo-header mapping in `hyperdrive-semantics`; a differing `Host` and an invalid `:authority` malformed; other schemes and `https` on cleartext 421 unless the peer is a trusted gateway; whitespace around values stripped (after the survey).
 - **D12.** HPACK, frames, D11, `step`, h2c driver, RFC 9218, TLS (HTTP/1.1 first).
 - **C1-C13.** The connection core, after the author's and an independent review.
