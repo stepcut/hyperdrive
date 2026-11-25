@@ -283,32 +283,58 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
   SECTION: [Header List Ordering](#section-2.1)
     TEXT[!MUST]:    An encoder MUST order header field representations in the header
     TEXT[!MUST]:    block according to their ordering in the original header list.
-    TEXT[!MUST]:    decoder MUST order header fields in the decoded header list according
-    TEXT[!MUST]:    to their ordering in the header block.
+    TEXT[!MUST,implementation,test]:    decoder MUST order header fields in the decoded header list according
+    TEXT[!MUST,implementation,test]:    to their ordering in the header block.
 
   SECTION: [Dynamic Table](#section-2.3.2)
-    TEXT[!MUST]: Therefore, duplicate entries MUST NOT
-    TEXT[!MUST]:    be treated as an error by a decoder.
+    TEXT[implementation]:    The dynamic table is initially empty.
+    TEXT[!MUST,implementation,test]: Therefore, duplicate entries MUST NOT
+    TEXT[!MUST,implementation,test]:    be treated as an error by a decoder.
 
   SECTION: [Index Address Space](#section-2.3.3)
-    TEXT[!MUST]:    Indices strictly greater than the sum of the lengths of both tables
-    TEXT[!MUST]:    MUST be treated as a decoding error.
+    TEXT[implementation]:    Indices between 1 and the length of the static table (inclusive)
+    TEXT[implementation]:    refer to elements in the static table (see Section 2.3.1).
+    TEXT[implementation]:    Indices strictly greater than the length of the static table refer to
+    TEXT[implementation]:    elements in the dynamic table (see Section 2.3.2).  The length of the
+    TEXT[implementation]:    static table is subtracted to find the index into the dynamic table.
+    TEXT[!MUST,implementation]:    Indices strictly greater than the sum of the lengths of both tables
+    TEXT[!MUST,implementation]:    MUST be treated as a decoding error.
 
   SECTION: [Header Field Representation Processing](#section-3.2)
-    TEXT[!MUST]: To ensure that the decoding will successfully
-    TEXT[!MUST]:    produce a header list, a decoder MUST obey the following rules.
+    TEXT[!MUST,implementation]: To ensure that the decoding will successfully
+    TEXT[!MUST,implementation]:    produce a header list, a decoder MUST obey the following rules.
+
+  SECTION: [Calculating Table Size](#section-4.1)
+    TEXT[implementation]:    The size of an entry is the sum of its name's length in octets (as
+    TEXT[implementation]:    defined in Section 5.2), its value's length in octets, and 32.
 
   SECTION: [Maximum Table Size](#section-4.2)
     TEXT[!MUST]:    An encoder can choose to use less capacity than this maximum size
     TEXT[!MUST]:    (see Section 6.3), but the chosen size MUST stay lower than or equal
     TEXT[!MUST]:    to the maximum set by the protocol.
-    TEXT[!MUST]: This dynamic table size
-    TEXT[!MUST]:    update MUST occur at the beginning of the first header block
-    TEXT[!MUST]:    following the change to the dynamic table size.
+    TEXT[!MUST,implementation]: This dynamic table size
+    TEXT[!MUST,implementation]:    update MUST occur at the beginning of the first header block
+    TEXT[!MUST,implementation]:    following the change to the dynamic table size.
     TEXT[!MUST]: In the case that this size is
     TEXT[!MUST]:    changed more than once in this interval, the smallest maximum table
     TEXT[!MUST]:    size that occurs in that interval MUST be signaled in a dynamic table
     TEXT[!MUST]:    size update.
+
+  SECTION: [Entry Eviction When Dynamic Table Size Changes](#section-4.3)
+    TEXT[implementation]:    Whenever the maximum size for the dynamic table is reduced, entries
+    TEXT[implementation]:    are evicted from the end of the dynamic table until the size of the
+    TEXT[implementation]:    dynamic table is less than or equal to the maximum size.
+
+  SECTION: [Entry Eviction When Adding New Entries](#section-4.4)
+    TEXT[implementation]:    Before a new entry is added to the dynamic table, entries are evicted
+    TEXT[implementation]:    from the end of the dynamic table until the size of the dynamic table
+    TEXT[implementation]:    is less than or equal to (maximum size - new entry size) or until the
+    TEXT[implementation]:    table is empty.
+    TEXT[implementation]:    If the size of the new entry is less than or equal to the maximum
+    TEXT[implementation]:    size, that entry is added to the table.  It is not an error to
+    TEXT[implementation]:    attempt to add an entry that is larger than the maximum size; an
+    TEXT[implementation]:    attempt to add an entry larger than the maximum size causes the table
+    TEXT[implementation]:    to be emptied of all existing entries and results in an empty table.
 
   SECTION: [Integer Representation](#section-5.1)
     TEXT[implementation]:    This integer representation allows for values of indefinite size.  It
@@ -331,8 +357,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
     TEXT[!MUST,implementation,test]:    error.
 
   SECTION: [Indexed Header Field Representation](#section-6.1)
-    TEXT[!MUST]: It MUST be treated as a decoding
-    TEXT[!MUST]:    error if found in an indexed header field representation.
+    TEXT[implementation]:    The index value of 0 is not used.
+    TEXT[!MUST,implementation]: It MUST be treated as a decoding
+    TEXT[!MUST,implementation]:    error if found in an indexed header field representation.
 
   SECTION: [Literal Header Field Never Indexed](#section-6.2.3)
     TEXT[!MUST,exception]: Intermediaries MUST use the same representation
@@ -345,10 +372,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
     TEXT[!MUST,exception]:    MUST use the same representation to forward this header field.
 
   SECTION: [Dynamic Table Size Update](#section-6.3)
-    TEXT[!MUST]:    The new maximum size MUST be lower than or equal to the limit
-    TEXT[!MUST]:    determined by the protocol using HPACK.
-    TEXT[!MUST]: A value that exceeds this
-    TEXT[!MUST]:    limit MUST be treated as a decoding error.
+    TEXT[!MUST,implementation]:    The new maximum size MUST be lower than or equal to the limit
+    TEXT[!MUST,implementation]:    determined by the protocol using HPACK.
+    TEXT[!MUST,implementation]: A value that exceeds this
+    TEXT[!MUST,implementation]:    limit MUST be treated as a decoding error.
 
   SECTION: [Never-Indexed Literals](#section-7.1.3)
     TEXT[!MUST,exception]:    An intermediary MUST NOT re-encode a value that uses the never-

@@ -67,3 +67,71 @@ why: the encoder pads with ones, the start of EOS
 why: the encoded length rounds the bits up to whole octets
 - huffmanLength bs = (B.foldl' (\t c -> t + fromIntegral (unsafeAt lengthArray (fromIntegral c))) 0 bs + 7)
 + huffmanLength bs = (B.foldl' (\t c -> t + fromIntegral (unsafeAt lengthArray (fromIntegral c))) 0 bs + 8)
+
+file: src/Hyperdrive/HPACK/Table.hs
+
+why: an entry's size counts 32 octets of overhead (RFC 7541 Section 4.1)
+- entrySize n v = B.length n + B.length v + 32
++ entrySize n v = B.length n + B.length v + 31
+
+why: an entry exactly the table's maximum size fits (Section 4.4)
+- | size > dtMaxSize t = t { dtEntries = Seq.empty, dtSize = 0 }
++ | size >= dtMaxSize t = t { dtEntries = Seq.empty, dtSize = 0 }
+
+why: entries are evicted to make room for the new one, not only to fit the maximum (Section 4.4)
+- let t' = evictTo (dtMaxSize t - size) t
++ let t' = evictTo (dtMaxSize t) t
+
+why: eviction stops as soon as the table fits, not one entry later
+- | dtSize t <= target = t
++ | dtSize t < target = t
+
+why: reducing the maximum size evicts entries (Section 4.3)
+- resizeTable m t = (evictTo m t) { dtMaxSize = m }
++ resizeTable m t = t { dtMaxSize = m }
+
+why: index 61 is the static table's last entry (Section 2.3.3)
+- | i <= staticTableLength = Just (staticEntry i)
++ | i < staticTableLength = Just (staticEntry i)
+
+why: index 62 is the dynamic table's first (newest) entry (Section 2.3.3)
+- | otherwise = case Seq.lookup (i - staticTableLength - 1) (dtEntries t) of
++ | otherwise = case Seq.lookup (i - staticTableLength) (dtEntries t) of
+
+file: src/Hyperdrive/HPACK/Decode.hs
+
+why: index 0 in an indexed field is a decoding error of its own (Section 6.1)
+- Decoded 0 _ -> Left IndexZero
++ Decoded (-1) _ -> Left IndexZero
+
+why: a literal with incremental indexing is added to the table (Section 6.2.1)
+- else if b .&. 0xC0 == 0x40 then literal True 6 t i listSize acc count
++ else if b .&. 0xC0 == 0x40 then literal False 6 t i listSize acc count
+
+why: literals without indexing and never indexed are not added to the table (Sections 6.2.2, 6.2.3)
+- let t' = if adds then insertEntry n v t else t
++ let t' = insertEntry n v t
+
+why: a size update starts with 001 (Section 6.3)
+- else if b .&. 0xE0 == 0x20 then sizeUpdate t i updates listSize acc count
++ else if b .&. 0xE0 == 0x60 then sizeUpdate t i updates listSize acc count
+
+why: a size update after a field is refused (Section 4.2)
+- | count > 0    = Left TableSizeUpdateLate
++ | count > 1    = Left TableSizeUpdateLate
+
+why: at most two size updates (Section 4.2)
+- decodeBlock maxList (Decoder table limit) bs = go table 0 2 0 [] 0
++ decodeBlock maxList (Decoder table limit) bs = go table 0 3 0 [] 0
+
+why: a size update above the limit is a decoding error (Section 6.3)
+- | m > limit -> Left (TableSizeAboveLimit m)
++ | m > limit + 1 -> Left (TableSizeAboveLimit m)
+
+why: a list exactly at the limit is accepted
+- let d = if listSize > maxList then ListTooLarge else Fields (reverse acc)
++ let d = if listSize >= maxList then ListTooLarge else Fields (reverse acc)
+
+why: fields are returned in the block's order (Section 2.1)
+- let d = if listSize > maxList then ListTooLarge else Fields (reverse acc)
++ let d = if listSize > maxList then ListTooLarge else Fields acc
