@@ -3,6 +3,7 @@ module Main (main) where
 import CorpusTests (corpusTests)
 import DecodeTests (decodeTests)
 import EncodeTests (encodeTests)
+import FrameTests (frameTests)
 import HuffmanTests (huffmanTests)
 import IntegerTests (integerTests)
 import RFC7541 (huffmanTable, rfc7541)
@@ -13,4 +14,4 @@ main = do
   text <- rfc7541
   corpus <- corpusTests
   defaultMain $ localOption (mkTimeout (120 * 1000000)) $ testGroup "hyperdrive-http2"
-    [ integerTests, huffmanTests (huffmanTable text), decodeTests text, encodeTests, corpus ]
+    [ integerTests, huffmanTests (huffmanTable text), decodeTests text, encodeTests, corpus, frameTests ]

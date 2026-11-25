@@ -494,6 +494,52 @@ encoder uses a dynamic table at all (which brings an encoder stream,
 acknowledgements and blocked streams) is a separate decision for
 HTTP/3, and (a) is a sound start there.
 
+## Frames (decided, 2026-11-25: F1-F5 as below)
+
+`Hyperdrive.HTTP2.Frame` parses one frame from the start of the
+received octets and serializes the frames a server sends. It makes
+every check that needs no connection state; the core (`step`) makes the
+rest. The RFC fixes most of it; five choices remain.
+
+**F1. Unknown frames are returned, not dropped.** "Implementations MUST
+ignore and discard frames of unknown types" (Section 4.1), but an
+unknown frame in the middle of a field block is a connection error
+(Section 5.5), and D9's nuisance budget must count them. So the parser
+returns `Unknown` with the type, stream and length (no payload), and
+the core ignores it except for those two. Unused flags have no meaning
+and are masked off when parsing; unknown settings are dropped
+("MUST ignore that setting", Section 6.5.2).
+
+**F2. Errors carry the scope the RFC gives them, and the core may
+widen it.** A PRIORITY frame of the wrong length and a WINDOW_UPDATE of
+0 on a stream are stream errors; everything else the parser finds is a
+connection error. The core turns a stream error on an idle stream into
+a connection error (it may not send RST_STREAM for an idle stream,
+Section 6.4; "an endpoint MAY choose to treat a stream error as a
+connection error", Section 5.4).
+
+**F3. A frame longer than our SETTINGS_MAX_FRAME_SIZE is a connection
+error, whatever its type,** found from the 9-octet header before any of
+the payload is buffered. The RFC requires a connection error only for
+some types (Section 4.2) and allows it for all; a stream error would
+still oblige the server to read and discard up to 16 MB, and to count a
+DATA frame's length against the connection window.
+
+**F4. Non-zero padding is refused** (a connection error
+PROTOCOL_ERROR). Section 6.1: "A receiver is not obligated to verify
+padding but MAY treat non-zero padding as a connection error". The
+sender MUST set it to zero, so only a broken or hostile client sends
+anything else; checking costs a scan of at most 255 octets. As with
+HTTP/1.1, a message that breaks a sender's MUST is refused rather than
+passed over.
+
+**F5. Payloads are slices of the received octets.** DATA's content and
+HEADERS' and CONTINUATION's fragments are not copied; the core joins a
+field block's fragments (usually there is one) and hands DATA to the
+handler. Padding and the deprecated priority fields are checked and
+dropped. The server never sends padding, PRIORITY or PUSH_PROMISE, so
+the serializer has no way to.
+
 ## Testing
 
 - HPACK: RFC 7541 Appendix C's examples verbatim; the hpack-test-case

@@ -195,3 +195,105 @@ why: after a reduction, a block that does not start with a size update is a COMP
 why: the owed update is owed once
 - in Right (d, Decoder t limit False)
 + in Right (d, Decoder t limit required)
+
+file: src/Hyperdrive/HTTP2/Frame.hs
+
+why: a frame longer than our SETTINGS_MAX_FRAME_SIZE is refused (RFC 9113 Section 4.2, F3)
+- | len > maxSize = connection FrameSizeError TooLong
++ | len > maxSize + 1 = connection FrameSizeError TooLong
+
+why: the length is 24 bits, its first octet the most significant (Section 4.1)
+- len = fromIntegral (BU.unsafeIndex input 0) `shiftL` 16
++ len = fromIntegral (BU.unsafeIndex input 0) `shiftL` 8
+
+why: the reserved bit is ignored on receipt (Section 4.1)
+- word31 b i = word32 b i .&. 0x7FFFFFFF
++ word31 b i = word32 b i
+
+why: DATA, HEADERS, PRIORITY, RST_STREAM and CONTINUATION need a stream (Section 6)
+- needsStream (StreamId 0) = err ProtocolError NeedsStream
++ needsStream (StreamId 0) = Right ()
+
+why: SETTINGS, PING and GOAWAY belong to the connection (Section 6)
+- needsConnection _ = err ProtocolError NeedsConnection
++ needsConnection _ = Right ()
+
+why: a PADDED frame needs room for its Pad Length and its other fields (Section 4.2)
+- | B.length p < 1 + fixed = err FrameSizeError WrongLength
++ | B.length p < fixed = err FrameSizeError WrongLength
+
+why: padding as long as the payload is a connection error (Section 6.1)
+- | 1 + fixed + padLen > B.length p = err ProtocolError PaddingTooLong
++ | fixed + padLen > B.length p = err ProtocolError PaddingTooLong
+
+why: non-zero padding is refused (F4)
+- | B.any (/= 0) padding = err ProtocolError PaddingNotZero
++ | False = err ProtocolError PaddingNotZero
+
+why: the padding is not part of the data
+- | otherwise = Right (B.take (B.length p - 1 - padLen) (B.drop 1 p))
++ | otherwise = Right (B.take (B.length p - padLen) (B.drop 1 p))
+
+why: flow control counts the whole payload, padding included (Section 6.1)
+- Right (DataFrame sid (flag flags 0) d (B.length p))
++ Right (DataFrame sid (flag flags 0) d (B.length d))
+
+why: HEADERS' priority fields are 5 octets, not part of the fragment (Section 6.2)
+- let fragment = if priority then B.drop 5 rest else rest
++ let fragment = if priority then B.drop 4 rest else rest
+
+why: a PRIORITY of the wrong length is a stream error (Section 6.3)
+- if B.length p /= 5 then Left (FrameError (Stream sid) FrameSizeError WrongLength)
++ if B.length p /= 5 then Left (FrameError Connection FrameSizeError WrongLength)
+
+why: RST_STREAM is 4 octets (Section 6.4)
+- if B.length p /= 4 then err FrameSizeError WrongLength
++ if B.length p /= 4 && B.length p /= 5 then err FrameSizeError WrongLength
+
+why: a SETTINGS acknowledgement is empty (Section 6.5)
+- | flag flags 0 = if B.null p then Right SettingsAckFrame else err FrameSizeError AckWithPayload
++ | flag flags 0 = Right SettingsAckFrame
+
+why: SETTINGS_ENABLE_PUSH is 0 or 1 (Section 6.5.2)
+- 0x2 | v > 1 -> err ProtocolError BadEnablePush
++ 0x2 | v > 2 -> err ProtocolError BadEnablePush
+
+why: SETTINGS_INITIAL_WINDOW_SIZE is at most 2^31 - 1 (Section 6.5.2)
+- 0x4 | v > 0x7FFFFFFF -> err FlowControlError BadInitialWindowSize
++ 0x4 | v > 0x80000000 -> err FlowControlError BadInitialWindowSize
+
+why: SETTINGS_MAX_FRAME_SIZE is at least 2^14 (Section 6.5.2)
+- 0x5 | v < 0x4000 || v > 0xFFFFFF -> err ProtocolError BadMaxFrameSize
++ 0x5 | v < 0x3FFF || v > 0xFFFFFF -> err ProtocolError BadMaxFrameSize
+
+why: SETTINGS_MAX_FRAME_SIZE is at most 2^24 - 1 (Section 6.5.2)
+- 0x5 | v < 0x4000 || v > 0xFFFFFF -> err ProtocolError BadMaxFrameSize
++ 0x5 | v < 0x4000 || v > 0x1000000 -> err ProtocolError BadMaxFrameSize
+
+why: GOAWAY's last stream identifier and code are 8 octets, debug data optional
+- if B.length p < 8 then err FrameSizeError WrongLength
++ if B.length p < 9 then err FrameSizeError WrongLength
+
+why: a WINDOW_UPDATE of 0 is refused (Section 6.9)
+- | increment == 0 = Left (FrameError (if sid == StreamId 0 then Connection else Stream sid)
++ | False = Left (FrameError (if sid == StreamId 0 then Connection else Stream sid)
+
+why: a WINDOW_UPDATE of 0 on the connection is a connection error (Section 6.9)
+- | increment == 0 = Left (FrameError (if sid == StreamId 0 then Connection else Stream sid)
++ | increment == 0 = Left (FrameError (Stream sid)
+
+why: CONTINUATION's END_HEADERS is 0x4 (Section 6.10)
+- Right (ContinuationFrame sid (flag flags 2) p)
++ Right (ContinuationFrame sid (flag flags 3) p)
+
+why: DATA's END_STREAM is set only when asked
+- renderData sid end d = [header (B.length d) 0x0 (if end then 0x1 else 0) sid, d]
++ renderData sid end d = [header (B.length d) 0x0 0x1 sid, d]
+
+why: a HEADERS frame followed by CONTINUATIONs does not set END_HEADERS (Section 6.2)
+- header (B.length first) 0x1 (endStream .|. endHeaders (B.null rest)) sid : first : continuations rest
++ header (B.length first) 0x1 (endStream .|. endHeaders True) sid : first : continuations rest
+
+why: no CONTINUATION is longer than the peer's SETTINGS_MAX_FRAME_SIZE
+- | otherwise = let (c, r) = B.splitAt maxSize b
++ | otherwise = let (c, r) = B.splitAt (maxSize + 1) b
