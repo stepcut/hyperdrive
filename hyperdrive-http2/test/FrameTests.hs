@@ -245,6 +245,124 @@ genNearMiss = oneof
       where valid = map (\(i, v, _) -> (i, v)) <$> listOf genSetting
     settingsWire ss = encodeWire (Wire 0x4 0 False 0 (B.concat [be16 i <> be32 v | (i, v) <- ss]))
 
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-4.2
+-- # An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
+-- # exceeds the size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any
+-- # limit defined for the frame type, or is too small to contain
+-- # mandatory frame data.  A frame size error in a frame that could alter
+-- # the state of the entire connection MUST be treated as a connection
+-- # error (Section 5.4.1); this includes any frame carrying a field block
+-- # (Section 4.3) (that is, HEADERS, PUSH_PROMISE, and CONTINUATION), a
+-- # SETTINGS frame, and any frame with a stream identifier of 0.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.1
+-- # The total number of padding octets is determined by the value of the
+-- # Pad Length field.  If the length of the padding is the length of the
+-- # frame payload or greater, the recipient MUST treat this as a
+-- # connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.1
+-- # Padding octets MUST be set to zero when sending.  A receiver is
+-- #    not obligated to verify padding but MAY treat non-zero padding as
+-- #    a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.1
+-- # DATA frames MUST be associated with a stream.  If a DATA frame is
+-- # received whose Stream Identifier field is 0x00, the recipient MUST
+-- # respond with a connection error (Section 5.4.1) of type
+-- # PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.2
+-- # HEADERS frames MUST be associated with a stream.  If a HEADERS frame
+-- # is received whose Stream Identifier field is 0x00, the recipient MUST
+-- # respond with a connection error (Section 5.4.1) of type
+-- # PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.3
+-- # The PRIORITY frame always identifies a stream.  If a PRIORITY frame
+-- # is received with a stream identifier of 0x00, the recipient MUST
+-- # respond with a connection error (Section 5.4.1) of type
+-- # PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.3
+-- # A PRIORITY frame with a length other than 5 octets MUST be treated as
+-- # a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.4
+-- # RST_STREAM frames MUST be associated with a stream.  If a RST_STREAM
+-- # frame is received with a stream identifier of 0x00, the recipient
+-- # MUST treat this as a connection error (Section 5.4.1) of type
+-- # PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.4
+-- # A RST_STREAM frame with a length other than 4 octets MUST be treated
+-- # as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5
+-- # The stream identifier for a SETTINGS frame MUST be zero (0x00).  If
+-- # an endpoint receives a SETTINGS frame whose Stream Identifier field
+-- # is anything other than 0x00, the endpoint MUST respond with a
+-- # connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5
+-- # Receipt of a SETTINGS frame with the ACK flag set and a
+-- #    length field value other than 0 MUST be treated as a connection
+-- #    error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5
+-- # A SETTINGS frame with a length other than a multiple of 6 octets MUST
+-- # be treated as a connection error (Section 5.4.1) of type
+-- # FRAME_SIZE_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.2
+-- # Any value other than 0 or 1 MUST be
+-- #    treated as a connection error (Section 5.4.1) of type
+-- #    PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.2
+-- # Values above the maximum flow-control window size of 2^31-1 MUST
+-- #    be treated as a connection error (Section 5.4.1) of type
+-- #    FLOW_CONTROL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.2
+-- # The value advertised
+-- #    by an endpoint MUST be between this initial value and the maximum
+-- #    allowed frame size (2^24-1 or 16,777,215 octets), inclusive.
+-- #    Values outside this range MUST be treated as a connection error
+-- #    (Section 5.4.1) of type PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.7
+-- # PING frames are not associated with any individual stream.  If a PING
+-- # frame is received with a Stream Identifier field value other than
+-- # 0x00, the recipient MUST respond with a connection error
+-- # (Section 5.4.1) of type PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.7
+-- # Receipt of a PING frame with a length field value other than 8 MUST
+-- # be treated as a connection error (Section 5.4.1) of type
+-- # FRAME_SIZE_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.8
+-- # An endpoint MUST treat a GOAWAY frame with a stream identifier other
+-- # than 0x00 as a connection error (Section 5.4.1) of type
+-- # PROTOCOL_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9
+-- # A WINDOW_UPDATE frame with a length other than 4 octets MUST be
+-- # treated as a connection error (Section 5.4.1) of type
+-- # FRAME_SIZE_ERROR.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9
+-- # A receiver MUST treat the receipt of a WINDOW_UPDATE frame with a
+-- # flow-control window increment of 0 as a stream error (Section 5.4.2)
+-- # of type PROTOCOL_ERROR; errors on the connection flow-control window
+-- # MUST be treated as a connection error (Section 5.4.1).
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.10
+-- # CONTINUATION frames MUST be associated with a stream.  If a
+-- # CONTINUATION frame is received with a Stream Identifier field of
+-- # 0x00, the recipient MUST respond with a connection error
+-- # (Section 5.4.1) of type PROTOCOL_ERROR.
 prop_nearMisses :: Property
 prop_nearMisses = forAll genNearMiss $ \(rule, wire, expected) ->
   counterexample rule $ parseFrame ourMax wire === expected

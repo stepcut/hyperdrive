@@ -2857,27 +2857,30 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]: Values greater than 2^14
     TEXT[!MUST]:       (16,384) MUST NOT be sent unless the receiver has set a larger
     TEXT[!MUST]:       value for SETTINGS_MAX_FRAME_SIZE.
-    TEXT[!MUST]: Implementations MUST ignore and
-    TEXT[!MUST]:       discard frames of unknown types.
-    TEXT[!MUST]: Unused flags MUST be ignored on receipt
-    TEXT[!MUST]:       and MUST be left unset (0x00) when sending.
-    TEXT[!MUST]: The semantics of this bit are
-    TEXT[!MUST]:       undefined, and the bit MUST remain unset (0x00) when sending and
-    TEXT[!MUST]:       MUST be ignored when receiving.
+    TEXT[!MUST,implementation,test]: Implementations MUST ignore and
+    TEXT[!MUST,implementation,test]:       discard frames of unknown types.
+    TEXT[implementation,test]:       Unused flags are those that have no defined semantics for a
+    TEXT[implementation,test]:       particular frame type.
+    TEXT[!MUST,implementation,test]: Unused flags MUST be ignored on receipt
+    TEXT[!MUST,implementation,test]:       and MUST be left unset (0x00) when sending.
+    TEXT[implementation]:    Reserved:  A reserved 1-bit field.
+    TEXT[!MUST,implementation]: The semantics of this bit are
+    TEXT[!MUST,implementation]:       undefined, and the bit MUST remain unset (0x00) when sending and
+    TEXT[!MUST,implementation]:       MUST be ignored when receiving.
 
   SECTION: [Frame Size](#section-4.2)
     TEXT[!MUST]:    All implementations MUST be capable of receiving and minimally
     TEXT[!MUST]:    processing frames up to 2^14 octets in length, plus the 9-octet frame
     TEXT[!MUST]:    header (Section 4.1).
-    TEXT[!MUST]:    An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
-    TEXT[!MUST]:    exceeds the size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any
-    TEXT[!MUST]:    limit defined for the frame type, or is too small to contain
-    TEXT[!MUST]:    mandatory frame data.
-    TEXT[!MUST]: A frame size error in a frame that could alter
-    TEXT[!MUST]:    the state of the entire connection MUST be treated as a connection
-    TEXT[!MUST]:    error (Section 5.4.1); this includes any frame carrying a field block
-    TEXT[!MUST]:    (Section 4.3) (that is, HEADERS, PUSH_PROMISE, and CONTINUATION), a
-    TEXT[!MUST]:    SETTINGS frame, and any frame with a stream identifier of 0.
+    TEXT[!MUST,implementation,test]:    An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
+    TEXT[!MUST,implementation,test]:    exceeds the size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any
+    TEXT[!MUST,implementation,test]:    limit defined for the frame type, or is too small to contain
+    TEXT[!MUST,implementation,test]:    mandatory frame data.
+    TEXT[!MUST,implementation,test]: A frame size error in a frame that could alter
+    TEXT[!MUST,implementation,test]:    the state of the entire connection MUST be treated as a connection
+    TEXT[!MUST,implementation,test]:    error (Section 5.4.1); this includes any frame carrying a field block
+    TEXT[!MUST,implementation,test]:    (Section 4.3) (that is, HEADERS, PUSH_PROMISE, and CONTINUATION), a
+    TEXT[!MUST,implementation,test]:    SETTINGS frame, and any frame with a stream identifier of 0.
 
   SECTION: [Field Section Compression and Decompression](#section-4.3)
     TEXT[!MUST]: Field blocks MUST
@@ -3046,22 +3049,24 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
 
   SECTION: [DATA](#section-6.1)
     TEXT[!MAY]:    DATA frames MAY also contain padding.
-    TEXT[!MUST]:       Padding octets MUST be set to zero when sending.
-    TEXT[!MAY]: A receiver is
-    TEXT[!MAY]:       not obligated to verify padding but MAY treat non-zero padding as
-    TEXT[!MAY]:       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MUST]:    DATA frames MUST be associated with a stream.
-    TEXT[!MUST]: If a DATA frame is
-    TEXT[!MUST]:    received whose Stream Identifier field is 0x00, the recipient MUST
-    TEXT[!MUST]:    respond with a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:       Padding octets MUST be set to zero when sending.
+    TEXT[!MAY,implementation,test]: A receiver is
+    TEXT[!MAY,implementation,test]:       not obligated to verify padding but MAY treat non-zero padding as
+    TEXT[!MAY,implementation,test]:       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    DATA frames MUST be associated with a stream.
+    TEXT[!MUST,implementation,test]: If a DATA frame is
+    TEXT[!MUST,implementation,test]:    received whose Stream Identifier field is 0x00, the recipient MUST
+    TEXT[!MUST,implementation,test]:    respond with a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
     TEXT[!MUST]: If a DATA frame is received
     TEXT[!MUST]:    whose stream is not in the "open" or "half-closed (local)" state, the
     TEXT[!MUST]:    recipient MUST respond with a stream error (Section 5.4.2) of type
     TEXT[!MUST]:    STREAM_CLOSED.
-    TEXT[!MUST]: If the length of the padding is the length of the
-    TEXT[!MUST]:    frame payload or greater, the recipient MUST treat this as a
-    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[implementation,test]:    The total number of padding octets is determined by the value of the
+    TEXT[implementation,test]:    Pad Length field.
+    TEXT[!MUST,implementation,test]: If the length of the padding is the length of the
+    TEXT[!MUST,implementation,test]:    frame payload or greater, the recipient MUST treat this as a
+    TEXT[!MUST,implementation,test]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
 
   SECTION: [HEADERS](#section-6.2)
     TEXT[!MUST]:       Padding octets MUST be set to zero when sending.
@@ -3074,22 +3079,23 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:       treat the receipt of any other type of frame or a frame on a
     TEXT[!MUST]:       different stream as a connection error (Section 5.4.1) of type
     TEXT[!MUST]:       PROTOCOL_ERROR.
-    TEXT[!MUST]:    HEADERS frames MUST be associated with a stream.
-    TEXT[!MUST]: If a HEADERS frame
-    TEXT[!MUST]:    is received whose Stream Identifier field is 0x00, the recipient MUST
-    TEXT[!MUST]:    respond with a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    HEADERS frames MUST be associated with a stream.
+    TEXT[!MUST,implementation,test]: If a HEADERS frame
+    TEXT[!MUST,implementation,test]:    is received whose Stream Identifier field is 0x00, the recipient MUST
+    TEXT[!MUST,implementation,test]:    respond with a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
     TEXT[!MUST]: If the length of the padding is the length of the
     TEXT[!MUST]:    frame payload or greater, the recipient MUST treat this as a
     TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
 
   SECTION: [PRIORITY](#section-6.3)
-    TEXT[!MUST]: If a PRIORITY frame
-    TEXT[!MUST]:    is received with a stream identifier of 0x00, the recipient MUST
-    TEXT[!MUST]:    respond with a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    PROTOCOL_ERROR.
-    TEXT[!MUST]:    A PRIORITY frame with a length other than 5 octets MUST be treated as
-    TEXT[!MUST]:    a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+    TEXT[implementation,test]:    The PRIORITY frame always identifies a stream.
+    TEXT[!MUST,implementation,test]: If a PRIORITY frame
+    TEXT[!MUST,implementation,test]:    is received with a stream identifier of 0x00, the recipient MUST
+    TEXT[!MUST,implementation,test]:    respond with a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    A PRIORITY frame with a length other than 5 octets MUST be treated as
+    TEXT[!MUST,implementation,test]:    a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
 
   SECTION: [RST_STREAM](#section-6.4)
     TEXT[!MUST]: After receiving a RST_STREAM
@@ -3099,17 +3105,17 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    the sending endpoint MUST be prepared to receive and process
     TEXT[!MUST]:    additional frames sent on the stream that might have been sent by the
     TEXT[!MUST]:    peer prior to the arrival of the RST_STREAM.
-    TEXT[!MUST]:    RST_STREAM frames MUST be associated with a stream.
-    TEXT[!MUST]: If a RST_STREAM
-    TEXT[!MUST]:    frame is received with a stream identifier of 0x00, the recipient
-    TEXT[!MUST]:    MUST treat this as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    RST_STREAM frames MUST be associated with a stream.
+    TEXT[!MUST,implementation,test]: If a RST_STREAM
+    TEXT[!MUST,implementation,test]:    frame is received with a stream identifier of 0x00, the recipient
+    TEXT[!MUST,implementation,test]:    MUST treat this as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
     TEXT[!MUST]:    RST_STREAM frames MUST NOT be sent for a stream in the "idle" state.
     TEXT[!MUST]:    If a RST_STREAM frame identifying an idle stream is received, the
     TEXT[!MUST]:    recipient MUST treat this as a connection error (Section 5.4.1) of
     TEXT[!MUST]:    type PROTOCOL_ERROR.
-    TEXT[!MUST]:    A RST_STREAM frame with a length other than 4 octets MUST be treated
-    TEXT[!MUST]:    as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+    TEXT[!MUST,implementation,test]:    A RST_STREAM frame with a length other than 4 octets MUST be treated
+    TEXT[!MUST,implementation,test]:    as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
 
   SECTION: [SETTINGS](#section-6.5)
     TEXT[!MUST]:    A SETTINGS frame MUST be sent by both endpoints at the start of a
@@ -3119,20 +3125,20 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    the settings defined by this specification.
     TEXT[!MUST]:       When this bit is set, the frame payload of the SETTINGS frame MUST
     TEXT[!MUST]:       be empty.
-    TEXT[!MUST]: Receipt of a SETTINGS frame with the ACK flag set and a
-    TEXT[!MUST]:       length field value other than 0 MUST be treated as a connection
-    TEXT[!MUST]:       error (Section 5.4.1) of type FRAME_SIZE_ERROR.
-    TEXT[!MUST]:    The stream identifier for a SETTINGS frame MUST be zero (0x00).
-    TEXT[!MUST]: If
-    TEXT[!MUST]:    an endpoint receives a SETTINGS frame whose Stream Identifier field
-    TEXT[!MUST]:    is anything other than 0x00, the endpoint MUST respond with a
-    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]: Receipt of a SETTINGS frame with the ACK flag set and a
+    TEXT[!MUST,implementation,test]:       length field value other than 0 MUST be treated as a connection
+    TEXT[!MUST,implementation,test]:       error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+    TEXT[!MUST,implementation,test]:    The stream identifier for a SETTINGS frame MUST be zero (0x00).
+    TEXT[!MUST,implementation,test]: If
+    TEXT[!MUST,implementation,test]:    an endpoint receives a SETTINGS frame whose Stream Identifier field
+    TEXT[!MUST,implementation,test]:    is anything other than 0x00, the endpoint MUST respond with a
+    TEXT[!MUST,implementation,test]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
     TEXT[!MUST]: A badly formed or
     TEXT[!MUST]:    incomplete SETTINGS frame MUST be treated as a connection error
     TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MUST]:    A SETTINGS frame with a length other than a multiple of 6 octets MUST
-    TEXT[!MUST]:    be treated as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    FRAME_SIZE_ERROR.
+    TEXT[!MUST,implementation,test]:    A SETTINGS frame with a length other than a multiple of 6 octets MUST
+    TEXT[!MUST,implementation,test]:    be treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    FRAME_SIZE_ERROR.
 
   SECTION: [Defined Settings](#section-6.5.2)
     TEXT[!MUST,exception]: A server MUST NOT send a PUSH_PROMISE frame
@@ -3141,9 +3147,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,exception]: A client that has both set this parameter to 0 and
     TEXT[!MUST,exception]:       had it acknowledged MUST treat the receipt of a PUSH_PROMISE frame
     TEXT[!MUST,exception]:       as a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MUST]: Any value other than 0 or 1 MUST be
-    TEXT[!MUST]:       treated as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:       PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]: Any value other than 0 or 1 MUST be
+    TEXT[!MUST,implementation,test]:       treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:       PROTOCOL_ERROR.
     TEXT[!MUST]:       A server MUST NOT explicitly set this value to 1.
     TEXT[!MUST]: A server MAY
     TEXT[!MUST]:       choose to omit this setting when it sends a SETTINGS frame, but if
@@ -3156,18 +3162,18 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!SHOULD]: Servers SHOULD only
     TEXT[!SHOULD]:       set a zero value for short durations; if a server does not wish to
     TEXT[!SHOULD]:       accept requests, closing the connection is more appropriate.
-    TEXT[!MUST]:       Values above the maximum flow-control window size of 2^31-1 MUST
-    TEXT[!MUST]:       be treated as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:       FLOW_CONTROL_ERROR.
-    TEXT[!MUST]: The value advertised
-    TEXT[!MUST]:       by an endpoint MUST be between this initial value and the maximum
-    TEXT[!MUST]:       allowed frame size (2^24-1 or 16,777,215 octets), inclusive.
-    TEXT[!MUST]:       Values outside this range MUST be treated as a connection error
-    TEXT[!MUST]:       (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:       Values above the maximum flow-control window size of 2^31-1 MUST
+    TEXT[!MUST,implementation,test]:       be treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:       FLOW_CONTROL_ERROR.
+    TEXT[!MUST,implementation,test]: The value advertised
+    TEXT[!MUST,implementation,test]:       by an endpoint MUST be between this initial value and the maximum
+    TEXT[!MUST,implementation,test]:       allowed frame size (2^24-1 or 16,777,215 octets), inclusive.
+    TEXT[!MUST,implementation,test]:       Values outside this range MUST be treated as a connection error
+    TEXT[!MUST,implementation,test]:       (Section 5.4.1) of type PROTOCOL_ERROR.
     TEXT[!MAY]:       For any given request, a lower limit than what is advertised MAY
     TEXT[!MAY]:       be enforced.
-    TEXT[!MUST]:    An endpoint that receives a SETTINGS frame with any unknown or
-    TEXT[!MUST]:    unsupported identifier MUST ignore that setting.
+    TEXT[!MUST,implementation]:    An endpoint that receives a SETTINGS frame with any unknown or
+    TEXT[!MUST,implementation]:    unsupported identifier MUST ignore that setting.
 
   SECTION: [Settings Synchronization](#section-6.5.3)
     TEXT[!MUST]:    In order to provide such synchronization timepoints, the recipient of
@@ -3241,13 +3247,14 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:       responses.
     TEXT[!MUST]: An endpoint MUST NOT respond to PING frames containing
     TEXT[!MUST]:       this flag.
-    TEXT[!MUST]: If a PING
-    TEXT[!MUST]:    frame is received with a Stream Identifier field value other than
-    TEXT[!MUST]:    0x00, the recipient MUST respond with a connection error
-    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MUST]:    Receipt of a PING frame with a length field value other than 8 MUST
-    TEXT[!MUST]:    be treated as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    FRAME_SIZE_ERROR.
+    TEXT[implementation,test]:    PING frames are not associated with any individual stream.
+    TEXT[!MUST,implementation,test]: If a PING
+    TEXT[!MUST,implementation,test]:    frame is received with a Stream Identifier field value other than
+    TEXT[!MUST,implementation,test]:    0x00, the recipient MUST respond with a connection error
+    TEXT[!MUST,implementation,test]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    Receipt of a PING frame with a length field value other than 8 MUST
+    TEXT[!MUST,implementation,test]:    be treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    FRAME_SIZE_ERROR.
 
   SECTION: [GOAWAY](#section-6.8)
     TEXT[!MUST]: Receivers of a
@@ -3260,9 +3267,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!SHOULD]:    connection; a receiver of a GOAWAY that has no more use for the
     TEXT[!SHOULD]:    connection SHOULD still send a GOAWAY frame before terminating the
     TEXT[!SHOULD]:    connection.
-    TEXT[!MUST]:    An endpoint MUST treat a GOAWAY frame with a stream identifier other
-    TEXT[!MUST]:    than 0x00 as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    An endpoint MUST treat a GOAWAY frame with a stream identifier other
+    TEXT[!MUST,implementation,test]:    than 0x00 as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
     TEXT[!MAY]:    An endpoint MAY send multiple GOAWAY frames if circumstances change.
     TEXT[!MUST]: Endpoints MUST NOT increase the
     TEXT[!MUST]:    value they send in the last stream identifier, since the peers might
@@ -3292,19 +3299,19 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY]:    respond with a stream error (Section 5.4.2) or connection error
     TEXT[!MAY]:    (Section 5.4.1) of type FLOW_CONTROL_ERROR if it is unable to accept
     TEXT[!MAY]:    a frame.
-    TEXT[!MUST]:    A receiver MUST treat the receipt of a WINDOW_UPDATE frame with a
-    TEXT[!MUST]:    flow-control window increment of 0 as a stream error (Section 5.4.2)
-    TEXT[!MUST]:    of type PROTOCOL_ERROR; errors on the connection flow-control window
-    TEXT[!MUST]:    MUST be treated as a connection error (Section 5.4.1).
+    TEXT[!MUST,implementation,test]:    A receiver MUST treat the receipt of a WINDOW_UPDATE frame with a
+    TEXT[!MUST,implementation,test]:    flow-control window increment of 0 as a stream error (Section 5.4.2)
+    TEXT[!MUST,implementation,test]:    of type PROTOCOL_ERROR; errors on the connection flow-control window
+    TEXT[!MUST,implementation,test]:    MUST be treated as a connection error (Section 5.4.1).
     TEXT[!MUST]: A receiver MUST NOT treat this as an error (see
     TEXT[!MUST]:    Section 5.1).
     TEXT[!MUST]:    A receiver that receives a flow-controlled frame MUST always account
     TEXT[!MUST]:    for its contribution against the connection flow-control window,
     TEXT[!MUST]:    unless the receiver treats this as a connection error
     TEXT[!MUST]:    (Section 5.4.1).
-    TEXT[!MUST]:    A WINDOW_UPDATE frame with a length other than 4 octets MUST be
-    TEXT[!MUST]:    treated as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    FRAME_SIZE_ERROR.
+    TEXT[!MUST,implementation,test]:    A WINDOW_UPDATE frame with a length other than 4 octets MUST be
+    TEXT[!MUST,implementation,test]:    treated as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    FRAME_SIZE_ERROR.
 
   SECTION: [The Flow-Control Window](#section-6.9.1)
     TEXT[!MUST]: The sender MUST NOT
@@ -3350,11 +3357,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]: A receiver MUST treat the receipt of
     TEXT[!MUST]:       any other type of frame or a frame on a different stream as a
     TEXT[!MUST]:       connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MUST]:    CONTINUATION frames MUST be associated with a stream.
-    TEXT[!MUST]: If a
-    TEXT[!MUST]:    CONTINUATION frame is received with a Stream Identifier field of
-    TEXT[!MUST]:    0x00, the recipient MUST respond with a connection error
-    TEXT[!MUST]:    (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    CONTINUATION frames MUST be associated with a stream.
+    TEXT[!MUST,implementation,test]: If a
+    TEXT[!MUST,implementation,test]:    CONTINUATION frame is received with a Stream Identifier field of
+    TEXT[!MUST,implementation,test]:    0x00, the recipient MUST respond with a connection error
+    TEXT[!MUST,implementation,test]:    (Section 5.4.1) of type PROTOCOL_ERROR.
     TEXT[!MUST]:    A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
     TEXT[!MUST]:    CONTINUATION frame without the END_HEADERS flag set.
     TEXT[!MUST]: A recipient
@@ -3362,8 +3369,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    error (Section 5.4.1) of type PROTOCOL_ERROR.
 
   SECTION: [Error Codes](#section-7)
-    TEXT[!MUST]:    Unknown or unsupported error codes MUST NOT trigger any special
-    TEXT[!MUST]:    behavior.
+    TEXT[!MUST,implementation]:    Unknown or unsupported error codes MUST NOT trigger any special
+    TEXT[!MUST,implementation]:    behavior.
     TEXT[!MAY]: These MAY be treated by an implementation as being
     TEXT[!MAY]:    equivalent to INTERNAL_ERROR.
 
