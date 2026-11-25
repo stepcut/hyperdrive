@@ -311,18 +311,24 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
     TEXT[!MUST]:    size update.
 
   SECTION: [Integer Representation](#section-5.1)
-    TEXT[!MUST]: Integer encodings that exceed implementation limits -- in
-    TEXT[!MUST]:    value or octet length -- MUST be treated as decoding errors.
+    TEXT[implementation]:    This integer representation allows for values of indefinite size.  It
+    TEXT[implementation]:    is also possible for an encoder to send a large number of zero
+    TEXT[implementation]:    values, which can waste octets and could be used to overflow integer
+    TEXT[implementation]:    values.
+    TEXT[!MUST,implementation,test]: Integer encodings that exceed implementation limits -- in
+    TEXT[!MUST,implementation,test]:    value or octet length -- MUST be treated as decoding errors.
 
   SECTION: [String Literal Representation](#section-5.2)
-    TEXT[!MUST]: A padding strictly longer
-    TEXT[!MUST]:    than 7 bits MUST be treated as a decoding error.
-    TEXT[!MUST]: A padding not
-    TEXT[!MUST]:    corresponding to the most significant bits of the code for the EOS
-    TEXT[!MUST]:    symbol MUST be treated as a decoding error.
-    TEXT[!MUST]: A Huffman-encoded string
-    TEXT[!MUST]:    literal containing the EOS symbol MUST be treated as a decoding
-    TEXT[!MUST]:    error.
+    TEXT[implementation]:    Upon decoding, an incomplete code at the end of the encoded data is
+    TEXT[implementation]:    to be considered as padding and discarded.
+    TEXT[!MUST,implementation,test]: A padding strictly longer
+    TEXT[!MUST,implementation,test]:    than 7 bits MUST be treated as a decoding error.
+    TEXT[!MUST,implementation,test]: A padding not
+    TEXT[!MUST,implementation,test]:    corresponding to the most significant bits of the code for the EOS
+    TEXT[!MUST,implementation,test]:    symbol MUST be treated as a decoding error.
+    TEXT[!MUST,implementation,test]: A Huffman-encoded string
+    TEXT[!MUST,implementation,test]:    literal containing the EOS symbol MUST be treated as a decoding
+    TEXT[!MUST,implementation,test]:    error.
 
   SECTION: [Indexed Header Field Representation](#section-6.1)
     TEXT[!MUST]: It MUST be treated as a decoding
@@ -334,9 +340,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
     TEXT[!MUST]:    When a header field is represented as a literal header field never
     TEXT[!MUST]:    indexed, it MUST always be encoded with this specific literal
     TEXT[!MUST]:    representation.
-    TEXT[!MUST]: In particular, when a peer sends a header field that
-    TEXT[!MUST]:    it received represented as a literal header field never indexed, it
-    TEXT[!MUST]:    MUST use the same representation to forward this header field.
+    TEXT[!MUST,exception]: In particular, when a peer sends a header field that
+    TEXT[!MUST,exception]:    it received represented as a literal header field never indexed, it
+    TEXT[!MUST,exception]:    MUST use the same representation to forward this header field.
 
   SECTION: [Dynamic Table Size Update](#section-6.3)
     TEXT[!MUST]:    The new maximum size MUST be lower than or equal to the limit
@@ -348,8 +354,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc7541
     TEXT[!MUST,exception]:    An intermediary MUST NOT re-encode a value that uses the never-
     TEXT[!MUST,exception]:    indexed literal representation with another representation that would
     TEXT[!MUST,exception]:    index it.
-    TEXT[!MUST]: If HPACK is used for re-encoding, the never-indexed
-    TEXT[!MUST]:    literal representation MUST be used.
+    TEXT[!MUST,exception]: If HPACK is used for re-encoding, the never-indexed
+    TEXT[!MUST,exception]:    literal representation MUST be used.
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9110
   SECTION: [Syntax Notation](#section-2.1)

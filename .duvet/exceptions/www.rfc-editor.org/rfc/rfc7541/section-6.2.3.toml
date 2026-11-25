@@ -9,3 +9,13 @@ for encoding this header field.
 reason = '''
 Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
 '''
+
+[[exception]]
+quote = '''
+In particular, when a peer sends a header field that
+it received represented as a literal header field never indexed, it
+MUST use the same representation to forward this header field.
+'''
+reason = '''
+Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
+'''

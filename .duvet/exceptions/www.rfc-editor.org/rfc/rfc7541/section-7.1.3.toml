@@ -10,3 +10,12 @@ index it.
 reason = '''
 Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
 '''
+
+[[exception]]
+quote = '''
+If HPACK is used for re-encoding, the never-indexed
+literal representation MUST be used.
+'''
+reason = '''
+Applies to proxies, gateways and tunnels; hyperdrive is an origin server.
+'''

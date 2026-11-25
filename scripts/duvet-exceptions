@@ -132,6 +132,11 @@ OVERRIDES = {
         ("10.4",   "Where multiple tenants share space"): "no-push",
         ("10.4",   "Pushed responses for which an origin server"): "client",
     },
+    "rfc7541": {
+        # forwarding a field, which only an intermediary does
+        ("6.2.3",  "In particular, when a peer sends a header field that it received"): "intermediary",
+        ("7.1.3",  "If HPACK is used for re-encoding"): "intermediary",
+    },
 }
 
 KEYWORD = r"\b(MUST NOT|MUST|SHALL NOT|SHALL|SHOULD NOT|SHOULD|MAY|REQUIRED|RECOMMENDED|OPTIONAL)\b"
