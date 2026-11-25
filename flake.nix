@@ -89,6 +89,11 @@
             self.packages.${pkgs.stdenv.hostPlatform.system}.duvet
           ];
         };
+        # the default shell with llhttp's C library, for the differential
+        # tests against it: scripts/differential-llhttp
+        llhttp = self.devShells.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
+          buildInputs = old.buildInputs ++ [ pkgs.llhttp ];
+        });
         # benchmarks against warp: nix develop .#bench -c scripts/bench
         bench = pkgs.mkShell { packages = benchTools pkgs; };
         # the same, and ntex (Rust) with io_uring and with epoll:

@@ -380,3 +380,60 @@ for now; an application hook can come later (D3).
   parser, as the response framing tests do.
 - Differential tests against llhttp, h11, hyper and nginx on the same
   inputs (the HTTP Garden), and the llhttp and HTTP Garden corpora.
+
+## Differential tests against llhttp (2026-11-24)
+
+`hyperdrive-http1/test-llhttp`, behind the cabal flag `llhttp` (off by
+default, since it needs llhttp's C library), run by
+`scripts/differential-llhttp` in the shell `.#llhttp`. Generated
+sessions of one to three requests, a quarter of them damaged and all of
+them split at random points, are given to llhttp 9.4.3 (through a small
+C shim that records its callbacks) and to `step` under a simulated
+driver. The requests that both take in full must be the same: method,
+target as sent, version, every field line, body and trailers. Where one
+takes a request that the other does not, the reason must be one the
+test knows, by name; anything else fails. What follows the last
+complete request is not compared, since hyperdrive reads a head only
+when all of it has arrived and llhttp refuses as soon as it can.
+`LLHTTP_SURVEY=n` prints every kind of difference in `n` sessions with
+its count and shortest example.
+
+In 100,000 sessions about 9,900 differ, and none in framing: no request
+that both take is read differently, and neither awaits more of a
+request that the other has finished. (llhttp leaves the whitespace
+after a field's value in it; the test trims it.)
+
+hyperdrive takes, llhttp refuses:
+
+| what | llhttp's error | |
+|---|---|---|
+| a method llhttp has no name for (`get`, `X-Custom`) | `INVALID_METHOD` | methods are open (RFC 9110 Section 9.1) |
+| HTTP/1.2 and above | `INVALID_VERSION` | to be read as 1.1 (Section 2.5) |
+| `Content-Length` repeated, or a list, with one value (`5, 5`) | `UNEXPECTED_`, `INVALID_CONTENT_LENGTH` | allowed (Section 8.6); also `5,` and an empty line beside `5`, see below |
+| `Transfer-Encoding` with whitespace after it, or an empty element (`,chunked`) | `INVALID_TRANSFER_ENCODING` | allowed (Sections 5.5, 5.6.1.2) |
+| whitespace around a chunk extension (`8 ;a`, `2; a=b`) | `INVALID_CHUNK_SIZE`, `STRICT` | BWS (RFC 9112 Section 7.1.1) |
+| `Content-Length` or `Transfer-Encoding` in the trailer section | the same as in a head | given to the application as trailers, see below |
+
+llhttp takes, hyperdrive refuses (`stricter` in the test lists them by
+error): a line feed or carriage return alone before the request line; a
+request line without a version, and versions 0.9 and 2.0; everything
+about `Host` and the target's form, which llhttp does not look at;
+`Transfer-Encoding` in HTTP/1.0; transfer codings other than `chunked`
+(501); a chunk extension with an empty value; a body or a bad
+`Transfer-Encoding` with CONNECT, whose framing llhttp does not read;
+an expectation other than `100-continue` (417); a `Connection` field
+that is not a list of tokens.
+
+Two of hyperdrive's leniencies are open questions:
+
+- `Content-Length` is read as a list, as Section 8.6 allows a recipient
+  to do for repeated values, and a list may have empty elements: so
+  `5,` and an empty `Content-Length` line beside a `5` are 5. llhttp
+  refuses them; a parser that took them with another length would make
+  them a way to smuggle a request, and none is known, but refusing
+  empty elements here would cost nothing.
+- A trailer section's `Content-Length` and `Transfer-Encoding` are
+  given to the application with the other trailers. They do not change
+  the framing, and trailers are kept apart from the header fields, but
+  Section 6.5.1 says a sender must not put framing fields there;
+  refusing or dropping them would be stricter.

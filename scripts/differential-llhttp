@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Differential tests of the HTTP/1.1 core against llhttp, the parser of
+# Node.js. They need llhttp's C library, so they are behind a flag and
+# have a shell of their own:
+#
+#   scripts/differential-llhttp                      the tests
+#   LLHTTP_SURVEY=100000 scripts/differential-llhttp  every kind of difference in
+#                                                     that many sessions, with an example
+#
+# Arguments are passed to the tests (tasty's).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+args=()
+for a in "$@"; do args+=("--test-option=$a"); done
+exec nix develop .#llhttp -c cabal test --offline --builddir=dist-llhttp \
+  --constraint='hyperdrive-http1 +llhttp' --test-show-details=streaming \
+  hyperdrive-http1:hyperdrive-http1-llhttp "${args[@]}"

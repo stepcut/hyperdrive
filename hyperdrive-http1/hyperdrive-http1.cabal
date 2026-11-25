@@ -12,6 +12,13 @@ maintainer:         jeremy@seereason.com
 category:           Web
 build-type:         Simple
 
+-- The differential tests against llhttp, the parser of Node.js, need
+-- its C library: scripts/differential-llhttp runs them.
+flag llhttp
+  description: Build the differential tests against llhttp
+  default:     False
+  manual:      True
+
 common warnings
   ghc-options: -Wall
 
@@ -62,6 +69,27 @@ test-suite hyperdrive-http1-tests
   build-depends:    base
                   , bytestring
                   , hyperdrive-abnf
+                  , hyperdrive-http1
+                  , hyperdrive-semantics
+                  , hyperdrive-http1:testing
+                  , QuickCheck       >= 2.14 && < 2.18
+                  , tasty            >= 1.4  && < 1.6
+                  , tasty-quickcheck >= 0.10 && < 0.12
+
+test-suite hyperdrive-http1-llhttp
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test-llhttp
+  main-is:          Main.hs
+  default-language: GHC2021
+  if flag(llhttp)
+    c-sources:       test-llhttp/shim.c
+    extra-libraries: llhttp
+  else
+    buildable: False
+  build-depends:    base
+                  , bytestring
+                  , containers
                   , hyperdrive-http1
                   , hyperdrive-semantics
                   , hyperdrive-http1:testing
