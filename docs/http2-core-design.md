@@ -26,10 +26,12 @@ implemented; RFC 9113 and RFC 7541 are in duvet.
 
 A package `hyperdrive-http2` (D1) with:
 
-- `Hyperdrive.HTTP2.HPACK` (RFC 7541): prefixed integers, string
-  literals, the Huffman code, the static and dynamic tables, a decoder
-  and an encoder. The integer and Huffman modules depend on nothing
-  else, since QPACK (RFC 9204, Section 4.1) uses both unchanged.
+- `Hyperdrive.HPACK.*` (RFC 7541): prefixed integers
+  (`Hyperdrive.HPACK.Integer`), the Huffman code
+  (`Hyperdrive.HPACK.Huffman`), the static and dynamic tables, a
+  decoder and an encoder. The integer and Huffman modules depend on
+  nothing else, since QPACK (RFC 9204, Section 4.1) uses both
+  unchanged; the names are HPACK's because QPACK's RFC calls them that.
 - `Hyperdrive.HTTP2.Frame`: parsing and serializing the ten frame types,
   with the size, padding, flag and stream-identifier checks that do not
   need connection state.
@@ -417,6 +419,72 @@ the next:
 application interface, for every version; D7), the
 inline-handler setting (D4), parked stream threads (D4), receive windows
 that grow while a handler keeps up (D6).
+
+## HPACK's encoder (decided, 2026-11-25: H1-H4 as recommended)
+
+The decoder is fully specified by RFC 7541; the encoder chooses. Each
+field it sends is one of: an index into the tables; a literal added to
+the dynamic table ("with incremental indexing"); a literal not added
+("without indexing"); or a literal not added that intermediaries must
+not add either ("never indexed", Section 6.2.3). And each string is
+sent plain or Huffman-coded. The server encodes responses only.
+
+**H1. What enters the dynamic table.** Options:
+
+- (a) Nothing: the static table and literals only. The cheapest in CPU
+  (no table kept), and no compression across responses, so no attack
+  that guesses a secret from compressed sizes (Section 7.1). Costs the
+  repeated fields' bytes on every response.
+- (b) A fixed list of field names whose values repeat across
+  responses: `:status` values not in the static table, `content-type`,
+  `server`, `cache-control`, `vary`, `content-encoding`, `date`
+  (changes once a second, one entry a second), `alt-svc`,
+  `strict-transport-security`, `x-content-type-options`,
+  `access-control-allow-origin`. Everything else (`content-length`,
+  `etag`, `last-modified`, `location`, application fields) without
+  indexing. Deterministic, the table is small enough to search
+  linearly, and no attacker-influenced value enters the table unless
+  its name is on the list.
+- (c) Everything, with heuristics, as nghttp2 does: the most bytes
+  saved, but every value an attacker can reflect into a response
+  shares a context with the rest.
+
+Recommended: (b). The list is fixed in the code at first; making it a
+setting can wait for an application that needs one. Measured against
+(a) on the benchmark app's responses (bytes a response, µs a response,
+and h2load's "space savings"): if (b) costs measurable CPU for the
+bytes it saves, (a).
+
+**H2. Never indexed.** `set-cookie`, `www-authenticate`,
+`proxy-authenticate` and `authentication-info` (its `nextnonce`): sent
+as never-indexed literals, the name still taken from the static table.
+Section 7.1.3: "An encoder might also choose not to index values for
+header fields that are considered to be highly valuable or sensitive
+to recovery". A way for an application to mark its own fields
+sensitive would need a change to `Fields`; not now.
+
+**H3. Huffman.** A string is Huffman-coded when that is strictly
+shorter; computing the coded length is a sum over a 256-entry table,
+done before encoding. Ties go to the plain string (no decoding work
+for the client).
+
+**H4. Table size.** The encoder's table is the smaller of the client's
+SETTINGS_HEADER_TABLE_SIZE and our own cap, 4096 (D9). Section 4.2:
+the update "MUST occur at the beginning of the first header block
+following the change", and if the size changed more than once in
+between, "the smallest maximum table size that occurs in that interval
+MUST be signaled", then the final one (at most two updates). Recommended:
+whenever a client's SETTINGS changes HEADER_TABLE_SIZE, the next block
+starts with the smallest size since the last block and then the
+current one (one update if they are equal), even if our cap means the
+size did not change: an unneeded update is valid, and a missing one is
+a COMPRESSION_ERROR at the client. A client's 0 makes (b) behave as
+(a).
+
+**For HTTP/3.** QPACK can take H1's list and H2 unchanged; whether its
+encoder uses a dynamic table at all (which brings an encoder stream,
+acknowledgements and blocked streams) is a separate decision for
+HTTP/3, and (a) is a sound start there.
 
 ## Testing
 

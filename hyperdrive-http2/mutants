@@ -1,0 +1,69 @@
+# Deliberate bugs that the test suite must catch. See scripts/mutation-test.
+#
+# Each mutant should be a plausible mistake that changes behaviour. If
+# one survives, either add a test that catches it or, if the change
+# really makes no observable difference, remove it from this file.
+
+file: src/Hyperdrive/HPACK/Integer.hs
+
+why: a value of 2^N - 1 does not fit in the prefix: the prefix is all ones and octets follow (RFC 7541 Section 5.1)
+- in if prefix < mask then Decoded prefix (i + 1)
++ in if prefix <= mask then Decoded prefix (i + 1)
+
+why: the octets after the prefix add to 2^N - 1, starting at the lowest bits
+- else continuation bs (i + 1) prefix 0
++ else continuation bs (i + 1) prefix 7
+
+why: a run of continuation octets is bounded, even ones that add nothing (Section 5.1: limits "in value or octet length")
+- | shift > 56 = TooLarge
++ | shift > 70 = TooLarge
+
+why: a value above the limit is a decoding error (Section 5.1)
+- in if acc' > maxInteger || acc' < acc then TooLarge
++ in if acc' < acc then TooLarge
+
+why: the encoder's length agrees with its output at 2^N - 1
+- | v < mask  = 1
++ | v <= mask  = 1
+
+why: the encoder puts 2^N - 1 in octets after the prefix
+- | v < mask = do
++ | v <= mask = do
+
+why: every octet but the last has the continuation bit
+- poke p (fromIntegral (r .&. 0x7F) .|. 0x80 :: Word8)
++ poke p (fromIntegral (r .&. 0x7F) :: Word8)
+
+why: 128 needs two octets after the prefix
+- | r < 128 = do
++ | r <= 128 = do
+
+file: src/Hyperdrive/HPACK/Huffman.hs
+
+why: padding longer than 7 bits is a decoding error (RFC 7541 Section 5.2)
+- in pure $ if n > 7 then Left PaddingTooLong
++ in pure $ if n > 8 then Left PaddingTooLong
+
+why: padding must be the most significant bits of EOS, all ones (Section 5.2)
+- else if acc .&. ones /= ones then Left PaddingNotEOS
++ else if acc .&. ones == 0 then Left PaddingNotEOS
+
+why: a string containing EOS is a decoding error (Section 5.2)
+- in if sym == 256 then pure (Left ContainsEOS)
++ in if False then pure (Left ContainsEOS)
+
+why: the decoder must hold a whole code (up to 30 bits) before it decides, or a long code is taken for padding
+- | n <= 56, i < B.length bs =
++ | n <= 24, i < B.length bs =
+
+why: the shortest codes are 5 bits
+- l = findLength w 5
++ l = findLength w 6
+
+why: the encoder pads with ones, the start of EOS
+- poke p (fromIntegral ((acc `shiftL` (8 - n)) .|. (0xFF `shiftR` n)) :: Word8)
++ poke p (fromIntegral (acc `shiftL` (8 - n)) :: Word8)
+
+why: the encoded length rounds the bits up to whole octets
+- huffmanLength bs = (B.foldl' (\t c -> t + fromIntegral (unsafeAt lengthArray (fromIntegral c))) 0 bs + 7)
++ huffmanLength bs = (B.foldl' (\t c -> t + fromIntegral (unsafeAt lengthArray (fromIntegral c))) 0 bs + 8)

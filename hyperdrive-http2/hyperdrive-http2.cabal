@@ -1,0 +1,48 @@
+cabal-version:      3.0
+name:               hyperdrive-http2
+version:            0.1.0.0
+synopsis:           HTTP/2 (RFC 9113) and HPACK (RFC 7541) for hyperdrive
+description:
+  The HTTP/2 protocol layer of hyperdrive. It does no IO. The modules
+  under Hyperdrive.HPACK that QPACK (RFC 9204) also uses, the prefixed
+  integers and the Huffman code, depend on nothing of HTTP/2's
+  (docs/http2-core-design.md, D1).
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Jeremy Shaw
+maintainer:         jeremy@seereason.com
+category:           Web
+build-type:         Simple
+extra-source-files: test/data/README.md
+                    test/data/*.txt
+
+common warnings
+  ghc-options: -Wall
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  default-language: GHC2021
+  ghc-options:      -O2
+  exposed-modules:  Hyperdrive.HPACK.Huffman
+                    Hyperdrive.HPACK.Integer
+  build-depends:    base                 >= 4.18 && < 5
+                  , array                >= 0.5  && < 0.6
+                  , bytestring           >= 0.11 && < 0.13
+
+test-suite hyperdrive-http2-tests
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    HuffmanTests
+                    IntegerTests
+                    RFC7541
+  default-language: GHC2021
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , hyperdrive-http2
+                  , QuickCheck       >= 2.14 && < 2.18
+                  , tasty            >= 1.4  && < 1.6
+                  , tasty-quickcheck >= 0.10 && < 0.12
