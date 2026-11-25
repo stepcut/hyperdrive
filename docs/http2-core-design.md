@@ -250,13 +250,16 @@ frames (SETTINGS and PING acknowledgements, WINDOW_UPDATE, RST_STREAM,
 GOAWAY) are sent before any data.
 
 The scheduler is a pure function in the core (which stream sends its
-next frame), tested like the rest. The first version sends streams in
-order of stream identifier: this is RFC 9218 with every stream at its
-default (urgency 3, not incremental, which RFC 9218 serves one after
-another), not round robin, so the later step changes no behaviour for
-clients that send no signals. Its data structure is already RFC 9218's
-(a queue for each urgency, in stream order), so that the next step adds
-parsing and policy, not a new structure. The next step, after the
+next frame), tested like the rest. The first version sends one frame
+at a time from each stream that can send, in turn (round robin)
+(changed 2026-11-25 after the independent review: the first version
+had sent streams in order of identifier, which lets one endless
+response, an SSE stream say, hold back every later stream's content
+for ever; RFC 9218's "one by one" is for responses a client marks as
+not incremental, and Go keeps round robin for clients that send no
+signals). Its data structure is already RFC 9218's (a queue for each
+urgency, in stream order), so that the next step adds parsing and the
+one-by-one rule for streams the client marks, not a new structure. The next step, after the
 benchmarks against warp (h2load sends no signals, so the benchmark
 would not see it) but before HTTP/2 is finished and before HTTP/3
 starts: the rest of RFC 9218, the same for HTTP/2 and HTTP/3 (the eight
@@ -292,7 +295,7 @@ limit, and a mutant for each check.
 | HPACK bomb (a small encoding of a large field list) | the decoded size counted while decoding; over MAX_HEADER_LIST_SIZE with the encoding within its limit, the table is still updated (it must stay in step), the fields dropped, and the answer is 431, then reset | stream error |
 | malformed HPACK (Huffman padding or EOS, an index out of range, a table size update above our setting) | the decoder's checks | COMPRESSION_ERROR |
 | floods of frames that do no work (PING, SETTINGS, PRIORITY, RST_STREAM, empty DATA without END_STREAM, PRIORITY_UPDATE; the 2019 CVEs) | one nuisance budget for the connection, below | ENHANCE_YOUR_CALM |
-| floods while not reading the acknowledgements | the owner stops reading input while its unsent output is over a bound, so TCP pushes back on the client, and the write timeout closes the connection (falls out of D4) | close |
+| floods while not reading the acknowledgements | a cap on control frames queued and not yet written (as Go and nginx); the driver keeps reading, as Section 5.2.2 requires (C2, C5; changed 2026-11-25: the first version stopped reading, which that MUST forbids) | ENHANCE_YOUR_CALM |
 | windows held at zero, data dribbled | the bounded send buffer of each stream (D6); a write timeout per stream and per connection | RST_STREAM, close |
 | SETTINGS never acknowledged | SETTINGS_TIMEOUT after a timeout (Section 6.5.3) | connection error |
 | slow clients | timeouts for the preface, for an unfinished field block (CONTINUATIONs are contiguous, so this is the connection's), and for a connection idle with no open streams (GOAWAY) | close |
@@ -324,13 +327,18 @@ long-lived connections.
    characters, `TE` other than `trailers`, a `content-length` that
    differs from the DATA received): a stream error PROTOCOL_ERROR,
    and "a server MAY send an HTTP response prior to closing or
-   resetting the stream": 400, then RST_STREAM PROTOCOL_ERROR, as
-   HTTP/1.1 answers 400 (D3 there), so that a developer with a broken
-   client library sees a reason. A `content-length` found wrong once
-   the handler has started: RST_STREAM alone, and the handler's
-   `readChunk` throws `IncompleteBody` as on HTTP/1.1. To check: that
-   h2spec accepts the 400 before the reset; if not, these get the
-   reset alone.
+   resetting the stream". If the request has not ended: 400, then
+   RST_STREAM PROTOCOL_ERROR, as HTTP/1.1 answers 400 (D3 there), so
+   that a developer with a broken client library sees a reason. If it
+   has ended (its HEADERS or last DATA carried END_STREAM): RST_STREAM
+   PROTOCOL_ERROR alone, as Go and nghttp2 do, because the 400 with
+   END_STREAM would close the stream and "An endpoint MUST NOT send
+   frames other than PRIORITY on a closed stream" (Section 5.1); the
+   reason is logged instead (changed 2026-11-25 after the independent
+   review). The same applies to 431 (D9) and to a `content-length`
+   that the DATA does not match; one found wrong once the handler has
+   started: RST_STREAM alone, and the handler's `readChunk` throws
+   `IncompleteBody` as on HTTP/1.1.
 3. Well-formed, but refused by `mkRequest` (the target's syntax,
    userinfo, a port out of range: HTTP/1.1's checks): 400 with
    END_STREAM, a normal response, and RST_STREAM NO_ERROR if the
@@ -564,6 +572,323 @@ handler. Padding and the deprecated priority fields are checked and
 dropped. The server never sends padding, PRIORITY or PUSH_PROMISE, so
 the serializer has no way to.
 
+## The connection core (decided, 2026-11-25, after two reviews)
+
+`Hyperdrive.HTTP2.Connection`: the pure `step` of D12's step 5, which
+the driver (step 6) runs as D4's owner thread. The sketch under
+"Proposed shape" is replaced by C1-C13. A first version was reviewed by
+the author, then independently (Fable, 2026-11-25: RFC 9113's text,
+the behaviour of browsers, curl and gRPC, and the code of h2spec, Go's
+x/net/http2, nghttp2, Envoy and nginx); this is the result.
+
+**C1. Time is an argument, and the core keeps its own deadlines.**
+`step :: Time -> Input -> Conn -> (Conn, [Output])`, with `Time` the
+coarse clock the ticker already keeps (milliseconds; the driver reads
+it from an `IORef` for each step). HTTP/1.1's core reports one phase
+and the driver runs one timer for it (D8 there); an HTTP/2 connection
+has deadlines per stream as well as its own, so the core keeps them
+and exposes `nextDeadline :: Conn -> Maybe Time` (the earliest, kept
+current as deadlines change, not searched for). The driver arms one
+timer for it and feeds `TimedOut`; the core acts on whatever has
+expired. D9's nuisance budget refills from the same time. Tests control
+time completely.
+
+**C2. Inputs and outputs.**
+
+```haskell
+data Input
+  = Received ByteString            -- octets from the transport (the preface first)
+  | Sent Int                       -- the transport has written this many more octets (C5)
+  | PeerClosed
+  | Respond StreamId ResponseHead  -- the handler's response head (C12)
+  | WriteBody StreamId ByteString  -- response content (C5)
+  | EndBody StreamId Fields        -- the end of the content, with trailers
+  | Abort StreamId                 -- the handler failed after responding (D10 case 4)
+  | WantContent StreamId           -- the handler read with nothing queued (C9)
+  | Consumed StreamId Int          -- the handler read this much request content (D6)
+  | HandlerDone StreamId           -- the handler returned (C6); before Respond, it failed
+  | TimedOut                       -- nextDeadline has passed
+  | Shutdown                       -- graceful shutdown (D10)
+
+data Output
+  = NewRequest StreamId RequestHead  -- D11's RequestControl, and whether content follows
+  | RequestData StreamId ByteString  -- request content (C3)
+  | RequestEnd StreamId Fields       -- its end, with trailers
+  | RequestAborted StreamId Reason   -- the stream ended early: reset by the client, timed
+                                     -- out, content not matching its length, the
+                                     -- connection gone; the driver turns it into the
+                                     -- handler's exception (ConnectionClosed, or
+                                     -- IncompleteBody for content) and logs it
+  | Writable StreamId                -- the stream's buffer is below its bound again (C5)
+  | Send [ByteString]
+  | Close                            -- after a GOAWAY, staged as HTTP/1.1's
+  | ProtocolMisuse Misuse            -- the driver's bug, as HTTP/1.1's Q4
+```
+
+The core writes every response it makes itself, as HTTP/1.1's core
+does (D3 there): the 400, 421 and 431 of D10 and D9, 417 for an
+`Expect` other than `100-continue` (C9), and a 500 when `HandlerDone`
+comes before `Respond` (the handler failed). Inputs from a handler for
+a stream the core no longer serves (`Consumed`, `WantContent`,
+`WriteBody`, `EndBody`, `Respond`, `Abort`, `HandlerDone`) are ignored,
+not a misuse: the handler's thread races the owner, and a reset can
+arrive between its action and the owner seeing it. When the connection
+ends for any reason (a connection error, `PeerClosed`, the client's
+GOAWAY once its streams are done, the end of the shutdown grace
+period), every stream still served gets `RequestAborted`, so that no
+handler waits for ever on its `MVar` (D5 has no asynchronous
+exceptions but the grace period's); `HandlerDone` is still accepted
+after `Close`. The driver always reads (Section 5.2.2: "Endpoints MUST
+read and process HTTP/2 frames from the TCP receive buffer as soon as
+data is available").
+
+**C3. Request content is pushed, and its credit comes back as it is
+read.** The core passes DATA on as `RequestData` as it arrives, and the
+driver queues it for the stream's handler. `Consumed` returns the
+credit, at both levels, and the core sends WINDOW_UPDATE once a
+window's unreturned credit reaches half of it (D6). HTTP/1.1 pulls
+content instead (`WantBody`, Q1 there), because one TCP stream has no
+window; here the window is the pull.
+
+- DATA beyond the window we advertised is refused (Section 6.9.1:
+  "The sender MUST NOT send a flow-controlled frame with a length that
+  exceeds the space available in either of the flow-control windows"):
+  over the stream's, RST_STREAM FLOW_CONTROL_ERROR and `RequestAborted`
+  (the frame still counted against the connection's, Section 6.9);
+  over the connection's, GOAWAY FLOW_CONTROL_ERROR. This is what makes
+  D6's bound hold. The server never lowers its stream window during a
+  connection, so Section 6.9.3's allowance for data sent before a
+  lowered setting arrived never applies.
+- Credit the handler can never return comes back at once: a DATA
+  frame's padding and Pad Length (counted by flow control, Section
+  6.1); all of a DATA frame for a stream nobody will read (reset,
+  refused, closed, or ended by D6's NO_ERROR), which Section 6.9
+  requires be counted; and, when a stream ends, what was passed on but
+  not consumed (else sixteen uploads that each send 64 KiB and cancel
+  would use up a 1 MiB connection window for good). A `Consumed` for a
+  stream already ended is ignored (C2), its credit having come back.
+- The DATA received is checked against `Content-Length`: more than it,
+  or less at END_STREAM, makes the request malformed (Section 8.1.1;
+  D10 case 2).
+- A `RequestData` that is small beside the receive buffer it is a
+  slice of is copied when it is queued (under 4 KiB and under a quarter
+  of the buffer, to start): otherwise a client could pin a 16 KiB
+  buffer with each octet of window on a stream whose handler does not
+  read, by pairing it with data for a stream that does.
+
+**C4. Stream states.** A server that never pushes uses idle, open,
+half-closed (both kinds) and closed (Section 5.1). Client streams are
+odd and increasing (Section 5.1.1), so the core keeps the streams it
+still serves in a map (with each one's protocol state: a stream reset
+while its handler runs stays in the map, closed, until `HandlerDone`,
+C6) and the highest identifier opened.
+
+- Idle (above the highest): HEADERS opens the stream (an even
+  identifier is a connection error PROTOCOL_ERROR, Section 5.1.1);
+  PRIORITY is allowed; any other frame is a connection error
+  PROTOCOL_ERROR (Section 5.1, idle: "Receiving any frame other than
+  HEADERS or PRIORITY on a stream in this state MUST be treated as a
+  connection error").
+- Half-closed (remote): DATA or HEADERS is a stream error STREAM_CLOSED
+  (a MUST of Section 5.1).
+- Closed (in the map as closed, or at or below the highest and not in
+  the map): frames are minimally processed and discarded, which Section
+  5.1 allows for every closed stream ("An endpoint can perform this
+  minimal processing for all streams that are in the 'closed' state"):
+  field blocks decoded for HPACK, DATA counted against the connection
+  window and its credit returned. A HEADERS there may be trailers the
+  client sent before our reset reached it, so it cannot be told from a
+  reused identifier; nghttp2 also discards. Each such frame costs
+  nuisance budget (C10), so it is not free. h2spec, written to RFC
+  7540, expects errors in four "closed" cases; those are listed as
+  known differences, with this reason, when h2spec runs (D12 step 6).
+
+**C5. Response content is buffered per stream, the scheduler sends it,
+and the transport paces it.** `WriteBody` is accepted, whatever its
+size, while the stream's buffer holds less than 64 KiB (D6); then the
+driver waits for `Writable` (writing more is a misuse), so a handler
+blocks on its `MVar` while its buffer is full. The core does not copy
+the application's chunks.
+
+- The core emits DATA only while what it has emitted and the driver
+  has not yet reported written (`Sent`) is under a bound (64 KiB, a
+  setting). Without it, a client could open its windows wide and stop
+  reading its socket, and data would move from the bounded stream
+  buffers into the driver's unbounded write queue (Section 10.5: "An
+  endpoint that constructs and remembers frames for sending without
+  considering TCP limits might be subject to resource exhaustion"). So
+  `Writable` follows what the transport takes, not only the windows;
+  Go paces its writes the same way. This is also HTTP/3's shape, where
+  QUIC's congestion window is how much the transport will take.
+- Control frames (SETTINGS and PING acknowledgements, WINDOW_UPDATE,
+  RST_STREAM, GOAWAY) go before any DATA and are not paced, but those
+  queued and not yet written are capped (a setting, 10,000 frames, as
+  Go caps them); over the cap, the connection is closed with
+  ENHANCE_YOUR_CALM. This replaces D9's "stop reading".
+- Response heads go out as soon as they come (HEADERS is not
+  flow-controlled, and HPACK's encoder must see blocks in the order
+  sent; a HEADERS and its CONTINUATIONs are one contiguous `Send`).
+- DATA goes within the peer's windows and SETTINGS_MAX_FRAME_SIZE, one
+  frame at a time from each stream that can send, in turn (D8). A
+  DATA frame is at least 1 KiB unless it ends the content, so a window
+  opened by a few octets at a time does not draw a frame for each
+  (Section 10.5: "Providing tiny increments to flow control in
+  WINDOW_UPDATE frames can cause a sender to generate a large number of
+  DATA frames").
+- The peer's windows may go negative (Section 6.9.2). A WINDOW_UPDATE
+  that takes a window above 2^31-1 is RST_STREAM FLOW_CONTROL_ERROR
+  for a stream and GOAWAY FLOW_CONTROL_ERROR for the connection
+  (Section 6.9.1); a SETTINGS_INITIAL_WINDOW_SIZE that takes any stream
+  window above it is a connection error FLOW_CONTROL_ERROR (Section
+  6.9.2).
+
+**C6. Concurrency (D5, D9).** Section 5.1.2 counts open and
+half-closed streams, and a client counts the same way, so the core
+counts those against MAX_CONCURRENT_STREAMS (100). Separately, a
+stream reset (by either side) while its handler still runs keeps a
+slot until `HandlerDone`, so that streams reset faster than handlers
+end cannot pile up handlers (rapid reset); those slots have their own
+bound (another 100, a setting), so that a browser that cancels a
+page's requests and opens the next page's at once is not refused while
+the cancelled handlers finish. A stream that ends normally frees its
+slot when it closes. A HEADERS over either bound gets RST_STREAM
+REFUSED_STREAM (Section 5.1.2 allows it, and Section 8.7 allows it
+because nothing of the stream has reached a handler) and costs
+nuisance budget; its field block is still decoded. A client may open
+more than 100 before it has our SETTINGS ("Initially, there is no
+limit"); those are refused the same way, and the budget's burst covers
+them.
+
+**C7. Field blocks.** After a HEADERS without END_HEADERS only a
+CONTINUATION on the same stream may come (Sections 6.2, 6.10, 5.5);
+anything else is a connection error. The encoded block is bounded as
+it arrives, at 4 times MAX_HEADER_LIST_SIZE (128 KiB), beyond which it
+is a connection error ENHANCE_YOUR_CALM (D9: it cannot be skipped).
+Below that the block is decoded, and a field list over
+MAX_HEADER_LIST_SIZE (32 KiB) is answered with 431 (Section 10.5.1: "A
+server that receives a larger field block than it is willing to handle
+can send an HTTP 431"), as D10 case 2 says (the 431, then the reset, or
+the reset alone if the request has ended); real header sections above
+64 KiB exist (Kerberos tokens, SSO cookies). Then D11's mapping. A
+second HEADERS on an open stream is its trailers and must carry
+END_STREAM, or the request is malformed (Section 8.1); after that the
+stream is half-closed (remote) (C4).
+
+**C8. Timers, each a setting (0 disables).**
+
+- The connection: the preface and first SETTINGS (the head timeout,
+  30 s); a field block left unfinished (30 s); our SETTINGS
+  unacknowledged (10 s, SETTINGS_TIMEOUT, Section 6.5.3); the shutdown
+  PING unanswered (1 s, as Go, after which shutdown goes on as if it
+  had been answered); a connection with no streams (the idle timeout,
+  60 s: GOAWAY NO_ERROR, then close), which a PING from the client
+  restarts, so that a client keeping a quiet connection alive (gRPC's
+  keepalive) is not closed, the budget bounding how often it may ping.
+- Each stream: an idle timer that any frame in either direction on the
+  stream restarts (5 minutes, as Envoy's `stream_idle_timeout`), not
+  running while the stream waits on our side (a handler not reading
+  with content queued, or a buffer full); and an upload-stall timer (30
+  s, as HTTP/1.1's body timer) that runs only while a `WantContent` is
+  unanswered, both windows are open and no 100 is owed. Both end with
+  RST_STREAM CANCEL and `RequestAborted`. Long-lived streams (gRPC
+  subscriptions, slow consumers exerting back-pressure, SSE) live
+  as long as anything moves; a client that has stopped reading its
+  socket altogether is ended by the driver's write timeout, as for
+  HTTP/1.1. (The first version had per-stream 30 s timers on content
+  in each direction, which would have ended every quiet gRPC stream.)
+
+**C9. `Expect`.** `Expect` is taken out of the fields, as HTTP/1.1
+does. `100-continue` (when content is to follow): the core sends the
+100 on the stream's first `WantContent`, which the driver feeds when
+the handler first reads with nothing queued, as HTTP/1.1's core sends
+it when the handler first asks for content (D7 there). So a handler
+that refuses before reading costs the client no upload, on either
+version (D5). Content that arrives anyway (a client need not wait, RFC
+9110 Section 10.1.1) is passed on as usual, and the 100 is then not
+sent. Any other expectation: 417, as HTTP/1.1 answers it. The 100
+never carries END_STREAM (Section 8.1).
+
+**C10. The nuisance budget (D9).** A leaky bucket, a burst of 1,000
+and 100 a second, both settings and provisional until measured against
+real browser sessions in step 6 (navigating away, scrolling, seeking
+send bursts of resets). Each costs one: PING, SETTINGS (not
+acknowledgements), each setting in a SETTINGS after its first six,
+PRIORITY, empty DATA without END_STREAM, an empty CONTINUATION, a
+frame of unknown type, a frame on a closed stream (C4), a refused
+stream, a WINDOW_UPDATE that leaves the window under the 1 KiB DATA
+floor (C5), each RST_STREAM we send for a stream error, and a
+RST_STREAM from the client before our response ended (rapid reset).
+Not counted: other WINDOW_UPDATEs (a client with generous windows
+sends many) and PRIORITY_UPDATE (type 0x10, RFC 9218, ignored until
+RFC 9218 is supported, D8). Over budget: GOAWAY ENHANCE_YOUR_CALM.
+Refused outright, as Go and nghttp2 do: a SETTINGS acknowledgement for
+a SETTINGS we did not send, and a SETTINGS that repeats a setting or
+has more than 100 (connection errors PROTOCOL_ERROR; Section 10.5
+names "changing the same setting multiple times in the same frame").
+The budget, the slots and the threads are per connection; the server's
+limit on connections is what bounds them together, so its default
+becomes finite.
+
+**C11. The preface, and the client's GOAWAY.** The core expects the
+client's preface (24 octets, Section 3.4) and then a SETTINGS frame;
+anything else is a connection error PROTOCOL_ERROR. `newConn` returns
+the server's preface as its first output: SETTINGS with D9's values
+(INITIAL_WINDOW_SIZE 65,536), and a WINDOW_UPDATE on stream 0 that
+raises the connection window from the protocol's 65,535 to 1 MiB (D6;
+a SETTINGS cannot change it, Section 6.9.2). The driver (D2) only
+recognises the preface; the core checks it. A GOAWAY from the client
+(Section 6.8): no new streams are accepted, the open ones are
+finished, then our own GOAWAY and the close; frames after it are not
+errors.
+
+**C12. Responses with no content, and trailers.** The HTTP/2
+`ResponseHead` carries what HTTP/1.1's does (status, fields, whether
+there is content, its length if known, the trailers declared). A
+response with no content (HEAD, 204, 304, `ContentNone`) is a HEADERS
+with END_STREAM, with the declared `content-length` for HEAD (Section
+8.1.1: such a response "MAY have a non-zero content-length header
+field"); `WriteBody` for it is discarded and its length not checked, as
+HTTP/1.1's `HeaderOnly`. Otherwise the length is checked as HTTP/1.1
+checks it: other than declared is `Abort` (RST_STREAM INTERNAL_ERROR).
+With trailers, the last DATA does not carry END_STREAM and a HEADERS
+with the trailers and END_STREAM follows; without, END_STREAM goes on
+the last DATA, or on an empty DATA if the buffer had emptied before
+`EndBody` (the driver folds `EndBody` into the last `WriteBody` of
+`ContentBytes` to avoid it).
+
+**C13. The tests.** A testing sub-library with a client-side reader of
+the server's frames (the frame parser and HPACK decoder already exist)
+and a generator of sessions: several streams interleaved, frames in
+random sizes and split at random points, the client's settings
+(including a HEADER_TABLE_SIZE and an INITIAL_WINDOW_SIZE changed
+mid-connection) and window updates, handlers that respond, read and
+fail in any order, a transport that takes octets slowly or not at
+all, and time.
+
+- A single-stream session has its exact outputs predicted by a
+  reference model. With several streams, timing decides the
+  interleaving, so the checks are relations: each stream's content
+  reaches its handler once and in order, and the client gets each
+  response whole; the credit returned equals the content consumed, per
+  stream and for the connection; nothing is sent beyond a window or
+  beyond the transport bound; frames are within the peer's size;
+  GOAWAY's last stream never rises; memory held (queued content,
+  buffers, receive buffers kept alive) stays within the windows and
+  bounds; `nextDeadline` is never in the past after a step.
+- An explicit model of Section 5.1: for each stream state and frame
+  type, the expected result (accept, discard, stream error or
+  connection error, and the code), checked by generated legal and
+  illegal sequences.
+- Each D9 attack is a generated session with its budget, and
+  legitimate traffic just under it.
+- The races between handler threads and the owner (a `Consumed` or
+  `WriteBody` queued when a reset arrives; `HandlerDone` after `Close`)
+  are tested in `hyperdrive-server`'s in-memory tests with scripted
+  interleavings, since the core alone cannot show them.
+- h2spec's expected failures are listed by name from its first run
+  (C4), as the llhttp differences are.
+- Mutants for every check.
+
 ## Testing
 
 - HPACK: RFC 7541 Appendix C's examples verbatim; the hpack-test-case
@@ -589,8 +914,9 @@ the serializer has no way to.
 - **D5.** The handler interface unchanged; cancellation cooperative (`ConnectionClosed`); a stream's slot held until its handler returns.
 - **D6.** Credit given as the handler reads, at both levels; 64 KiB streams, 1 MiB connection; unread bodies reset with NO_ERROR.
 - **D7.** No server push; the MUSTs on receiving push signals kept.
-- **D8.** No RFC 7540 priorities; stream order first, then RFC 9218 after the warp benchmarks.
+- **D8.** No RFC 7540 priorities; round robin first (changed after review), then RFC 9218 after the warp benchmarks.
 - **D9.** The settings, a defence for each known attack, a nuisance budget with the coarse time as an input.
-- **D10.** HPACK errors close the connection; malformed 400 then PROTOCOL_ERROR; invalid 400; staged GOAWAY.
+- **D10.** HPACK errors close the connection; malformed: 400 then PROTOCOL_ERROR, or the reset alone once the request has ended (changed after review); invalid 400; staged GOAWAY.
 - **D11.** The pseudo-header mapping in `hyperdrive-semantics`; a differing `Host` malformed; other schemes and `https` on cleartext 421, as HTTP/1.1.
 - **D12.** HPACK, frames, D11, `step`, h2c driver, RFC 9218, TLS (HTTP/1.1 first).
+- **C1-C13.** The connection core, after the author's and an independent review.
