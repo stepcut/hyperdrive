@@ -2890,17 +2890,20 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    error (Section 5.4.1) of type COMPRESSION_ERROR.
 
   SECTION: [Compression State](#section-4.3.1)
+    TEXT[implementation]:    When a connection is established, the dynamic table size for the
+    TEXT[implementation]:    HPACK decoder and encoder at both endpoints starts at 4,096 bytes,
+    TEXT[implementation]:    the initial value of the SETTINGS_HEADER_TABLE_SIZE setting.
     TEXT[!MUST]:    Once an endpoint acknowledges a change to SETTINGS_HEADER_TABLE_SIZE
     TEXT[!MUST]:    that reduces the maximum below the current size of the dynamic table,
     TEXT[!MUST]:    its HPACK encoder MUST start the next field block with a Dynamic
     TEXT[!MUST]:    Table Size Update instruction that sets the dynamic table to a size
     TEXT[!MUST]:    that is less than or equal to the reduced maximum; see Section 4.2 of
     TEXT[!MUST]:    [COMPRESSION].
-    TEXT[!MUST]: An endpoint MUST treat a field block that follows an
-    TEXT[!MUST]:    acknowledgment of the reduction to the maximum dynamic table size as
-    TEXT[!MUST]:    a connection error (Section 5.4.1) of type COMPRESSION_ERROR if it
-    TEXT[!MUST]:    does not start with a conformant Dynamic Table Size Update
-    TEXT[!MUST]:    instruction.
+    TEXT[!MUST,implementation,test]: An endpoint MUST treat a field block that follows an
+    TEXT[!MUST,implementation,test]:    acknowledgment of the reduction to the maximum dynamic table size as
+    TEXT[!MUST,implementation,test]:    a connection error (Section 5.4.1) of type COMPRESSION_ERROR if it
+    TEXT[!MUST,implementation,test]:    does not start with a conformant Dynamic Table Size Update
+    TEXT[!MUST,implementation,test]:    instruction.
 
   SECTION: [Stream States](#section-5.1)
     TEXT[!MUST]:       Receiving any frame other than HEADERS or PRIORITY on a stream in

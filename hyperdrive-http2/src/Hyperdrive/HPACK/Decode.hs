@@ -30,24 +30,44 @@ import Hyperdrive.HPACK.Huffman (HuffmanError, decodeHuffman)
 import Hyperdrive.HPACK.Integer (DecodedInteger(..), decodeInteger)
 import Hyperdrive.HPACK.Table
 
--- | A decoder's state: its dynamic table, and the largest size an
--- update may set it to (in HTTP/2, the SETTINGS_HEADER_TABLE_SIZE the
--- server sent).
+-- | A decoder's state: its dynamic table; the largest size an update
+-- may set it to (in HTTP/2, the SETTINGS_HEADER_TABLE_SIZE the server
+-- sent, once acknowledged); and whether the next block must start with
+-- a size update, because the limit fell below the table's size.
 data Decoder = Decoder
-  { decoderTable :: !DynamicTable
-  , decoderLimit :: !Int
+  { decoderTable   :: !DynamicTable
+  , decoderLimit   :: !Int
+  , updateRequired :: !Bool
   } deriving (Eq, Show)
 
--- | A decoder whose table starts empty with the given maximum size,
--- which is also the limit for updates.
-newDecoder :: Int -> Decoder
-newDecoder limit = Decoder (emptyTable limit) limit
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-4.3.1
+-- # When a connection is established, the dynamic table size for the
+-- # HPACK decoder and encoder at both endpoints starts at 4,096 bytes,
+-- # the initial value of the SETTINGS_HEADER_TABLE_SIZE setting.
+
+-- | A decoder whose table starts empty with the given maximum size
+-- (4,096 for HTTP/2, the setting's initial value), with the given
+-- limit for updates. The table changes size only by the encoder's size
+-- updates: a limit above the initial size lets the encoder grow it,
+-- and one below obliges it to shrink it in its first block.
+newDecoder :: Int -> Int -> Decoder
+newDecoder initial limit = Decoder (emptyTable initial) limit (limit < initial)
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-4.3.1
+-- # An endpoint MUST treat a field block that follows an
+-- # acknowledgment of the reduction to the maximum dynamic table size as
+-- # a connection error (Section 5.4.1) of type COMPRESSION_ERROR if it
+-- # does not start with a conformant Dynamic Table Size Update
+-- # instruction.
 
 -- | A new limit for size updates (in HTTP/2, a new
 -- SETTINGS_HEADER_TABLE_SIZE, once the peer has acknowledged it). The
--- table keeps its size until the peer's next size update.
+-- table keeps its size until the peer's next size update; a limit below
+-- that size obliges the next block to start with one.
 setDecoderLimit :: Int -> Decoder -> Decoder
-setDecoderLimit limit d = d { decoderLimit = limit }
+setDecoderLimit limit d = d
+  { decoderLimit = limit
+  , updateRequired = updateRequired d || limit < tableMaxSize (decoderTable d) }
 
 data Decoded
   = Fields [(ByteString, ByteString)]
@@ -66,6 +86,7 @@ data DecodeError
   | TableSizeAboveLimit !Int  -- ^ a size update above the limit (Section 6.3)
   | TableSizeUpdateLate       -- ^ a size update after a field (Section 4.2)
   | TooManyTableSizeUpdates   -- ^ more than two size updates (Section 4.2)
+  | TableSizeUpdateMissing    -- ^ no size update after the limit fell (RFC 9113 Section 4.3.1)
   deriving (Eq, Show)
 
 -- = https://www.rfc-editor.org/rfc/rfc7541#section-3.2
@@ -76,8 +97,11 @@ data DecodeError
 -- measured as RFC 9113 Section 6.5.2 does (each field's name and value
 -- and 32).
 decodeBlock :: Int -> Decoder -> ByteString -> Either DecodeError (Decoded, Decoder)
-decodeBlock maxList (Decoder table limit) bs = go table 0 2 0 [] 0
+decodeBlock maxList (Decoder table limit required) bs
+  | required && not startsWithUpdate = Left TableSizeUpdateMissing
+  | otherwise = go table 0 2 0 [] 0
   where
+    startsWithUpdate = not (B.null bs) && BU.unsafeIndex bs 0 .&. 0xE0 == 0x20
     -- i: the next octet; updates: size updates still allowed here;
     -- listSize: the field list's size so far; acc: fields, last first
     go !t !i !updates !listSize acc !count
@@ -86,7 +110,7 @@ decodeBlock maxList (Decoder table limit) bs = go table 0 2 0 [] 0
           -- # A decoder MUST order header fields in the decoded header list
           -- # according to their ordering in the header block.
           let d = if listSize > maxList then ListTooLarge else Fields (reverse acc)
-          in Right (d, Decoder t limit)
+          in Right (d, Decoder t limit False)
       | otherwise =
           let b = BU.unsafeIndex bs i
           in if b .&. 0x80 /= 0 then indexed t i listSize acc count

@@ -121,8 +121,8 @@ why: a size update after a field is refused (Section 4.2)
 + | count > 1    = Left TableSizeUpdateLate
 
 why: at most two size updates (Section 4.2)
-- decodeBlock maxList (Decoder table limit) bs = go table 0 2 0 [] 0
-+ decodeBlock maxList (Decoder table limit) bs = go table 0 3 0 [] 0
+- | otherwise = go table 0 2 0 [] 0
++ | otherwise = go table 0 3 0 [] 0
 
 why: a size update above the limit is a decoding error (Section 6.3)
 - | m > limit -> Left (TableSizeAboveLimit m)
@@ -181,3 +181,21 @@ why: a cap below the peer's initial 4,096 must be signalled in the first block
 why: a name taken from a table is not also sent as a string
 - integerLength prefix ni + (if ni == 0 then fst (stringLength n) else 0) + fst (stringLength v)
 + integerLength prefix ni + fst (stringLength n) + fst (stringLength v)
+
+file: src/Hyperdrive/HPACK/Decode.hs
+
+why: a limit below HTTP/2's initial 4,096 obliges the encoder's first block to start with a size update (RFC 9113 Section 4.3.1)
+- newDecoder initial limit = Decoder (emptyTable initial) limit (limit < initial)
++ newDecoder initial limit = Decoder (emptyTable initial) limit False
+
+why: a reduction is still owed after a later increase, until a block has signalled it (RFC 7541 Section 4.2)
+- , updateRequired = updateRequired d || limit < tableMaxSize (decoderTable d) }
++ , updateRequired = limit < tableMaxSize (decoderTable d) }
+
+why: after a reduction, a block that does not start with a size update is a COMPRESSION_ERROR (RFC 9113 Section 4.3.1)
+- | required && not startsWithUpdate = Left TableSizeUpdateMissing
++ | False && not startsWithUpdate = Left TableSizeUpdateMissing
+
+why: the owed update is owed once
+- in Right (d, Decoder t limit False)
++ in Right (d, Decoder t limit required)

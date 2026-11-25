@@ -81,7 +81,7 @@ corpusTests = do
 
 -- the cases of a story share one decoder
 decodeStory :: Story -> Property
-decodeStory (Story cases) = go (newDecoder 4096) (zip [0 :: Int ..] cases)
+decodeStory (Story cases) = go (newDecoder 4096 4096) (zip [0 :: Int ..] cases)
   where
     go _ [] = property True
     go d ((i, c) : rest) =
@@ -95,7 +95,7 @@ decodeStory (Story cases) = go (newDecoder 4096) (zip [0 :: Int ..] cases)
                .&&. go d' rest
 
 roundTripStory :: Story -> Property
-roundTripStory (Story cases) = go (newEncoder 4096) (newDecoder 4096) cases
+roundTripStory (Story cases) = go (newEncoder 4096) (newDecoder 4096 4096) cases
   where
     go _ _ [] = property True
     go e d (c : rest) =

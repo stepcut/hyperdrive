@@ -56,7 +56,7 @@ genSteps = listOf (frequency
 prop_roundTrip :: Property
 prop_roundTrip = forAll (elements [0, 100, 256, 4096, 10000]) $ \cap ->
   forAll genSteps $ \steps ->
-    go (newEncoder cap) (newDecoder 4096) 4096 cap steps
+    go (newEncoder cap) (newDecoder 4096 4096) 4096 cap steps
   where
     go _ _ _ _ [] = property True
     go e d _ cap (SetPeer p : rest) = go (setPeerTableSize p e) (setDecoderLimit p d) p cap rest

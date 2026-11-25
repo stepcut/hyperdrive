@@ -36,7 +36,7 @@ prop_static text = once $
 prop_appendixC :: String -> Property
 prop_appendixC text = once $
   length (concatMap snd groups) === 16
-  .&&. conjoin [ runGroup (newDecoder size) examples | (size, examples) <- groups ]
+  .&&. conjoin [ runGroup (newDecoder size size) examples | (size, examples) <- groups ]
   where
     groups = appendixC text
     runGroup _ [] = property True
@@ -225,7 +225,7 @@ modelOf d = Model (tableMaxSize (decoderTable d)) (tableEntries (decoderTable d)
 prop_reference :: Property
 prop_reference = forAll (choose (0, 600)) $ \limit ->
   forAll (choose (0, 3)) $ \nBlocks ->
-    go limit (newDecoder limit) (nBlocks + 1 :: Int)
+    go limit (newDecoder limit limit) (nBlocks + 1 :: Int)
   where
     go _ _ 0 = property True
     go limit d k =
@@ -249,7 +249,7 @@ prop_damaged :: Property
 prop_damaged = forAll (choose (0, 600)) $ \limit ->
   forAll (genBlock limit (Model limit [])) $ \reps ->
   forAll (damage (B.concat (map encodeRep reps))) $ \block ->
-    fmap (fmap modelOf) (decodeBlock maxBound (newDecoder limit) block)
+    fmap (fmap modelOf) (decodeBlock maxBound (newDecoder limit limit) block)
       === reference limit maxBound (Model limit []) block
   where
     damage b = oneof
@@ -264,7 +264,7 @@ prop_listLimit = forAll (choose (0, 600)) $ \limit ->
   forAll (genBlock limit (Model limit [])) $ \reps ->
   forAll (choose (0, 2000)) $ \maxList ->
     let block = B.concat (map encodeRep reps)
-        d = newDecoder limit
+        d = newDecoder limit limit
     in case (decodeBlock maxList d block, decodeBlock maxBound d block) of
          (Right (r, d1), Right (Fields fs, d2)) ->
            let size = sum [entrySize n v | (n, v) <- fs]
@@ -292,10 +292,34 @@ prop_errors = once $ conjoin
   , fmap fst (decodeBlock 0 d0 B.empty) === Right (Fields [])
     -- an entry exactly the table's size fits, evicting all the others
   , fmap (tableEntries . decoderTable . snd)
-      (decodeBlock maxBound (newDecoder 42) (B.concat (map encodeRep
+      (decodeBlock maxBound (newDecoder 42 42) (B.concat (map encodeRep
         [ Literal WithIndexing (NameLiteral "k" False) "v" False
         , Literal WithIndexing (NameLiteral "k" False) "123456789" False ])))
       === Right [("k", "123456789")]
+    -- = https://www.rfc-editor.org/rfc/rfc9113#section-4.3.1
+    -- # An endpoint MUST treat a field block that follows an
+    -- # acknowledgment of the reduction to the maximum dynamic table size as
+    -- # a connection error (Section 5.4.1) of type COMPRESSION_ERROR if it
+    -- # does not start with a conformant Dynamic Table Size Update
+    -- # instruction.
+  , decodeBlock maxBound (newDecoder 4096 100) (enc [Indexed 2]) === Left TableSizeUpdateMissing
+  , decodeBlock maxBound (newDecoder 4096 100) B.empty === Left TableSizeUpdateMissing
+  , fmap (tableMaxSize . decoderTable . snd) (decodeBlock maxBound (newDecoder 4096 100) (enc [SizeUpdate 100, Indexed 2]))
+      === Right 100
+  , fmap fst (decodeBlock maxBound (newDecoder 4096 100) (enc [SizeUpdate 0, SizeUpdate 100])) === Right (Fields [])
+  , decodeBlock maxBound (setDecoderLimit 1000 d0) (enc [Indexed 2]) === Left TableSizeUpdateMissing
+    -- a reduction, then an increase before any block: still owed (RFC 7541 Section 4.2)
+  , decodeBlock maxBound (setDecoderLimit 8000 (setDecoderLimit 100 d0)) (enc [Indexed 2])
+      === Left TableSizeUpdateMissing
+    -- the update is owed once: the block after it needs none
+  , fmap fst (decodeBlock maxBound (setDecoderLimit 1000 d0) (enc [SizeUpdate 1000]) >>= \(_, d) ->
+      decodeBlock maxBound d (enc [Indexed 2])) === Right (Fields [(":method", "GET")])
+    -- a limit above the table's size owes nothing, and the table keeps its size until updated
+  , fmap fst (decodeBlock maxBound (setDecoderLimit 8000 d0) (enc [Indexed 2])) === Right (Fields [(":method", "GET")])
+  , fmap (tableMaxSize . decoderTable . snd) (decodeBlock maxBound (newDecoder 4096 8192) (enc [Indexed 2]))
+      === Right 4096
+  , fmap (tableMaxSize . decoderTable . snd) (decodeBlock maxBound (newDecoder 4096 8192) (enc [SizeUpdate 8192]))
+      === Right 8192
     -- the same entry twice is not an error
   , fmap (tableEntries . decoderTable . snd)
       (dec [ Literal WithIndexing (NameLiteral "k" False) "v" False
@@ -303,11 +327,12 @@ prop_errors = once $ conjoin
       === Right [("k", "v"), ("k", "v")]
     -- an entry larger than the table empties it
   , fmap (tableEntries . decoderTable . snd)
-      (decodeBlock maxBound (newDecoder 40) (B.concat (map encodeRep
+      (decodeBlock maxBound (newDecoder 40 40) (B.concat (map encodeRep
         [ Literal WithIndexing (NameLiteral "k" False) "v" False
         , Literal WithIndexing (NameLiteral "k" False) "much-too-long" False ])))
       === Right []
   ]
   where
-    d0 = newDecoder 4096
-    dec = decodeBlock maxBound d0 . B.concat . map encodeRep
+    d0 = newDecoder 4096 4096
+    enc = B.concat . map encodeRep
+    dec = decodeBlock maxBound d0 . enc
