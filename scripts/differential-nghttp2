@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Differential tests of HPACK against nghttp2's. They need nghttp2's C
+# library, so they are behind a flag and have a shell of their own:
+#
+#   scripts/differential-nghttp2                        the tests
+#   NGHTTP2_SURVEY=100000 scripts/differential-nghttp2  every kind of disagreement of
+#                                                       the decoders in that many
+#                                                       sessions, with an example
+#
+# Arguments are passed to the tests (tasty's).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+args=()
+for a in "$@"; do args+=("--test-option=$a"); done
+exec nix develop .#nghttp2 -c cabal test --offline --builddir=dist-nghttp2 \
+  --constraint='hyperdrive-http2 +nghttp2' --test-show-details=streaming \
+  hyperdrive-http2:hyperdrive-http2-nghttp2 "${args[@]}"

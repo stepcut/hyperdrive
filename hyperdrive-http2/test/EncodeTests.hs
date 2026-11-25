@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module EncodeTests (encodeTests) where
+module EncodeTests (encodeTests, genFields) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B

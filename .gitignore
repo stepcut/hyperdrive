@@ -2,3 +2,4 @@ dist-newstyle/
 dist-bench/
 dist-prof/
 dist-llhttp/
+dist-nghttp2/

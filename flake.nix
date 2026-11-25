@@ -110,6 +110,11 @@
         llhttp = self.devShells.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
           buildInputs = old.buildInputs ++ [ pkgs.llhttp ];
         });
+        # the default shell with nghttp2's C library, for the differential
+        # tests of HPACK against it: scripts/differential-nghttp2
+        nghttp2 = self.devShells.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
+          buildInputs = old.buildInputs ++ [ pkgs.nghttp2.dev pkgs.nghttp2.lib ];
+        });
         # benchmarks against warp: nix develop .#bench -c scripts/bench
         bench = pkgs.mkShell { packages = benchTools pkgs; };
         # the same, and ntex (Rust) with io_uring and with epoll:
