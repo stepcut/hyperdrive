@@ -42,6 +42,7 @@ REASONS = {
     "response-recipient": "Applies to recipients of responses (clients, caches and proxies); hyperdrive only receives requests.",
     "unused-permission":  "A permission hyperdrive does not use: it does not cache responses.",
     "no-push":      "Applies to sending server push, which hyperdrive does not do (docs/http2-core-design.md, D7).",
+    "ws-stripped":  "Deliberately not followed: whitespace around a field value is removed, as HTTP/1.1 removes it, rather than making the message malformed. Of nine implementations surveyed only h2o refuses it, and enforcing it broke real deployments (docs/http2-core-design.md, D11).",
 }
 
 # subject patterns, in priority order
@@ -131,6 +132,8 @@ OVERRIDES = {
         ("8.4.1",  "PUSH_PROMISE frames can be sent by the server"): "no-push",
         ("10.4",   "Where multiple tenants share space"): "no-push",
         ("10.4",   "Pushed responses for which an origin server"): "client",
+        # D11, after the survey of implementations
+        ("8.2.1",  "* A field value MUST NOT start or end with an ASCII whitespace"): "ws-stripped",
     },
     "rfc7541": {
         # forwarding a field, which only an intermediary does

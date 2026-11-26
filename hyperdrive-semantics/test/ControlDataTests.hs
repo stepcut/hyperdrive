@@ -72,8 +72,9 @@ genWellFormed = do
   secure <- arbitrary
   let ctxScheme = if secure then HTTPS else HTTP
   defaultAuth <- oneof [pure Nothing, Just . snd <$> genAuthority]
-  let ctx = TargetContext ctxScheme defaultAuth
-  scheme <- if secure then elements ["http", "https", "HTTPS"] else elements ["http", "HTTP"]
+  trusted <- arbitrary
+  let ctx = TargetContext ctxScheme defaultAuth trusted
+  scheme <- if secure || trusted then elements ["http", "https", "HTTPS"] else elements ["http", "HTTP"]
   (authText, auth) <- genAuthority
   -- the authority from :authority, from Host, or from the default
   source <- elements (["pseudo", "host"] ++ ["default" | isJust defaultAuth] :: [String])
@@ -85,10 +86,15 @@ genWellFormed = do
   path <- if asterisk then pure "*" else valid "HTTP/1.1" "origin-form"
   -- regular fields, cookies, TE and Content-Length among them
   others <- listOf ((,) <$> suchThat genToken (`notElem` special) <*> genValue)
+  -- whitespace around some values, which is removed (D11)
+  wrapped <- traverse (\(n, v) -> do
+                         pre <- elements ["", "", " ", "\t", " \t"]
+                         post <- elements ["", "", " ", "\t "]
+                         pure (n, pre <> v <> post, v)) others
   cookies <- listOf (elements ["a=b", "c=d; e=f", "g=h"])
   te <- arbitrary
   len <- oneof [pure Nothing, Just <$> (arbitrary :: Gen Word64)]
-  regular <- shuffle (others ++ [("cookie", c) | c <- cookies] ++ [("te", "trailers") | te]
+  regular <- shuffle ([(n, sent) | (n, sent, _) <- wrapped] ++ [("cookie", c) | c <- cookies] ++ [("te", "trailers") | te]
                       ++ [("content-length", C.pack (show n)) | Just n <- [len]]
                       ++ [("host", hostSpelling) | source == "host" || source == "pseudo" && hostToo])
   pseudos <- shuffle ([(":method", method), (":scheme", scheme), (":path", path)]
@@ -103,7 +109,8 @@ genWellFormed = do
         in TargetURI sch authority (fromJust (mkPath p)) (if B.null q then Nothing else mkQuery (B.drop 1 q))
       -- the expected fields: the others in order, the cookies joined
       -- where the first was
-      appFields = joinCookies [(n, v) | (n, v) <- regular, n `notElem` ["te", "content-length", "host"]]
+      strip = B.dropWhileEnd (`elem` [0x20, 0x09]) . B.dropWhile (`elem` [0x20, 0x09])
+      appFields = joinCookies [(n, strip v) | (n, v) <- regular, n `notElem` ["te", "content-length", "host"]]
   pure Req
     { rContext = ctx, rPseudo = pseudos, rRegular = regular
     , rExpected = RequestControl
@@ -148,7 +155,7 @@ base :: [(ByteString, ByteString)]
 base = [(":method", "GET"), (":scheme", "https"), (":authority", "example.com"), (":path", "/a?b"), ("accept", "*/*")]
 
 secured :: TargetContext
-secured = TargetContext HTTPS Nothing
+secured = TargetContext HTTPS Nothing False
 
 replace :: ByteString -> ByteString -> [(ByteString, ByteString)] -> [(ByteString, ByteString)]
 replace n v = map (\(n', v') -> if n' == n then (n', v) else (n', v'))
@@ -211,8 +218,9 @@ nearMisses =
   , ("value with CR", secured, base ++ [("x", "a\rb")], malformed (BadFieldValue "x"))
   , ("value with LF", secured, base ++ [("x", "a\nb")], malformed (BadFieldValue "x"))
   , ("value with NUL", secured, base ++ [("x", "a\0b")], malformed (BadFieldValue "x"))
-  , ("value starting with SP", secured, base ++ [("x", " a")], malformed (BadFieldValue "x"))
-  , ("value ending with HTAB", secured, base ++ [("x", "a\t")], malformed (BadFieldValue "x"))
+  , ("value starting with SP: stripped, not refused (D11)", secured, base ++ [("x", " a")], Nothing)
+  , ("value ending with HTAB: stripped, not refused (D11)", secured, base ++ [("x", "a\t")], Nothing)
+  , ("a control character inside stripped whitespace", secured, base ++ [("x", " \1 ")], malformed (BadFieldValue "x"))
   , ("value with a control character", secured, base ++ [("x", "a\1b")], malformed (BadFieldValue "x"))
   , ("pseudo-header value with LF", secured, replace ":path" "/a\n" base, malformed (BadFieldValue ":path"))
   , ("unknown pseudo-header", secured, (":foo", "x") : base, malformed (UnknownPseudoHeader ":foo"))
@@ -247,24 +255,29 @@ nearMisses =
   , ("Host with the default port agrees", secured, base ++ [("host", "EXAMPLE.com:443")], Nothing)
   , ("CONNECT: Host differs in port", secured, connect ++ [("host", "example.com")], malformed HostDiffersFromAuthority)
     -- refused, answered as HTTP/1.1 answers
-  , (":authority with userinfo", secured, replace ":authority" "u@example.com" base, refused (InvalidAuthority AuthorityHasUserinfo))
-  , (":authority with a bad port", secured, replace ":authority" "example.com:99999" base, refused (InvalidAuthority AuthorityInvalidPort))
-  , ("empty :authority", secured, replace ":authority" "" base, refused (InvalidAuthority AuthorityEmptyHost))
+  , (":authority with userinfo", secured, replace ":authority" "u@example.com" base, malformed (InvalidAuthority AuthorityHasUserinfo))
+  , (":authority with a bad port", secured, replace ":authority" "example.com:99999" base, malformed (InvalidAuthority AuthorityInvalidPort))
+  , ("empty :authority", secured, replace ":authority" "" base, malformed (InvalidAuthority AuthorityEmptyHost))
+  , ("CONNECT :authority with userinfo", secured, replace ":authority" "u@example.com:443" connect, malformed (InvalidAuthority AuthorityHasUserinfo))
   , ("invalid Host beside :authority", secured, base ++ [("host", "u@x")], refused (InvalidHost AuthorityHasUserinfo))
   , ("invalid Host alone", secured, without ":authority" base ++ [("host", "u@x")], refused (InvalidHost AuthorityHasUserinfo))
   , ("two Host lines", secured, without ":authority" base ++ [("host", "a"), ("host", "a")], refused RepeatedHost)
   , ("two Host lines beside :authority", secured, base ++ [("host", "example.com"), ("host", "example.com")], refused RepeatedHost)
   , ("no authority and no default", secured, without ":authority" base, refused NoAuthority)
   , ("empty Host and no default", secured, without ":authority" base ++ [("host", "")], refused NoAuthority)
-  , ("no authority, a default", TargetContext HTTPS (Just (either (error . show) id (parseAuthority "d.example"))), without ":authority" base, Nothing)
+  , ("no authority, a default", TargetContext HTTPS (Just (either (error . show) id (parseAuthority "d.example"))) False, without ":authority" base, Nothing)
   , ("IPvFuture", secured, replace ":authority" "[v1.x]" base, refused UnsupportedIPvFuture)
+  , ("CONNECT to an IPvFuture host", secured, replace ":authority" "[v1.x]:443" connect, refused UnsupportedIPvFuture)
   , ("CONNECT without a port", secured, replace ":authority" "example.com" connect, refused MissingConnectPort)
   , ("* with GET", secured, replace ":path" "*" base, refused AsteriskNotOptions)
   , ("* with OPTIONS", secured, replace ":method" "OPTIONS" (replace ":path" "*" base), Nothing)
   , ("invalid Content-Length", secured, base ++ [("content-length", "x")], refused InvalidContentLength)
   , ("differing Content-Length lines", secured, base ++ [("content-length", "1"), ("content-length", "2")], refused InvalidContentLength)
   , ("scheme ftp", secured, replace ":scheme" "ftp" base, Just (Refused MisdirectedRequest (MisdirectedScheme (fromJust (mkScheme "ftp")))))
-  , ("https on cleartext", TargetContext HTTP Nothing, base, Just (Refused MisdirectedRequest (MisdirectedScheme HTTPS)))
+  , ("https on cleartext", TargetContext HTTP Nothing False, base, Just (Refused MisdirectedRequest (MisdirectedScheme HTTPS)))
+  , ("https on cleartext from a trusted gateway", TargetContext HTTP Nothing True, base, Nothing)
+  , ("scheme ftp, even from a trusted gateway", TargetContext HTTP Nothing True, replace ":scheme" "ftp" base,
+      Just (Refused MisdirectedRequest (MisdirectedScheme (fromJust (mkScheme "ftp")))))
   , ("http on a secured connection", secured, replace ":scheme" "http" base, Nothing)
   ]
   where
@@ -295,7 +308,8 @@ prop_trailers = once $ conjoin
   , trailersFromFields [("transfer-encoding", "chunked")] `isLeftWith` ConnectionSpecificField "transfer-encoding"
   , trailersFromFields [("te", "trailers")] `isLeftWith` ConnectionSpecificField "te"
   , trailersFromFields [("X", "1")] `isLeftWith` BadFieldName "X"
-  , trailersFromFields [("x", " 1")] `isLeftWith` BadFieldValue "x"
+  , fmap fieldsToList (trailersFromFields [("x", " 1\t")]) === Right (fieldsToList (fields [("x", "1")]))
+  , trailersFromFields [("x", "1\r")] `isLeftWith` BadFieldValue "x"
   ]
   where
     isLeftWith r e = case r of

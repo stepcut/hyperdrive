@@ -3,6 +3,15 @@ target = "https://www.rfc-editor.org/rfc/rfc9113#section-8.2.1"
 
 [[exception]]
 quote = '''
+*  A field value MUST NOT start or end with an ASCII whitespace
+character (ASCII SP or HTAB, 0x20 or 0x09).
+'''
+reason = '''
+Deliberately not followed: whitespace around a field value is removed, as HTTP/1.1 removes it, rather than making the message malformed. Of nine implementations surveyed only h2o refuses it, and enforcing it broke real deployments (docs/http2-core-design.md, D11).
+'''
+
+[[exception]]
+quote = '''
 In
 particular, an intermediary that does not process fields when
 forwarding messages MUST NOT forward fields that contain any of the

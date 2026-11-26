@@ -125,7 +125,8 @@ reconstructTargetFrom ctx version method raw hosts = do
       scheme <- maybe (Left InvalidTarget) Right (mkScheme s)
       if B.null rest then Left InvalidTarget else Right ()
       if scheme /= HTTP && scheme /= HTTPS then Left (MisdirectedScheme scheme) else Right ()
-      if scheme == HTTPS && contextScheme ctx /= HTTPS then Left (MisdirectedScheme scheme) else Right ()
+      if scheme == HTTPS && contextScheme ctx /= HTTPS && not (contextTrustedGateway ctx)
+        then Left (MisdirectedScheme scheme) else Right ()
       hier <- maybe (Left InvalidTarget) Right (B.stripPrefix "://" rest)
       let (auth, pathQuery) = B.break (\w -> w == 0x2F || w == 0x3F) hier
       authority <- either (Left . InvalidTargetAuthority) Right (parseAuthority auth) >>= servable

@@ -261,8 +261,8 @@ why: only http and https are served
 + if False then Left (MisdirectedScheme scheme) else Right ()
 
 why: an https target needs a secured connection (RFC 9110 Section 7.4)
-- if scheme == HTTPS && contextScheme ctx /= HTTPS then Left (MisdirectedScheme scheme) else Right ()
-+ if False then Left (MisdirectedScheme scheme) else Right ()
+- if scheme == HTTPS && contextScheme ctx /= HTTPS && not (contextTrustedGateway ctx)
++ if False
 
 why: an http(s) URI has an authority: "http:/x" is not one
 - hier <- maybe (Left InvalidTarget) Right (B.stripPrefix "://" rest)
@@ -636,3 +636,9 @@ why: Transfer-Encoding in a trailer section is refused
 why: a trailer section without the fields of framing is taken
 - isFramingField n = n == hContentLength || n == hTransferEncoding
 + isFramingField n = n == hContentLength || n == hTransferEncoding || True
+
+file: src/Hyperdrive/HTTP1/Target.hs
+
+why: an https target on cleartext is accepted only from a trusted gateway (RFC 9110 Section 7.4)
+- if scheme == HTTPS && contextScheme ctx /= HTTPS && not (contextTrustedGateway ctx)
++ if scheme == HTTPS && contextScheme ctx /= HTTPS

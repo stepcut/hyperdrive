@@ -64,6 +64,7 @@ data Malformation
   | InvalidPseudoHeader !ByteString    -- ^ not a valid value (Section 8.3.1)
   | ConnectWithSchemeOrPath            -- ^ Section 8.5
   | ConnectionSpecificField !ByteString -- ^ Section 8.2.2
+  | InvalidAuthority !AuthorityError   -- ^ @:authority@ is not @uri-host [ ":" port ]@ (Section 8.3)
   | TENotTrailers                      -- ^ Section 8.2.2
   | HostDiffersFromAuthority           -- ^ Section 8.3.1 (D11)
   | PseudoHeaderInTrailers !ByteString -- ^ Section 8.1
@@ -72,8 +73,7 @@ data Malformation
 
 -- | Why a well-formed request is refused, as HTTP/1.1 would refuse it.
 data Refusal
-  = InvalidAuthority !AuthorityError -- ^ @:authority@ is not @uri-host [ ":" port ]@
-  | InvalidHost !AuthorityError      -- ^ nor is @Host@
+  = InvalidHost !AuthorityError      -- ^ @Host@ is not @uri-host [ ":" port ]@
   | RepeatedHost                     -- ^ more than one @Host@ field line
   | NoAuthority                      -- ^ neither, and no default
   | UnsupportedIPvFuture             -- ^ a host this server cannot serve
@@ -113,17 +113,21 @@ validName n = isToken n && not (B.any (\w -> w >= 0x41 && w <= 0x5A) n)
 -- #    line feed (ASCII LF, 0x0a), or carriage return (ASCII CR, 0x0d) at
 -- #    any position.
 --
--- = https://www.rfc-editor.org/rfc/rfc9113#section-8.2.1
--- # A field value MUST NOT start or end with an ASCII whitespace
--- #    character (ASCII SP or HTAB, 0x20 or 0x09).
---
--- field-value (RFC 9110 Section 5.5): field-vchar at both ends, and SP
--- or HTAB only between, which excludes all of those.
+-- field-value (RFC 9110 Section 5.5) without the whitespace around it:
+-- field-vchar, and SP or HTAB between, which excludes all of those.
 validValue :: ByteString -> Bool
-validValue v
-  | B.null v = True
-  | otherwise = isFieldVChar (B.head v) && isFieldVChar (B.last v) && B.all inner v
-  where inner w = isFieldVChar w || w == 0x20 || w == 0x09
+validValue = B.all (\w -> isFieldVChar w || w == 0x20 || w == 0x09)
+
+-- | Whitespace around a regular field's value is removed, as HTTP/1.1
+-- removes it, rather than making the message malformed as RFC 9113
+-- Section 8.2.1 says ("A field value MUST NOT start or end with an
+-- ASCII whitespace character"): of nine implementations surveyed only
+-- h2o refuses it, and enforcing it broke real deployments
+-- (docs/http2-core-design.md, D11). A pseudo-header field's value is
+-- not stripped: whitespace makes it invalid by its own syntax.
+stripWhitespace :: ByteString -> ByteString
+stripWhitespace = B.dropWhileEnd ws . B.dropWhile ws
+  where ws w = w == 0x20 || w == 0x09
 
 -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.2.1
 -- # A request or response that contains a field that violates any of
@@ -191,12 +195,13 @@ sortFields regularSeen parts ((n, v) : rest)
       parts' <- pseudo n v parts
       sortFields False parts' rest
   | not (validName n) = Left (BadFieldName n)
-  | not (validValue v) = Left (BadFieldValue n)
+  | not (validValue v') = Left (BadFieldValue n)
   | connectionSpecific n = Left (ConnectionSpecificField n)
   | otherwise = do
-      parts' <- regular n v parts
+      parts' <- regular n v' parts
       sortFields True parts' rest
   where
+    v' = stripWhitespace v
     -- a pseudo-header field's value is checked by its own syntax below;
     -- here only for what Section 8.2.1 prohibits in any value
     validPseudoValue x = validValue x
@@ -257,9 +262,9 @@ connect _ method parts = do
     (Nothing, Nothing) -> Right ()
     _ -> Left (Malformed ConnectWithSchemeOrPath)
   a <- either (Left . Malformed) Right (required ":authority" (pAuthority parts))
-  authority <- refuse (InvalidAuthority) (parseAuthority a)
+  authority <- pseudoAuthority a
   _ <- hostAgrees Nothing authority parts
-  servable authority
+  _ <- servable authority
   target <- maybe (Left (Refused BadRequest MissingConnectPort)) Right (connectTarget authority)
   finish method target parts
 
@@ -276,13 +281,13 @@ ordinary ctx method parts = do
   -- the authority: from :authority, else Host, else the default
   authority <- case pAuthority parts of
     Just a -> do
-      authority <- refuse InvalidAuthority (parseAuthority a)
+      authority <- pseudoAuthority a
       hostAgrees (Just scheme) authority parts
     Nothing -> case pHosts parts of
       [] -> fromDefault
       [h] | B.null h -> fromDefault
           | otherwise -> refuse InvalidHost (parseAuthority h)
-      _ -> Left (Refused BadRequest RepeatedHost)
+      (_ : _ : _) -> Left (Refused BadRequest RepeatedHost)
   servable authority
   -- = https://www.rfc-editor.org/rfc/rfc9110#section-7.4
   -- # The 421 (Misdirected Request) status code in a response indicates
@@ -291,7 +296,8 @@ ordinary ctx method parts = do
   --
   -- As for HTTP/1.1 (design-notes P3): only http and https, and https
   -- only on a secured connection.
-  if scheme /= HTTP && scheme /= HTTPS || scheme == HTTPS && contextScheme ctx /= HTTPS
+  if scheme /= HTTP && scheme /= HTTPS
+       || scheme == HTTPS && contextScheme ctx /= HTTPS && not (contextTrustedGateway ctx)
     then Left (Refused MisdirectedRequest (MisdirectedScheme scheme)) else Right ()
   target <- case form of
     Nothing -> if validForMethod method TargetAsterisk then Right TargetAsterisk
@@ -343,11 +349,16 @@ hostAgrees scheme authority parts = case pHosts parts of
     host <- refuse InvalidHost (parseAuthority h)
     if key host == key authority then Right authority
       else Left (Malformed HostDiffersFromAuthority)
-  _ -> Left (Refused BadRequest RepeatedHost)
+  _ : _ -> Left (Refused BadRequest RepeatedHost)
   where
     key a = case scheme of
       Just sc -> authorityKey sc a
       Nothing -> (canonicalHost (authorityHost a), authorityPort a)
+
+-- | @:authority@, which must be @uri-host [ ":" port ]@: otherwise the
+-- request is malformed (Section 8.3, "invalid pseudo-header fields").
+pseudoAuthority :: ByteString -> Either ControlDataError Authority
+pseudoAuthority = either (Left . Malformed . InvalidAuthority) Right . parseAuthority
 
 refuse :: (e -> Refusal) -> Either e a -> Either ControlDataError a
 refuse f = either (Left . Refused BadRequest . f) Right
@@ -391,13 +402,14 @@ finish method target parts = do
 trailersFromFields :: [(ByteString, ByteString)] -> Either Malformation Fields
 trailersFromFields list = fieldsFromList <$> traverse one list
   where
-    one (n, v)
+    one (n, v0)
       | isPseudo n = Left (PseudoHeaderInTrailers n)
       | not (validName n) = Left (BadFieldName n)
       | not (validValue v) = Left (BadFieldValue n)
       | n == "content-length" = Left (FramingFieldInTrailers n)
       | connectionSpecific n || n == "te" = Left (ConnectionSpecificField n)
       | otherwise = Right (FieldName n, FieldValue v)
+      where v = stripWhitespace v0
 
 ------------------------------------------------------------------------------
 -- Responses

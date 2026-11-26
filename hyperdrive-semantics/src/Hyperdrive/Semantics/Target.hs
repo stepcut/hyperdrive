@@ -40,6 +40,12 @@ data TargetContext = TargetContext
     -- ^ the authority to use when a request has no @Host@ (HTTP/1.0)
     -- or an empty one, or (HTTP/2, HTTP/3) neither @:authority@ nor
     -- @Host@. With 'Nothing', such requests are rejected.
+  , contextTrustedGateway   :: !Bool
+    -- ^ whether the peer is a gateway trusted to say the scheme (RFC
+    -- 9110 Section 7.4): if so, an @https@ target (absolute-form, or
+    -- @:scheme@) is accepted on a connection that is not secured, as
+    -- a TLS-terminating proxy sends it. Off by default; the
+    -- connection's own security is told to the application either way.
   } deriving (Eq, Show)
 
 -- = https://www.rfc-editor.org/rfc/rfc9110#section-7.1

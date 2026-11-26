@@ -109,7 +109,7 @@ oracle ctx version method raw hosts = do
             scheme = fromJust (mkScheme s)
             (auth, pq) = C.break (\c -> c == '/' || c == '?') (B.drop 3 rest)
             (p, q) = pathQuery pq
-        if scheme == HTTPS && contextScheme ctx /= HTTPS then Left 421 else Right ()
+        if scheme == HTTPS && contextScheme ctx /= HTTPS && not (contextTrustedGateway ctx) then Left 421 else Right ()
         if servable auth then Right (TargetURI scheme (authority auth) p q) else Left 400
     else if C.elem ':' raw && maybe False (`notElem` [HTTP, HTTPS]) (mkScheme (C.takeWhile (/= ':') raw))
       then Left 421
@@ -141,7 +141,7 @@ hostFields hosts = fieldsFromList [ (hHost, v) | Right v <- map mkFieldValue hos
 ------------------------------------------------------------------------------
 
 genContext :: Gen TargetContext
-genContext = TargetContext <$> elements [HTTP, HTTPS] <*> elements [Nothing, Just (authority "default.example:8080")]
+genContext = TargetContext <$> elements [HTTP, HTTPS] <*> elements [Nothing, Just (authority "default.example:8080")] <*> arbitrary
 
 -- | A method and a request-target as they can arrive in a request
 -- line (visible ASCII), mostly in a form the method may use.
@@ -215,7 +215,7 @@ prop_fields :: Property
 prop_fields = withMaxSuccess 200 $
   forAll (listOf (elements [("host", "a.example"), ("accept", "*/*"), ("x-a", "1"), ("x-a", "2")])) $ \fs ->
     let fields = fieldsFromList [ (fromJust (mkFieldName n), either (error . show) id (mkFieldValue v)) | (n, v) <- fs ]
-        ctx = TargetContext HTTP (Just (Authority (HostIPv4 0x7F000001) Nothing))
+        ctx = TargetContext HTTP (Just (Authority (HostIPv4 0x7F000001) Nothing)) False
     in case reconstructTarget ctx HTTP_1_0 GET "/" fields of
          Right (_, rest) -> map name (fieldsToList rest) === [ n | (n, _) <- fs, n /= "host" ]
          Left e -> property (length (filter ((== "host") . fst) fs) > 1 && e == RepeatedHost)
@@ -256,7 +256,7 @@ prop_examples = once $ conjoin
   [ -- Host: required in HTTP/1.1, not in HTTP/1.0; one line; valid
     target plain GET "/" [] === Left MissingHost
   , target10 GET "/" [] === Left NoAuthority
-  , reconstruct (TargetContext HTTP (Just (authority "d.example"))) HTTP_1_0 GET "/" [] === Right (uri HTTP "d.example" "/" Nothing)
+  , reconstruct (TargetContext HTTP (Just (authority "d.example")) False) HTTP_1_0 GET "/" [] === Right (uri HTTP "d.example" "/" Nothing)
   , target plain GET "/" [""] === Left NoAuthority
   , target plain GET "/" ["a.example", "a.example"] === Left RepeatedHost
   , target plain GET "/" ["a.example, b.example"] === Left (InvalidHost AuthorityInvalidHost)
@@ -274,6 +274,8 @@ prop_examples = once $ conjoin
   , target plain GET "http:/x" [""] === Left InvalidTarget
   , target plain GET "http://a.example/x#f" [""] === Left InvalidTarget
   , target plain GET "https://a.example/" [""] === Left (MisdirectedScheme HTTPS)
+  , isRight (target plain { contextTrustedGateway = True } GET "https://a.example/" ["a.example"]) === True
+  , target plain { contextTrustedGateway = True } GET "ftp://a.example/" [""] === Left (MisdirectedScheme (fromJust (mkScheme "ftp")))
   , target secure GET "https://a.example/" [""] === Right (uri HTTPS "a.example" "/" Nothing)
   , target secure GET "http://a.example/" [""] === Right (uri HTTP "a.example" "/" Nothing)
   , target plain GET "ftp://a.example/" [""] === Left (MisdirectedScheme (fromJust (mkScheme "ftp")))
@@ -306,8 +308,8 @@ prop_examples = once $ conjoin
 ------------------------------------------------------------------------------
 
 plain, secure :: TargetContext
-plain  = TargetContext HTTP Nothing
-secure = TargetContext HTTPS Nothing
+plain  = TargetContext HTTP Nothing False
+secure = TargetContext HTTPS Nothing False
 
 reconstruct :: TargetContext -> HttpVersion -> Method -> ByteString -> [ByteString] -> Either TargetError Target
 reconstruct ctx version m raw hosts = fst <$> reconstructTarget ctx version m raw (hostFields hosts)

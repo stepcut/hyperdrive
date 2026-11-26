@@ -3445,9 +3445,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation]: A field value MUST NOT contain the zero value (ASCII NUL, 0x00),
     TEXT[!MUST,implementation]:       line feed (ASCII LF, 0x0a), or carriage return (ASCII CR, 0x0d) at
     TEXT[!MUST,implementation]:       any position.
-    TEXT[!MUST]:    *
-    TEXT[!MUST,implementation]: A field value MUST NOT start or end with an ASCII whitespace
-    TEXT[!MUST,implementation]:       character (ASCII SP or HTAB, 0x20 or 0x09).
+    TEXT[!MUST,exception]:    *  A field value MUST NOT start or end with an ASCII whitespace
+    TEXT[!MUST,exception]:       character (ASCII SP or HTAB, 0x20 or 0x09).
     TEXT[!MUST,implementation,test]:    A request or response that contains a field that violates any of
     TEXT[!MUST,implementation,test]:    these conditions MUST be treated as malformed (Section 8.1.1).
     TEXT[!MUST,exception]: In

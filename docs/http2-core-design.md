@@ -408,7 +408,8 @@ names and values already separated.
   unless the listener is set to trust its peer as a gateway (RFC 9110
   Section 7.4: "Unless the connection is from a trusted gateway, an
   origin server MUST reject..."), in which case `:scheme` (or the
-  absolute-form's scheme, on HTTP/1.1) is taken as sent. That setting
+  absolute-form's scheme, on HTTP/1.1) `https` is accepted (other
+  schemes still get 421: this server serves only `http` and `https`). That setting
   is off by default, which keeps the MUST; a proxy speaking h2c to the
   server (D2's use) needs it on, and the 421 is logged saying so. The
   connection's own security is `contextSecure` either way. All nine

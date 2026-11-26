@@ -72,7 +72,7 @@ defaultConfig :: Config
 defaultConfig = Config
   { configHeadLimits   = defaultLimits
   , configChunkLimits  = defaultChunkedLimits
-  , configTarget       = TargetContext HTTP Nothing
+  , configTarget       = TargetContext HTTP Nothing False
   , configDiscardLimit = 65536
   }
 
