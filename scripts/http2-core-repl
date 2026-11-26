@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# A GHCi session on the HTTP/2 connection core with the test harness in
+# scope (hyperdrive-http2/test/StreamTests.hs: serve, feedAll, from,
+# seen, datas, writables, blocks, headers, ...), for looking at what the
+# core does with a sequence of inputs when a test fails.
+#
+# Usage (from the repository root, inside `nix develop`):
+#
+#   scripts/http2-core-repl            # interactive
+#   scripts/http2-core-repl FILE.ghci  # run the GHCi commands in FILE, then exit
+#
+# Example FILE.ghci:
+#
+#   :set -XOverloadedStrings
+#   let [b] = blocks [base]
+#   let (c, o) = feedAll (serve [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 "abc"]
+#   seen o
+#   writables o
+#
+# Note: `serve` writes its output at once (it reports `Sent`); use
+# `feedAll (c, [])` or `from (c, [])` after it, never `feedAll (serve ..)`
+# on a result whose output was already reported, or `Sent` is counted
+# twice (a misuse).
+set -euo pipefail
+cd "$(dirname "$0")/../hyperdrive-http2"
+if [ $# -ge 1 ]; then
+  script=$(realpath "$1")
+  cabal repl hyperdrive-http2-tests --offline -v0 <<EOF
+:load test/StreamTests.hs
+:set -XOverloadedStrings
+:script $script
+EOF
+else
+  cabal repl hyperdrive-http2-tests --offline -v0 --repl-options=-XOverloadedStrings
+fi
