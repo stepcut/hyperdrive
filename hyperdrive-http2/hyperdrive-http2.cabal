@@ -57,6 +57,7 @@ test-suite hyperdrive-http2-tests
                     HuffmanTests
                     IntegerTests
                     RFC7541
+                    StreamTests
   default-language: GHC2021
   build-depends:    base
                   , aeson            >= 2.0  && < 2.3
@@ -66,6 +67,7 @@ test-suite hyperdrive-http2-tests
                   , directory
                   , filepath
                   , hyperdrive-http2
+                  , hyperdrive-semantics
                   , text
                   , QuickCheck       >= 2.14 && < 2.18
                   , tasty            >= 1.4  && < 1.6

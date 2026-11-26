@@ -873,8 +873,9 @@ stream is half-closed (remote) (C4).
   on any frame and had a 30 s upload-stall timer that one octet every
   29 s defeated.)
 
-**C9. `Expect`.** `Expect` is taken out of the fields, as HTTP/1.1
-does. `100-continue` (when content is to follow): the core sends the
+**C9. `Expect`.** `Expect` stays in the fields, as HTTP/1.1 leaves it
+(corrected while building part 2: the first version said HTTP/1.1
+removes it). `100-continue` (when content is to follow): the core sends the
 100 on the stream's first `WantContent`, which the driver feeds when
 the handler first reads with nothing queued, as HTTP/1.1's core sends
 it when the handler first asks for content (D7 there). So a handler

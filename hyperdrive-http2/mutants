@@ -377,8 +377,8 @@ why: the SETTINGS timer starts when the client has started (C8)
 + let started = map (+ configSettingsTimeout (cConfig c')) (cSettingsSent c')
 
 why: before the client has started, only the head timeout runs
-- ++ (if cPhase c == Running then take 1 (cSettingsSent c) else []) of
-+ ++ take 1 (cSettingsSent c) of
+- ++ (if cPhase c == Running then take 1 (cSettingsSent c) else [])
++ ++ take 1 (cSettingsSent c)
 
 why: Sent may not report more than was emitted
 - | n > cUnsent c -> misuse SentMoreThanEmitted c
@@ -397,3 +397,125 @@ file: src/Hyperdrive/HPACK/Encode.hs
 why: an entry larger than a quarter of the table is not indexed, or it would empty both tables (H1)
 - | n `elem` indexedNames, entrySize n v <= tableMaxSize t `div` 4 = (Literal 6 0x40 nameIndex n v, insertEntry n v t)
 + | n `elem` indexedNames = (Literal 6 0x40 nameIndex n v, insertEntry n v t)
+
+file: src/Hyperdrive/HTTP2/Connection.hs
+
+why: nothing may come between a HEADERS and its CONTINUATIONs (RFC 9113 Section 6.2)
+- (Just _, _) -> stop acc (goAway c ProtocolError)
++ (Just _, _) -> frameOutsideBlock now c f acc
+
+why: a CONTINUATION must be on the HEADERS' stream (Section 6.2)
+- | sid == bStream b -> continuation now c b end frag acc
++ | True -> continuation now c b end frag acc
+
+why: a CONTINUATION with no HEADERS before it is a connection error (Section 6.10)
+- (Nothing, ContinuationFrame _ _ _) -> stop acc (goAway c ProtocolError)
++ (Nothing, ContinuationFrame _ _ _) -> frameOutsideBlock now c f acc
+
+why: client streams are odd (Section 5.1.1)
+- | even sid -> stop acc (goAway c ProtocolError)
++ | False -> stop acc (goAway c ProtocolError)
+
+why: the encoded block is bounded at four times MAX_HEADER_LIST_SIZE (C7)
+- maxEncoded c = 4 * fromIntegral (configMaxHeaderListSize (cConfig c))
++ maxEncoded c = 8 * fromIntegral (configMaxHeaderListSize (cConfig c))
+
+why: the bound holds across CONTINUATIONs, as the block arrives (C7, the CONTINUATION flood)
+- | len > maxEncoded c = stop acc (goAway c EnhanceYourCalm)
++ | False = stop acc (goAway c EnhanceYourCalm)
+
+why: an empty CONTINUATION costs budget (C10)
+- | B.null frag = charge 1 c $ \c1 -> continue c1
++ | B.null frag = continue c
+
+why: a field block that does not decode is a COMPRESSION_ERROR (Section 4.3)
+- Left _ -> stop acc (goAway c CompressionError)
++ Left _ -> stop acc (goAway c ProtocolError)
+
+why: the 101st open stream is refused (Section 5.1.2)
+- | active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
++ | active > configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
+
+why: reset streams whose handlers still run are bounded too (C6)
+- | active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
++ | active >= configMaxConcurrentStreams cfg =
+
+why: a refused stream costs budget (C10)
+- charge 1 c $ \c1 -> emit [renderRstStream (StreamId sid) RefusedStream] c1
++ emit [renderRstStream (StreamId sid) RefusedStream] c
+
+why: more than 100 fields is a 431 (D9)
+- | length fs > configMaxFields cfg -> refuse tooLarge
++ | length fs > configMaxFields cfg + 1 -> refuse tooLarge
+
+why: a response the core makes itself costs budget (C10)
+- refuse status = charge 1 c $ \c1 -> respond status sid endStream c1
++ refuse status = respond status sid endStream c
+
+why: a malformed request costs budget (C10)
+- malformed = charge 1 c $ \c1 -> emit [renderRstStream (StreamId sid) ProtocolError] c1
++ malformed = emit [renderRstStream (StreamId sid) ProtocolError] c
+
+why: after a response to a request still sending, RST_STREAM NO_ERROR (D10 case 3)
+- ++ [renderRstStream (StreamId sid) NoError | not requestEnded]
++ ++ [renderRstStream (StreamId sid) NoError | False]
+
+why: an expectation other than 100-continue gets 417 (C9)
+- | any (/= "100-continue") expectations = refuse ExpectationFailed
++ | False = refuse ExpectationFailed
+
+why: a content-length with no content following is malformed (Section 8.1.1)
+- | endStream, maybe False (/= 0) (controlContentLength rc) = malformed
++ | False, maybe False (/= 0) (controlContentLength rc) = malformed
+
+why: END_STREAM on the request's HEADERS half-closes the stream (Section 5.1)
+- { sState = if endStream then HalfClosedRemote else Open
++ { sState = Open
+
+why: trailers must carry END_STREAM (Section 8.1)
+- | not endStream = streamError c sid st ProtocolError
++ | False = streamError c sid st ProtocolError
+
+why: content shorter than its declared length is malformed (Section 8.1.1)
+- | maybe False (/= sReceived st) (sContentLength st) ->
++ | False ->
+
+why: RST_STREAM on an idle stream is a connection error (Section 5.1)
+- | sid > cLastStream c -> stop acc (goAway c ProtocolError)
++ | False -> stop acc (goAway c ProtocolError)
+
+why: a client's reset before our response costs budget (rapid reset, C10)
+- charge 1 c $ \c1 -> next (ended sid st c1, [RequestAborted (StreamId sid) (ResetByClient code)])
++ next (ended sid st c, [RequestAborted (StreamId sid) (ResetByClient code)])
+
+why: a reset stream keeps its slot while its handler runs (C6)
+- | sHandler st = c { cStreams = M.insert sid st { sState = ClosedHeld } (cStreams c) }
++ | False = c { cStreams = M.insert sid st { sState = ClosedHeld } (cStreams c) }
+
+why: the handler's return frees a held slot
+- ClosedHeld -> result c { cStreams = M.delete sid (cStreams c) } []
++ ClosedHeld -> result c []
+
+why: a handler that returns without responding failed: 500 (C2)
+- s' -> respond InternalServerError sid (s' == HalfClosedRemote) c { cStreams = M.delete sid (cStreams c) }
++ s' -> result c { cStreams = M.delete sid (cStreams c) } []
+
+why: a new stream raises the highest identifier, which tells idle from closed (C4)
+- | sid > cLastStream c = newStream c { cLastStream = sid } sid endStream decoded
++ | sid > cLastStream c = newStream c sid endStream decoded
+
+why: HEADERS on a half-closed (remote) stream is a stream error STREAM_CLOSED (Section 5.1)
+- HalfClosedRemote -> streamError c sid st StreamClosed
++ HalfClosedRemote -> result c []
+
+why: an unfinished field block times out (C8)
+- else if maybe False ((<= now) . bDeadline) (cBlock c) then goAway c ProtocolError
++ else if False then goAway c ProtocolError
+
+why: the field block's deadline is among the connection's (C1)
+- ++ maybe [] (pure . bDeadline) (cBlock c) of
++ ++ [] of
+
+why: the client's HEADER_TABLE_SIZE bounds our encoder (H4)
+- , cEncoder = foldl tableSize (cEncoder c1) ss } >>> next
++ , cEncoder = cEncoder c1 } >>> next

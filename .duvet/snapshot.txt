@@ -2891,9 +2891,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]: Field blocks MUST
     TEXT[!MUST]:    be transmitted as a contiguous sequence of frames, with no
     TEXT[!MUST]:    interleaved frames of any other type or from any other stream.
-    TEXT[!MUST]: A receiver
-    TEXT[!MUST]:    MUST terminate the connection with a connection error (Section 5.4.1)
-    TEXT[!MUST]:    of type COMPRESSION_ERROR if it does not decompress a field block.
+    TEXT[!MUST,implementation]: A receiver
+    TEXT[!MUST,implementation]:    MUST terminate the connection with a connection error (Section 5.4.1)
+    TEXT[!MUST,implementation]:    of type COMPRESSION_ERROR if it does not decompress a field block.
     TEXT[!MUST]:    A decoding error in a field block MUST be treated as a connection
     TEXT[!MUST]:    error (Section 5.4.1) of type COMPRESSION_ERROR.
 
@@ -2914,9 +2914,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]:    instruction.
 
   SECTION: [Stream States](#section-5.1)
-    TEXT[!MUST]:       Receiving any frame other than HEADERS or PRIORITY on a stream in
-    TEXT[!MUST]:       this state MUST be treated as a connection error (Section 5.4.1)
-    TEXT[!MUST]:       of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:       Receiving any frame other than HEADERS or PRIORITY on a stream in
+    TEXT[!MUST,implementation,test]:       this state MUST be treated as a connection error (Section 5.4.1)
+    TEXT[!MUST,implementation,test]:       of type PROTOCOL_ERROR.
     TEXT[!MUST]: If this stream is initiated by the
     TEXT[!MUST]:       server, as described in Section 5.1.1, then receiving a HEADERS
     TEXT[!MUST]:       frame MUST also be treated as a connection error (Section 5.4.1)
@@ -2932,10 +2932,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:       Receiving any type of frame other than HEADERS, RST_STREAM, or
     TEXT[!MUST]:       PRIORITY on a stream in this state MUST be treated as a connection
     TEXT[!MUST]:       error (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MUST]:       If an endpoint receives additional frames, other than
-    TEXT[!MUST]:       WINDOW_UPDATE, PRIORITY, or RST_STREAM, for a stream that is in
-    TEXT[!MUST]:       this state, it MUST respond with a stream error (Section 5.4.2) of
-    TEXT[!MUST]:       type STREAM_CLOSED.
+    TEXT[!MUST,implementation,test]:       If an endpoint receives additional frames, other than
+    TEXT[!MUST,implementation,test]:       WINDOW_UPDATE, PRIORITY, or RST_STREAM, for a stream that is in
+    TEXT[!MUST,implementation,test]:       this state, it MUST respond with a stream error (Section 5.4.2) of
+    TEXT[!MUST,implementation,test]:       type STREAM_CLOSED.
     TEXT[!MUST]:       An endpoint MUST NOT send frames other than PRIORITY on a closed
     TEXT[!MUST]:       stream.
     TEXT[!MAY]: An endpoint MAY treat receipt of any other type of frame
@@ -2957,8 +2957,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!SHOULD]:    PROTOCOL_ERROR.
 
   SECTION: [Stream Identifiers](#section-5.1.1)
-    TEXT[!MUST]: Streams
-    TEXT[!MUST]:    initiated by a client MUST use odd-numbered stream identifiers; those
+    TEXT[!MUST,implementation]: Streams
+    TEXT[!MUST,implementation]:    initiated by a client MUST use odd-numbered stream identifiers
+    TEXT[!MUST]: ; those
     TEXT[!MUST]:    initiated by the server MUST use even-numbered stream identifiers.
     TEXT[!MUST]:    The identifier of a newly established stream MUST be numerically
     TEXT[!MUST]:    greater than all streams that the initiating endpoint has opened or
@@ -2969,10 +2970,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
 
   SECTION: [Stream Concurrency](#section-5.1.2)
     TEXT[!MUST]:    Endpoints MUST NOT exceed the limit set by their peer.
-    TEXT[!MUST]: An endpoint
-    TEXT[!MUST]:    that receives a HEADERS frame that causes its advertised concurrent
-    TEXT[!MUST]:    stream limit to be exceeded MUST treat this as a stream error
-    TEXT[!MUST]:    (Section 5.4.2) of type PROTOCOL_ERROR or REFUSED_STREAM.
+    TEXT[!MUST,implementation]: An endpoint
+    TEXT[!MUST,implementation]:    that receives a HEADERS frame that causes its advertised concurrent
+    TEXT[!MUST,implementation]:    stream limit to be exceeded MUST treat this as a stream error
+    TEXT[!MUST,implementation]:    (Section 5.4.2) of type PROTOCOL_ERROR or REFUSED_STREAM.
 
   SECTION: [Flow-Control Principles](#section-5.2.1)
     TEXT[!MAY]: A receiver MAY choose to set any window size that it
@@ -3078,12 +3079,12 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY]: A receiver is
     TEXT[!MAY]:       not obligated to verify padding but MAY treat non-zero padding as
     TEXT[!MAY]:       a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MUST]:       A HEADERS frame without the END_HEADERS flag set MUST be followed
-    TEXT[!MUST]:       by a CONTINUATION frame for the same stream.
-    TEXT[!MUST]: A receiver MUST
-    TEXT[!MUST]:       treat the receipt of any other type of frame or a frame on a
-    TEXT[!MUST]:       different stream as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:       PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:       A HEADERS frame without the END_HEADERS flag set MUST be followed
+    TEXT[!MUST,implementation,test]:       by a CONTINUATION frame for the same stream.
+    TEXT[!MUST,implementation,test]: A receiver MUST
+    TEXT[!MUST,implementation,test]:       treat the receipt of any other type of frame or a frame on a
+    TEXT[!MUST,implementation,test]:       different stream as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:       PROTOCOL_ERROR.
     TEXT[!MUST,implementation,test]:    HEADERS frames MUST be associated with a stream.
     TEXT[!MUST,implementation,test]: If a HEADERS frame
     TEXT[!MUST,implementation,test]:    is received whose Stream Identifier field is 0x00, the recipient MUST
@@ -3370,11 +3371,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]:    CONTINUATION frame is received with a Stream Identifier field of
     TEXT[!MUST,implementation,test]:    0x00, the recipient MUST respond with a connection error
     TEXT[!MUST,implementation,test]:    (Section 5.4.1) of type PROTOCOL_ERROR.
-    TEXT[!MUST]:    A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
-    TEXT[!MUST]:    CONTINUATION frame without the END_HEADERS flag set.
-    TEXT[!MUST]: A recipient
-    TEXT[!MUST]:    that observes violation of this rule MUST respond with a connection
-    TEXT[!MUST]:    error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
+    TEXT[!MUST,implementation,test]:    CONTINUATION frame without the END_HEADERS flag set.
+    TEXT[!MUST,implementation,test]: A recipient
+    TEXT[!MUST,implementation,test]:    that observes violation of this rule MUST respond with a connection
+    TEXT[!MUST,implementation,test]:    error (Section 5.4.1) of type PROTOCOL_ERROR.
 
   SECTION: [Error Codes](#section-7)
     TEXT[!MUST,implementation]:    Unknown or unsupported error codes MUST NOT trigger any special
@@ -3392,10 +3393,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]: An endpoint that
     TEXT[!MUST,implementation,test]:    receives pseudo-header fields in trailers MUST treat the request or
     TEXT[!MUST,implementation,test]:    response as malformed (Section 8.1.1).
-    TEXT[!MUST]:    An endpoint that receives a HEADERS frame without the END_STREAM flag
-    TEXT[!MUST]:    set after receiving the HEADERS frame that opens a request or after
-    TEXT[!MUST]:    receiving a final (non-informational) status code MUST treat the
-    TEXT[!MUST]:    corresponding request or response as malformed (Section 8.1.1).
+    TEXT[!MUST,implementation,test]:    An endpoint that receives a HEADERS frame without the END_STREAM flag
+    TEXT[!MUST,implementation,test]:    set after receiving the HEADERS frame that opens a request or after
+    TEXT[!MUST,implementation,test]:    receiving a final (non-informational) status code MUST treat the
+    TEXT[!MUST,implementation,test]:    corresponding request or response as malformed (Section 8.1.1).
     TEXT[!MAY]: When this is true, a server MAY
     TEXT[!MAY]:    request that the client abort transmission of a request without error
     TEXT[!MAY]:    by sending a RST_STREAM with an error code of NO_ERROR after sending
@@ -3405,6 +3406,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,exception]:    discretion for other reasons.
 
   SECTION: [Malformed Messages](#section-8.1.1)
+    TEXT[implementation,test]: A request or response is also malformed
+    TEXT[implementation,test]:    if the value of a content-length header field does not equal the sum
+    TEXT[implementation,test]:    of the DATA frame payload lengths that form the content, unless the
+    TEXT[implementation,test]:    message is defined as having no content.
     TEXT[!MAY]:    A response that is defined to have no content, as described in
     TEXT[!MAY]:    Section 6.4.1 of [HTTP], MAY have a non-zero content-length header
     TEXT[!MAY]:    field, even though no content is included in DATA frames.
