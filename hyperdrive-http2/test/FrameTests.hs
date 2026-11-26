@@ -17,6 +17,7 @@ frameTests = testGroup "Frames (RFC 9113 Sections 4 and 6)"
   , testProperty "a frame not all there asks for the octets it needs" prop_incomplete
   , testProperty "each rule broken once gives that rule's error" prop_nearMisses
   , testProperty "the boundaries, by example" prop_boundaries
+  , testProperty "frames over a maximum other than the default" prop_otherMaxima
   , testProperty "rendered frames parse back" prop_render
   , testProperty "a field block is split into HEADERS and CONTINUATIONs of at most the peer's size" prop_renderHeaders
   ]
@@ -234,7 +235,10 @@ genNearMiss = oneof
        sid <- streamId; body <- someBytes; n <- choose (1, 20); i <- choose (0, n - 1); x <- choose (1, 255)
        let padding = B.take i (B.replicate n 0) <> B.singleton x <> B.replicate (n - i - 1) 0
            payload = B.singleton (fromIntegral n) <> B.replicate fixed 0 <> body <> padding
-       pure ("padding not zero", encodeWire (Wire t fl False sid payload), conn ProtocolError PaddingNotZero)
+       -- F4: the padding's contents are not checked
+       let expected = if t == 0x0 then Parsed (DataFrame (StreamId sid) False body (B.length payload)) (9 + B.length payload)
+                      else Parsed (HeadersFrame (StreamId sid) False False body) (9 + B.length payload)
+       pure ("padding not zero is accepted (F4)", encodeWire (Wire t fl False sid payload), expected)
   , do -- PADDED without room for the Pad Length (and the priority fields)
       (t, fl, need) <- elements [(0x0, 0x8, 1), (0x1, 0x8, 1), (0x1, 0x28, 6), (0x1, 0x20, 5)]
       sid <- streamId; n <- choose (0, need - 1)
@@ -398,6 +402,14 @@ prop_boundaries = once $ conjoin
              === Parsed (GoAwayFrame (StreamId 0) NoError "") 17
   ]
   where settingsOne i v = encodeWire (Wire 0x4 0 False 0 (be16 i <> be32 v))
+
+-- our SETTINGS_MAX_FRAME_SIZE need not be the default: a frame exactly
+-- at it waits for its payload, one octet over is refused
+prop_otherMaxima :: Property
+prop_otherMaxima = forAll (choose (16384, 0xFFFFFF - 1)) $ \m -> forAll (choose (0, 0xFF)) $ \t ->
+  let header len = B.pack [fromIntegral (len `shiftR` 16), fromIntegral (len `shiftR` 8), fromIntegral len, t, 0, 0, 0, 0, 1]
+  in parseFrame m (header (m + 1)) === Refused (FrameError Connection FrameSizeError TooLong)
+     .&&. parseFrame m (header m) === Incomplete (9 + m)
 
 prop_nearMisses :: Property
 prop_nearMisses = forAll genNearMiss $ \(rule, wire, expected) ->

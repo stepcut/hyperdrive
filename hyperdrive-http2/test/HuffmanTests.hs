@@ -29,6 +29,7 @@ huffmanTests rows = testGroup "The Huffman code (RFC 7541 Section 5.2, Appendix 
   , testProperty "decoding agrees with a bit-by-bit decoder of Appendix B's table, on any input"
       (prop_reference rows)
   , testProperty "padding and EOS, at the boundaries" (prop_padding rows)
+  , testProperty "decoding 5-bit codes gives 8 octets for every 5" prop_shortest
   ]
 
 prop_table :: [HuffmanRow] -> Property
@@ -66,6 +67,15 @@ instance Arbitrary Octets where
     , listOf (elements [0, 1, 0xFF, 0xFE, 127, 128, 10, 13, 22])  -- long codes
     ]
   shrink (Octets b) = Octets . B.pack <$> shrink (B.unpack b)
+
+-- the decoder's output is at most 8/5 of its input: the shortest
+-- codes are 5 bits, and the bound is reached
+prop_shortest :: Property
+prop_shortest = forAll (listOf (elements (B.unpack "012aceiost"))) $ \cs ->
+  let s = B.pack cs
+      e = encodeHuffman s
+  in decodeHuffman e === Right s
+     .&&. counterexample "not 8 symbols for 5 octets" (B.length s >= (B.length e * 8) `div` 5 - 1)
 
 prop_roundTrip :: Octets -> Property
 prop_roundTrip (Octets b) = decodeHuffman (encodeHuffman b) === Right b

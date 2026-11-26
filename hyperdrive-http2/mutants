@@ -139,8 +139,8 @@ why: sensitive fields are never-indexed literals (H2, RFC 7541 Section 7.1.3)
 + | n `elem` neverIndexedNames = (Literal 4 0x00 nameIndex n v, t)
 
 why: a field sent with incremental indexing enters the encoder's copy of the table too, or the two sides' tables differ
-- | n `elem` indexedNames = (Literal 6 0x40 nameIndex n v, insertEntry n v t)
-+ | n `elem` indexedNames = (Literal 6 0x40 nameIndex n v, t)
+- , entrySize n v <= tableMaxSize t `div` 4 = (Literal 6 0x40 nameIndex n v, insertEntry n v t)
++ , entrySize n v <= tableMaxSize t `div` 4 = (Literal 6 0x40 nameIndex n v, t)
 
 why: the dynamic table's entries start at index 62
 - | Just i <- elemIndex (n, v) entries = (Index (staticTableLength + 1 + i), t)
@@ -181,20 +181,28 @@ why: a name taken from a table is not also sent as a string
 file: src/Hyperdrive/HPACK/Decode.hs
 
 why: a limit below HTTP/2's initial 4,096 obliges the encoder's first block to start with a size update (RFC 9113 Section 4.3.1)
-- newDecoder initial limit = Decoder (emptyTable initial) limit (limit < initial)
-+ newDecoder initial limit = Decoder (emptyTable initial) limit False
+- newDecoder initial limit = Decoder (emptyTable initial) limit (if limit < initial then Just limit else Nothing)
++ newDecoder initial limit = Decoder (emptyTable initial) limit Nothing
 
 why: a reduction is still owed after a later increase, until a block has signalled it (RFC 7541 Section 4.2)
-- , updateRequired = updateRequired d || limit < tableMaxSize (decoderTable d) }
-+ , updateRequired = limit < tableMaxSize (decoderTable d) }
+- Just m -> Just (min m limit)
++ Just _ -> if limit < tableMaxSize (decoderTable d) then Just limit else Nothing
+
+why: the owed update is to at most the smallest limit since the last block (RFC 7541 Section 4.2)
+- Just m -> Just (min m limit)
++ Just m -> Just (max m limit)
+
+why: the owed update must not be above the reduced limit (RFC 9113 Section 4.3.1)
+- Decoded v _ -> v <= m
++ Decoded _ _ -> True
 
 why: after a reduction, a block that does not start with a size update is a COMPRESSION_ERROR (RFC 9113 Section 4.3.1)
-- | required && not startsWithUpdate = Left TableSizeUpdateMissing
-+ | False && not startsWithUpdate = Left TableSizeUpdateMissing
+- | Just m <- owed, not (startsWithUpdateTo m) = Left TableSizeUpdateMissing
++ | Just m <- owed, False, not (startsWithUpdateTo m) = Left TableSizeUpdateMissing
 
 why: the owed update is owed once
-- in Right (d, Decoder t limit False)
-+ in Right (d, Decoder t limit required)
+- in Right (d, Decoder t limit Nothing)
++ in Right (d, Decoder t limit owed)
 
 file: src/Hyperdrive/HTTP2/Frame.hs
 
@@ -225,10 +233,6 @@ why: a PADDED frame needs room for its Pad Length and its other fields (Section 
 why: padding as long as the payload is a connection error (Section 6.1)
 - | 1 + fixed + padLen > B.length p = err ProtocolError PaddingTooLong
 + | fixed + padLen > B.length p = err ProtocolError PaddingTooLong
-
-why: non-zero padding is refused (F4)
-- | B.any (/= 0) padding = err ProtocolError PaddingNotZero
-+ | False = err ProtocolError PaddingNotZero
 
 why: the padding is not part of the data
 - | otherwise = Right (B.take (B.length p - 1 - padLen) (B.drop 1 p))
@@ -370,4 +374,10 @@ why: the connection window starts at 65,535 (Section 6.9.2)
 
 why: INITIAL_WINDOW_SIZE is sent when it differs from 65,535
 - ++ [ InitialWindowSize (configStreamWindow config) | configStreamWindow config /= 65535 ]
-+ ++ [ InitialWindowSize (configStreamWindow config) | configStreamWindow config /= 65536 ]
++ ++ [ InitialWindowSize (configStreamWindow config) | configStreamWindow config /= 1048576 ]
+
+file: src/Hyperdrive/HPACK/Encode.hs
+
+why: an entry larger than a quarter of the table is not indexed, or it would empty both tables (H1)
+- | n `elem` indexedNames, entrySize n v <= tableMaxSize t `div` 4 = (Literal 6 0x40 nameIndex n v, insertEntry n v t)
++ | n `elem` indexedNames = (Literal 6 0x40 nameIndex n v, insertEntry n v t)

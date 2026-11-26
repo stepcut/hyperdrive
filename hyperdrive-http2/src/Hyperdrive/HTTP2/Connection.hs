@@ -45,7 +45,7 @@ data Config = Config
   , configHeaderTableSize      :: !Word32  -- ^ D9: 4,096 (the protocol's default)
   , configMaxFrameSize         :: !Int     -- ^ D9: 16,384 (the protocol's default)
   , configMaxHeaderListSize    :: !Word32  -- ^ D9: 32 KiB
-  , configStreamWindow         :: !Word32  -- ^ D6: 65,536
+  , configStreamWindow         :: !Word32  -- ^ D6: 1 MiB
   , configConnectionWindow     :: !Word32  -- ^ D6: 1 MiB
   , configHeadTimeout          :: !Time    -- ^ C8: the preface and first SETTINGS, 30 s
   , configSettingsTimeout      :: !Time    -- ^ C8: our SETTINGS unacknowledged, 10 s
@@ -60,7 +60,7 @@ defaultConfig = Config
   , configHeaderTableSize = 4096
   , configMaxFrameSize = defaultMaxFrameSize
   , configMaxHeaderListSize = 32768
-  , configStreamWindow = 65536
+  , configStreamWindow = 1048576
   , configConnectionWindow = 1048576
   , configHeadTimeout = 30000
   , configSettingsTimeout = 10000

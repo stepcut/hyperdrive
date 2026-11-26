@@ -134,7 +134,6 @@ data Reason
   | NeedsStream          -- ^ stream 0 for a frame that needs a stream
   | NeedsConnection      -- ^ a stream for a frame that applies to the connection
   | PaddingTooLong       -- ^ the padding leaves no room for the rest
-  | PaddingNotZero       -- ^ F4
   | AckWithPayload       -- ^ a SETTINGS acknowledgement with settings
   | BadEnablePush        -- ^ SETTINGS_ENABLE_PUSH other than 0 or 1
   | BadInitialWindowSize -- ^ SETTINGS_INITIAL_WINDOW_SIZE above 2^31 - 1
@@ -261,11 +260,13 @@ unpad flags fixed p
   -- # Padding octets MUST be set to zero when sending.  A receiver is
   -- #    not obligated to verify padding but MAY treat non-zero padding as
   -- #    a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-  | B.any (/= 0) padding = err ProtocolError PaddingNotZero
+  --
+  -- The padding's contents are not checked (F4): none of nine
+  -- implementations surveyed checks them. The serializer never sends
+  -- padding.
   | otherwise = Right (B.take (B.length p - 1 - padLen) (B.drop 1 p))
   where
     padLen = fromIntegral (B.head p)
-    padding = B.drop (B.length p - padLen) p
 
 dataFrame :: Word8 -> StreamId -> ByteString -> Either FrameError Frame
 dataFrame flags sid p = do

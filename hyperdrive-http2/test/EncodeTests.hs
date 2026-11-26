@@ -108,16 +108,16 @@ prop_policy = forAll genFields $ \fs ->
     check (n, v) r = counterexample (show ((n, v), r)) $ case r of
       Indexed _ -> property (n `notElem` neverIndexedNames)
       Literal kind name value hv ->
-        kind === expectedKind n .&&. value === v .&&. huffmanRule v hv
+        kind === expectedKind n v .&&. value === v .&&. huffmanRule v hv
         .&&. case name of
                NameLiteral l hl -> l === n .&&. huffmanRule l hl
                  .&&. counterexample "a literal name that is in the static table"
                         (n `notElem` map fst staticTable)
                NameIndex _ -> property True
       SizeUpdate _ -> counterexample "a size update without a change" False
-    expectedKind n
+    expectedKind n v
       | n `elem` neverIndexedNames = NeverIndexed
-      | n `elem` indexedNames = WithIndexing
+      | n `elem` indexedNames, B.length n + B.length v + 32 <= 4096 `div` 4 = WithIndexing
       | otherwise = WithoutIndexing
     huffmanRule s h = counterexample "Huffman only when strictly shorter" $
       h === (huffmanLength s < B.length s)

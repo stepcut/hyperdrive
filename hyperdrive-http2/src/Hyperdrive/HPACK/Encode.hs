@@ -81,12 +81,17 @@ setPeerTableSize peer e = e { encPeer = peer, encPending = Just (smallest, size)
     smallest = maybe size (min size . fst) (encPending e)
 
 -- | The names whose fields enter the dynamic table (H1): their values
--- repeat from response to response.
+-- repeat from response to response, and none reflects the request (as
+-- @access-control-allow-origin@ usually reflects @Origin@, which is why
+-- it is not here). An entry is indexed only if it is at most a quarter
+-- of the table: a larger one would empty both sides' tables.
 indexedNames :: [ByteString]
 indexedNames =
   [ ":status", "content-type", "server", "cache-control", "vary", "content-encoding"
   , "date", "alt-svc", "strict-transport-security", "x-content-type-options"
-  , "access-control-allow-origin" ]
+  , "content-security-policy", "permissions-policy", "referrer-policy", "x-frame-options"
+  , "cross-origin-opener-policy", "cross-origin-embedder-policy"
+  , "cross-origin-resource-policy", "accept-ranges" ]
 
 -- = https://www.rfc-editor.org/rfc/rfc7541#section-7.1.3
 -- # An encoder might also choose not to index values for header fields
@@ -142,7 +147,7 @@ representOne t n v
   | n `elem` neverIndexedNames = (Literal 4 0x10 nameIndex n v, t)
   | Just i <- M.lookup (n, v) staticFull = (Index i, t)
   | Just i <- elemIndex (n, v) entries = (Index (staticTableLength + 1 + i), t)
-  | n `elem` indexedNames = (Literal 6 0x40 nameIndex n v, insertEntry n v t)
+  | n `elem` indexedNames, entrySize n v <= tableMaxSize t `div` 4 = (Literal 6 0x40 nameIndex n v, insertEntry n v t)
   | otherwise = (Literal 4 0x00 nameIndex n v, t)
   where
     entries = tableEntries t

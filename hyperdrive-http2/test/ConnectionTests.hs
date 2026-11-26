@@ -50,7 +50,7 @@ prop_serverPreface = once $
   -- # SETTINGS frame (Section 6.5) that MUST be the first frame the server
   -- # sends in the HTTP/2 connection.
   fst (frames (snd (newConn defaultConfig 0)))
-    === [ SettingsFrame 3 [MaxConcurrentStreams 100, InitialWindowSize 65536, MaxHeaderListSize 32768]
+    === [ SettingsFrame 3 [MaxConcurrentStreams 100, InitialWindowSize 1048576, MaxHeaderListSize 32768]
         , WindowUpdateFrame (StreamId 0) (1048576 - 65535) ]
 
 prop_clientPreface :: Property

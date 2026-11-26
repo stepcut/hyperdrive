@@ -32,12 +32,13 @@ import Hyperdrive.HPACK.Table
 
 -- | A decoder's state: its dynamic table; the largest size an update
 -- may set it to (in HTTP/2, the SETTINGS_HEADER_TABLE_SIZE the server
--- sent, once acknowledged); and whether the next block must start with
--- a size update, because the limit fell below the table's size.
+-- sent, once acknowledged); and, when the limit has fallen below the
+-- table's size, the size update the next block must start with: one
+-- to at most the smallest limit set since the last block.
 data Decoder = Decoder
-  { decoderTable   :: !DynamicTable
-  , decoderLimit   :: !Int
-  , updateRequired :: !Bool
+  { decoderTable :: !DynamicTable
+  , decoderLimit :: !Int
+  , owedUpdate   :: !(Maybe Int)
   } deriving (Eq, Show)
 
 -- = https://www.rfc-editor.org/rfc/rfc9113#section-4.3.1
@@ -51,7 +52,7 @@ data Decoder = Decoder
 -- updates: a limit above the initial size lets the encoder grow it,
 -- and one below obliges it to shrink it in its first block.
 newDecoder :: Int -> Int -> Decoder
-newDecoder initial limit = Decoder (emptyTable initial) limit (limit < initial)
+newDecoder initial limit = Decoder (emptyTable initial) limit (if limit < initial then Just limit else Nothing)
 
 -- = https://www.rfc-editor.org/rfc/rfc9113#section-4.3.1
 -- # An endpoint MUST treat a field block that follows an
@@ -60,14 +61,24 @@ newDecoder initial limit = Decoder (emptyTable initial) limit (limit < initial)
 -- # does not start with a conformant Dynamic Table Size Update
 -- # instruction.
 
+-- = https://www.rfc-editor.org/rfc/rfc7541#section-4.2
+-- # In the case that this size is
+-- # changed more than once in this interval, the smallest maximum table
+-- # size that occurs in that interval MUST be signaled in a dynamic table
+-- # size update.
+
 -- | A new limit for size updates (in HTTP/2, a new
 -- SETTINGS_HEADER_TABLE_SIZE, once the peer has acknowledged it). The
 -- table keeps its size until the peer's next size update; a limit below
--- that size obliges the next block to start with one.
+-- that size obliges the next block to start with one, to at most the
+-- smallest limit set before that block.
 setDecoderLimit :: Int -> Decoder -> Decoder
 setDecoderLimit limit d = d
   { decoderLimit = limit
-  , updateRequired = updateRequired d || limit < tableMaxSize (decoderTable d) }
+  , owedUpdate = case owedUpdate d of
+      Just m -> Just (min m limit)
+      Nothing | limit < tableMaxSize (decoderTable d) -> Just limit
+              | otherwise -> Nothing }
 
 data Decoded
   = Fields [(ByteString, ByteString)]
@@ -96,11 +107,16 @@ data DecodeError
 -- measured as RFC 9113 Section 6.5.2 does (each field's name and value
 -- and 32).
 decodeBlock :: Int -> Decoder -> ByteString -> Either DecodeError (Decoded, Decoder)
-decodeBlock maxList (Decoder table limit required) bs
-  | required && not startsWithUpdate = Left TableSizeUpdateMissing
+decodeBlock maxList (Decoder table limit owed) bs
+  | Just m <- owed, not (startsWithUpdateTo m) = Left TableSizeUpdateMissing
   | otherwise = go table 0 0 [] 0
   where
-    startsWithUpdate = not (B.null bs) && BU.unsafeIndex bs 0 .&. 0xE0 == 0x20
+    -- the block's first representation is a size update to at most m
+    startsWithUpdateTo m =
+      not (B.null bs) && BU.unsafeIndex bs 0 .&. 0xE0 == 0x20
+        && case decodeInteger 5 bs 0 of
+             Decoded v _ -> v <= m
+             _ -> False
     -- i: the next octet; listSize: the field list's size so far; acc:
     -- fields, last first; count: fields so far
     go !t !i !listSize acc !count
@@ -109,7 +125,7 @@ decodeBlock maxList (Decoder table limit required) bs
           -- # A decoder MUST order header fields in the decoded header list
           -- # according to their ordering in the header block.
           let d = if listSize > maxList then ListTooLarge else Fields (reverse acc)
-          in Right (d, Decoder t limit False)
+          in Right (d, Decoder t limit Nothing)
       | otherwise =
           let b = BU.unsafeIndex bs i
           in if b .&. 0x80 /= 0 then indexed t i listSize acc count

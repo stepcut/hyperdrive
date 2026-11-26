@@ -308,9 +308,15 @@ prop_errors = once $ conjoin
       === Right 100
   , fmap fst (decodeBlock maxBound (newDecoder 4096 100) (enc [SizeUpdate 0, SizeUpdate 100])) === Right (Fields [])
   , decodeBlock maxBound (setDecoderLimit 1000 d0) (enc [Indexed 2]) === Left TableSizeUpdateMissing
-    -- a reduction, then an increase before any block: still owed (RFC 7541 Section 4.2)
+    -- a reduction, then an increase before any block: still owed, and
+    -- to at most the smaller limit (RFC 7541 Section 4.2)
   , decodeBlock maxBound (setDecoderLimit 8000 (setDecoderLimit 100 d0)) (enc [Indexed 2])
       === Left TableSizeUpdateMissing
+  , decodeBlock maxBound (setDecoderLimit 8000 (setDecoderLimit 100 d0)) (enc [SizeUpdate 8000])
+      === Left TableSizeUpdateMissing
+  , fmap fst (decodeBlock maxBound (setDecoderLimit 8000 (setDecoderLimit 100 d0)) (enc [SizeUpdate 100, SizeUpdate 8000]))
+      === Right (Fields [])
+  , decodeBlock maxBound (setDecoderLimit 1000 d0) (enc [SizeUpdate 1001]) === Left TableSizeUpdateMissing
     -- the update is owed once: the block after it needs none
   , fmap fst (decodeBlock maxBound (setDecoderLimit 1000 d0) (enc [SizeUpdate 1000]) >>= \(_, d) ->
       decodeBlock maxBound d (enc [Indexed 2])) === Right (Fields [(":method", "GET")])
