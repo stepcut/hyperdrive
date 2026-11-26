@@ -220,6 +220,10 @@ connection is the same client's, so that harm is self-inflicted.
   them to 2 MiB) are in D13, to be decided by measurement.
 - WINDOW_UPDATE is sent once the credit not yet given back reaches half
   the window, not for every read; the core decides, so it is tested.
+- Neither window is ever below 65,535, whatever is configured (found
+  while building the core): the connection's can only be raised
+  (Section 6.9.2), and a client may use a stream's 65,535 before it has
+  our SETTINGS (Section 6.9.3).
 - A handler that responds without reading all of the body: once the
   response is complete, RST_STREAM with NO_ERROR (RFC 9113 Section 8.1
   allows it), instead of HTTP/1.1's reading and discarding.

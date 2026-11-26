@@ -5,6 +5,9 @@ module StreamTests (streamTests) where
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString.Internal as BI
+import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
+import Foreign.Ptr (minusPtr)
 import Data.Word (Word32)
 import Hyperdrive.HPACK.Decode
 import Hyperdrive.HPACK.Encode
@@ -24,6 +27,10 @@ streamTests = testGroup "The connection core: streams and field blocks (C4, C6, 
   , testProperty "refusals: malformed, refused, too large" prop_refusals
   , testProperty "streams: limits, resets, trailers, closed streams" prop_streams
   , testProperty "a request split into CONTINUATIONs and octets gives the same result" prop_split
+  , testProperty "content: DATA, its end, its declared length (C3)" prop_content
+  , testProperty "credit: windows, Consumed, WINDOW_UPDATE at half, credit given back (C3, D6)" prop_credit
+  , testProperty "100 (Continue) on the first read with nothing queued (C9)" prop_continue
+  , testProperty "small slices of a large buffer are copied (C3)" prop_copy
   ]
 
 ------------------------------------------------------------------------------
@@ -74,8 +81,38 @@ rst :: Word32 -> ErrorCode -> ByteString
 rst sid code = renderRstStream (StreamId sid) code
 
 run :: [(Time, Input)] -> (Conn, [Output])
-run = foldl go (newConn defaultConfig 0)
+run = runWith defaultConfig
+
+runWith :: Config -> [(Time, Input)] -> (Conn, [Output])
+runWith config = foldl go (newConn config 0)
   where go (c, outs) (t, i) = let (c', outs') = step t i c in (c', outs ++ outs')
+
+-- the smallest windows (65,535: WINDOW_UPDATE once 32,768 are owed)
+small :: Config
+small = defaultConfig { configStreamWindow = 65535, configConnectionWindow = 65535 }
+
+-- content as DATA frames of at most 16 KiB, END_STREAM on the last
+dataFrames :: Word32 -> Bool -> ByteString -> ByteString
+dataFrames sid end b
+  | B.length b <= 16384 = B.concat (renderData (StreamId sid) end b)
+  | otherwise = B.concat (renderData (StreamId sid) False (B.take 16384 b)) <> dataFrames sid end (B.drop 16384 b)
+
+-- the WINDOW_UPDATEs sent: after the client's SETTINGS were acknowledged
+-- (so not the preface's), or in a step's outputs
+updatesAfterAck :: [Output] -> [(Word32, Word32)]
+updatesAfterAck outs = [ (s, i) | WindowUpdateFrame (StreamId s) i <- drop 1 (dropWhile (/= SettingsAckFrame) (parsed outs)) ]
+
+updates :: [Output] -> [(Word32, Word32)]
+updates outs = [ (s, i) | WindowUpdateFrame (StreamId s) i <- parsed outs ]
+
+content :: [Output] -> [(Word32, ByteString)]
+content outs = [ (s, d) | RequestData (StreamId s) d <- outs ]
+
+ends :: [Output] -> [Word32]
+ends outs = [ s | RequestEnd (StreamId s) _ <- outs ]
+
+misused :: [Output] -> Bool
+misused outs = not (null [() | ProtocolMisuse _ <- outs])
 
 received :: ByteString -> [(Time, Input)]
 received b = [(0, Received (clientStart <> b))]
@@ -354,3 +391,129 @@ prop_split = forAll (choose (0, 4)) $ \n -> forAll (vectorOf n (choose (1, 6))) 
       | otherwise = do
           k <- choose (1, B.length s)
           (B.take k s :) <$> pieces (B.drop k s)
+
+prop_content :: Property
+prop_content = once $ conjoin
+  [ counterexample "content in two DATA frames, then the end" $
+      let [b] = blocks [post]
+          outs = snd (run (received (headers 1 False b <> dataFrames 1 False "hello" <> dataFrames 1 True " world")))
+      in content outs === [(1, "hello"), (1, " world")] .&&. ends outs === [1]
+  , counterexample "content longer than its content-length: malformed" $
+      let [b] = blocks [post ++ [("content-length", "5")]]
+          outs = snd (run (received (headers 1 False b <> dataFrames 1 False "123456")))
+      in aborted outs === [(1, ContentNotAsDeclared)] .&&. seen outs === [SeenReset 1 ProtocolError] .&&. content outs === []
+  , counterexample "content shorter than its content-length at END_STREAM: malformed" $
+      let [b] = blocks [post ++ [("content-length", "5")]]
+      in aborted (snd (run (received (headers 1 False b <> dataFrames 1 True "123")))) === [(1, ContentNotAsDeclared)]
+  , counterexample "content exactly its content-length" $
+      let [b] = blocks [post ++ [("content-length", "5")]]
+          outs = snd (run (received (headers 1 False b <> dataFrames 1 True "12345")))
+      in content outs === [(1, "12345")] .&&. ends outs === [1]
+  , counterexample "DATA after the client's END_STREAM on DATA: STREAM_CLOSED" $
+      let [b] = blocks [post]
+      in seen (snd (run (received (headers 1 False b <> dataFrames 1 True "x" <> dataFrames 1 False "y"))))
+           === [SeenReset 1 StreamClosed]
+  , counterexample "DATA on a half-closed (remote) stream: STREAM_CLOSED" $
+      let [b] = blocks [base]
+      in seen (snd (run (received (headers 1 True b <> dataFrames 1 True "x")))) === [SeenReset 1 StreamClosed]
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1
+  -- # Receiving any frame other than HEADERS or PRIORITY on a stream in
+  -- #    this state MUST be treated as a connection error (Section 5.4.1)
+  -- #    of type PROTOCOL_ERROR.
+  , counterexample "DATA on an idle stream: a connection error" $
+      seen (snd (run (received (dataFrames 1 True "x")))) === [SeenGoAway ProtocolError]
+  , counterexample "empty DATA without END_STREAM costs one" $
+      let [b] = blocks [post]
+          empties n = headers 1 False b <> B.concat (replicate n (dataFrames 1 False ""))
+      in closed (snd (run (received (empties 999)))) === False .&&. closed (snd (run (received (empties 1000)))) === True
+  ]
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.1
+-- # The sender MUST NOT send a flow-controlled frame with a length that
+-- # exceeds the space available in either of the flow-control windows
+-- # advertised by the receiver.
+prop_credit :: Property
+prop_credit = once $ conjoin
+  [ counterexample "over the stream's window: FLOW_CONTROL_ERROR on the stream" $
+      let [b] = blocks [post]
+          -- a larger connection window, so that only the stream's is exceeded
+          config = small { configConnectionWindow = 1048576 }
+          outs = snd (runWith config (received (headers 1 False b <> dataFrames 1 False (B.replicate 65536 0x61))))
+      in aborted outs === [(1, ResetByServer FlowControlError)] .&&. SeenReset 1 FlowControlError `elem` seen outs
+  , counterexample "over the connection's window: FLOW_CONTROL_ERROR on the connection" $
+      let [b1, b3] = blocks [post, post]
+          outs = snd (runWith small (received (headers 1 False b1 <> headers 3 False b3
+                                               <> dataFrames 1 False (B.replicate 40000 0x61)
+                                               <> dataFrames 3 False (B.replicate 25536 0x61))))
+      in last (seen outs) === SeenGoAway FlowControlError
+  , counterexample "windows configured below 65,535 are 65,535: nothing announced, 65,535 accepted" $
+      let [b] = blocks [post]
+          config = defaultConfig { configStreamWindow = 1000, configConnectionWindow = 1000 }
+          outs = snd (runWith config (received (headers 1 False b <> dataFrames 1 False (B.replicate 65535 0x61))))
+      in take 1 (parsed outs) === [SettingsFrame 2 [MaxConcurrentStreams 100, MaxHeaderListSize 32768]]
+         .&&. seen outs === [] .&&. sum (map (B.length . snd) (content outs)) === 65535
+  , counterexample "credit comes back as the handler reads: a WINDOW_UPDATE once half the window is owed" $
+      let [b] = blocks [post]
+          (c, outs) = runWith small (received (headers 1 False b <> dataFrames 1 False (B.replicate 40000 0x61)))
+          (c1, o1) = step 0 (Consumed (StreamId 1) 30000) c
+          (_, o2) = step 0 (Consumed (StreamId 1) 10000) c1
+      in updatesAfterAck outs === [] .&&. updates o1 === [] .&&. updates o2 === [(1, 40000), (0, 40000)]
+  , counterexample "Consumed for more than was passed on is a misuse" $
+      let [b] = blocks [post]
+          (c, _) = run (received (headers 1 False b <> dataFrames 1 False "abc"))
+      in misused (snd (step 0 (Consumed (StreamId 1) 4) c)) .&&. not (misused (snd (step 0 (Consumed (StreamId 1) 3) c)))
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.1
+  -- # The entire
+  -- # DATA frame payload is included in flow control, including the Pad
+  -- # Length and Padding fields if present.
+  , counterexample "padding's credit comes back at once" $
+      let [b] = blocks [post]
+          padded = rawFrame 0 8 1 (B.singleton 255 <> "abc" <> B.replicate 255 0)
+          frames = headers 1 False b <> B.concat (replicate 130 padded)
+          outs = snd (runWith small (received frames))
+      in length (content outs) === 130 .&&. map fst (updatesAfterAck outs) === [1, 0]
+  , counterexample "a reset stream's unread content: its connection credit comes back" $
+      let [b] = blocks [post]
+          outs = snd (runWith small (received (headers 1 False b <> dataFrames 1 False (B.replicate 40000 0x61) <> rst 1 Cancel)))
+      in updatesAfterAck outs === [(0, 40000)]
+  , counterexample "DATA on a closed stream: discarded, its credit given back" $
+      let [b] = blocks [base]
+          (c, _) = runWith small (received (headers 1 True b))
+          (c', _) = step 0 (HandlerDone (StreamId 1)) c
+          outs = snd (step 0 (Received (dataFrames 1 False (B.replicate 40000 0x61))) c')
+      -- three frames: the update goes once half the window (32,768) is owed
+      in content outs === [] .&&. updates outs === [(0, 32768)]
+  , counterexample "a handler that returns without reading: 500, and the content's credit comes back" $
+      let [b] = blocks [post]
+          (c, _) = runWith small (received (headers 1 False b <> dataFrames 1 False (B.replicate 40000 0x61)))
+          outs = snd (step 0 (HandlerDone (StreamId 1)) c)
+      in updates outs === [(0, 40000)] .&&. status 1 "500" `elem` seen outs
+  ]
+
+prop_continue :: Property
+prop_continue = once $ conjoin
+  [ counterexample "100 on the first read, not again" $
+      let [b] = blocks [post ++ [("expect", "100-continue")]]
+          (c, _) = run (received (headers 1 False b))
+          (c1, o1) = step 0 (WantContent (StreamId 1)) c
+          (_, o2) = step 0 (WantContent (StreamId 1)) c1
+      in seen o1 === [SeenHeaders 1 [(":status", "100")] False] .&&. seen o2 === []
+  , counterexample "no 100 once content has arrived" $
+      let [b] = blocks [post ++ [("expect", "100-continue")]]
+          (c, _) = run (received (headers 1 False b <> dataFrames 1 False "x"))
+      in seen (snd (step 0 (WantContent (StreamId 1)) c)) === []
+  , counterexample "no 100 without Expect" $
+      let [b] = blocks [post]
+          (c, _) = run (received (headers 1 False b))
+      in seen (snd (step 0 (WantContent (StreamId 1)) c)) === []
+  ]
+
+prop_copy :: Property
+prop_copy = once $
+  let [b] = blocks [post]
+      input = clientStart <> headers 1 False b <> dataFrames 1 False "ab" <> dataFrames 1 False (B.replicate 16000 0x61)
+      outs = snd (run [(0, Received input)])
+      -- whether the slice's octets lie inside the input's
+      address bs = let (fp, _) = BI.toForeignPtr0 bs in unsafeForeignPtrToPtr fp
+      shares d = let off = address d `minusPtr` address input in off >= 0 && off < B.length input
+  in map (shares . snd) (content outs) === [False, True]

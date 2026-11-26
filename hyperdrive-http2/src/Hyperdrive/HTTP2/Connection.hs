@@ -7,9 +7,10 @@
 -- unknown type, connection errors, the connection's timers and D9's
 -- nuisance budget. Part 2: streams and their field blocks, to
 -- 'NewRequest' (C4, C6, C7, D10, D11), client resets, trailers, and the
--- responses the core writes itself. DATA and WINDOW_UPDATE are not
--- handled yet: they end the connection with INTERNAL_ERROR, so that
--- nothing half-handled passes silently.
+-- responses the core writes itself. Part 3: request content and its
+-- flow-control credit (C3, C9). WINDOW_UPDATE is not handled yet: it
+-- ends the connection with INTERNAL_ERROR, so that nothing half-handled
+-- passes silently.
 module Hyperdrive.HTTP2.Connection
   ( -- * Configuration
     Config(..)
@@ -44,7 +45,7 @@ import Hyperdrive.HPACK.Encode (Encoder, encodeBlock, newEncoder, setPeerTableSi
 import Hyperdrive.HTTP2.Frame
 import Hyperdrive.Semantics.ControlData hiding (Refused)
 import qualified Hyperdrive.Semantics.ControlData as CD
-import Hyperdrive.Semantics.Field (Fields, fieldNameBytes, fieldValueBytes, fieldsToList)
+import Hyperdrive.Semantics.Field (Fields, emptyFields, fieldNameBytes, fieldValueBytes, fieldsToList)
 import Hyperdrive.Semantics.Status (Status, mkStatus, statusCode, pattern ExpectationFailed, pattern InternalServerError)
 import Hyperdrive.Semantics.Target (TargetContext(..))
 import Hyperdrive.Semantics.URI (pattern HTTP)
@@ -59,8 +60,8 @@ data Config = Config
   , configHeaderTableSize      :: !Word32  -- ^ D9: 4,096 (the protocol's default)
   , configMaxFrameSize         :: !Int     -- ^ D9: 16,384 (the protocol's default)
   , configMaxHeaderListSize    :: !Word32  -- ^ D9: 32 KiB
-  , configStreamWindow         :: !Word32  -- ^ D6: 1 MiB
-  , configConnectionWindow     :: !Word32  -- ^ D6: 1 MiB
+  , configStreamWindow         :: !Word32  -- ^ D6: 1 MiB; at least 65,535 is used
+  , configConnectionWindow     :: !Word32  -- ^ D6: 1 MiB; at least 65,535 is used
   , configHeadTimeout          :: !Time    -- ^ C8: the preface and first SETTINGS, 30 s
   , configSettingsTimeout      :: !Time    -- ^ C8: our SETTINGS unacknowledged, 10 s
   , configBudgetBurst          :: !Word64  -- ^ C10: 1,000
@@ -94,6 +95,25 @@ defaultConfig = Config
   , configBlockTimeout = 30000
   , configTarget = TargetContext HTTP Nothing False
   }
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2
+-- # The connection flow-control window can only be changed using
+-- # WINDOW_UPDATE frames.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.3
+-- # However, the receiver
+-- # MUST be prepared to receive data that exceeds this window size, since
+-- # the sender might send data that exceeds the lower limit prior to
+-- # processing the SETTINGS frame.
+--
+-- So neither window is ever below the protocol's initial 65,535: the
+-- connection's cannot be lowered, and a client may use a stream's
+-- before it has our SETTINGS.
+
+-- | The receive windows used: the configured ones, at least 65,535.
+streamWindow, connectionWindow :: Config -> Int
+streamWindow = max 65535 . fromIntegral . configStreamWindow
+connectionWindow = max 65535 . fromIntegral . configConnectionWindow
 
 -- | What the client's SETTINGS have told us so far (Section 6.5.2's
 -- initial values until then).
@@ -144,6 +164,7 @@ data RequestHead = RequestHead
 
 data Output
   = NewRequest !StreamId !RequestHead
+  | RequestData !StreamId !ByteString -- ^ request content (C3)
   | RequestEnd !StreamId !Fields    -- ^ the end of the request's content, with its trailers
   | RequestAborted !StreamId !AbortReason
   | Writable !StreamId
@@ -156,6 +177,7 @@ data Output
 -- driver's bug (as HTTP/1.1's Q4).
 data Misuse
   = SentMoreThanEmitted             -- ^ 'Sent' for octets never emitted
+  | ConsumedMoreThanQueued          -- ^ 'Consumed' for content never passed on
   | TimedOutWithoutDeadline         -- ^ 'TimedOut' before 'nextDeadline'
   deriving (Eq, Show)
 
@@ -181,6 +203,9 @@ data StreamEntry = StreamEntry
   , sExpect100     :: !Bool          -- ^ a 100 (Continue) is owed (C9)
   , sContentLength :: !(Maybe Word64)
   , sReceived      :: !Word64        -- ^ content received
+  , sRecvWindow    :: !Int           -- ^ what the client may still send (C3)
+  , sUnreturned    :: !Int           -- ^ credit consumed and not yet given back
+  , sQueued        :: !Int           -- ^ content passed on and not yet consumed
   }
 
 -- | A field block whose HEADERS has come and whose CONTINUATIONs have
@@ -211,6 +236,9 @@ data Conn = Conn
   , cStreams     :: !(M.Map Word32 StreamEntry) -- ^ the streams still served (C4)
   , cBlock       :: !(Maybe Block)  -- ^ a field block being received (C7)
   , cDecoder     :: !Decoder
+  , cRecvWindow  :: !Int            -- ^ what the client may still send on the connection (C3)
+  , cUnreturned  :: !Int            -- ^ connection credit consumed and not yet given back
+  , cSource      :: !Int            -- ^ the size of the buffer frames are now read from (C3)
   , cEncoder     :: !Encoder
   , cClosed      :: !Bool
   }
@@ -238,7 +266,7 @@ connectionPreface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 newConn :: Config -> Time -> (Conn, [Output])
 newConn config now =
   let settings = renderSettings (ourSettings config)
-      raise = fromIntegral (configConnectionWindow config) - 65535 :: Int
+      raise = connectionWindow config - 65535
       update = [renderWindowUpdate (StreamId 0) (fromIntegral raise) | raise > 0]
       out = settings : update
       c = Conn
@@ -257,6 +285,9 @@ newConn config now =
         , cStreams = M.empty
         , cBlock = Nothing
         , cDecoder = newDecoder 4096 (fromIntegral (configHeaderTableSize config))
+        , cRecvWindow = connectionWindow config
+        , cUnreturned = 0
+        , cSource = 0
         , cEncoder = newEncoder 4096
         , cClosed = False
         }
@@ -269,7 +300,7 @@ ourSettings :: Config -> [Setting]
 ourSettings config =
   [ MaxConcurrentStreams (configMaxConcurrentStreams config) ]
   ++ [ HeaderTableSize (configHeaderTableSize config) | configHeaderTableSize config /= 4096 ]
-  ++ [ InitialWindowSize (configStreamWindow config) | configStreamWindow config /= 65535 ]
+  ++ [ InitialWindowSize (fromIntegral (streamWindow config)) | streamWindow config /= 65535 ]
   ++ [ MaxFrameSize (fromIntegral (configMaxFrameSize config)) | configMaxFrameSize config /= defaultMaxFrameSize ]
   ++ [ MaxHeaderListSize (configMaxHeaderListSize config) ]
 
@@ -302,8 +333,8 @@ step now input c0 = let c = refill now c0 in case input of
   WriteBody _ _ -> result c []
   EndBody _ _ -> result c []
   Abort _ -> result c []
-  WantContent _ -> result c []
-  Consumed _ _ -> result c []
+  WantContent (StreamId sid) -> wantContent sid c
+  Consumed (StreamId sid) n -> consumed sid n c
   HandlerDone (StreamId sid) -> handlerDone sid c
 
 -- the budget refilled for the time since it last was (C10)
@@ -343,7 +374,13 @@ available c = B.length (cBuffer c) + cMoreLength c
 joined :: Conn -> Conn
 joined c
   | null (cMore c) = c
-  | otherwise = c { cBuffer = B.concat (cBuffer c : reverse (cMore c)), cMore = [], cMoreLength = 0 }
+  | otherwise =
+      -- a lone chunk is used as it is: concatenating it with an empty
+      -- buffer would copy every chunk received
+      let b = case filter (not . B.null) (cBuffer c : reverse (cMore c)) of
+            [x] -> x
+            xs -> B.concat xs
+      in c { cBuffer = b, cMore = [], cMoreLength = 0, cSource = B.length b }
 
 -- Use as much of the input as makes whole frames. The outputs are
 -- collected newest first, a list for each frame, and joined once at the
@@ -426,6 +463,31 @@ frameOutsideBlock now c f acc = case f of
         in if B.length frag > maxEncoded c then stop acc (goAway c EnhanceYourCalm)
            else if endHeaders then fieldBlock now c b acc
            else next (c { cBlock = Just b }, [])
+  DataFrame (StreamId sid) end d plen
+    -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.1
+    -- # The sender MUST NOT send a flow-controlled frame with a length that
+    -- # exceeds the space available in either of the flow-control windows
+    -- # advertised by the receiver.
+    | plen > cRecvWindow c -> stop acc (goAway c FlowControlError)
+    -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1
+    -- # Receiving any frame other than HEADERS or PRIORITY on a stream in
+    -- #    this state MUST be treated as a connection error (Section 5.4.1)
+    -- #    of type PROTOCOL_ERROR.
+    | idle sid c -> stop acc (goAway c ProtocolError)
+    | otherwise ->
+        let c1 = c { cRecvWindow = cRecvWindow c - plen }
+        in case M.lookup sid (cStreams c1) of
+             Just st | sState st == Open -> next (requestData c1 sid st end d plen)
+             -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1
+             -- # If an endpoint receives additional frames, other than
+             -- #    WINDOW_UPDATE, PRIORITY, or RST_STREAM, for a stream that is in
+             -- #    this state, it MUST respond with a stream error (Section 5.4.2) of
+             -- #    type STREAM_CLOSED.
+             Just st | sState st == HalfClosedRemote ->
+               next (andThen (giveBack plen c1) (\c2 -> streamError c2 sid st StreamClosed))
+             -- a closed stream: discarded, its credit given back at once
+             -- (C3, C4; Section 6.9)
+             _ -> next (giveBack plen c1)
   RstStreamFrame (StreamId sid) code
     -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1
     -- # Receiving any frame other than HEADERS or PRIORITY on a stream in
@@ -436,7 +498,7 @@ frameOutsideBlock now c f acc = case f of
         Just st | sState st /= ClosedHeld ->
           -- a client's reset before our response ended (rapid reset,
           -- C10); our responses come in part 4
-          charge 1 c $ \c1 -> next (ended sid st c1, [RequestAborted (StreamId sid) (ResetByClient code)])
+          charge 1 c $ \c1 -> next (andThen (ended sid st c1) (\c2 -> (c2, [RequestAborted (StreamId sid) (ResetByClient code)])))
         -- a stream already closed: ignored (C4)
         _ -> next (c, [])
   SettingsFrame count ss
@@ -486,6 +548,115 @@ frameOutsideBlock now c f acc = case f of
   where
     next (c', outs') = advance now c' (outs' : acc)
     hasRepeats ss = length (nub (map settingId ss)) /= length ss
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9
+-- # A receiver that receives a flow-controlled frame MUST always account
+-- # for its contribution against the connection flow-control window,
+-- # unless the receiver treats this as a connection error
+-- # (Section 5.4.1).  This is necessary even if the frame is in error.
+
+-- | Content for an open stream (C3).
+requestData :: Conn -> Word32 -> StreamEntry -> Bool -> ByteString -> Int -> (Conn, [Output])
+requestData c sid st end d plen
+  -- the stream's window: over it, a stream error, the frame's credit
+  -- given back on the connection
+  | plen > sRecvWindow st = andThen (giveBack plen c) (\c1 -> streamError c1 sid st FlowControlError)
+  | maybe False (< received) (sContentLength st) || end && maybe False (/= received) (sContentLength st) =
+      -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.1.1
+      -- # A request or response is also malformed
+      -- # if the value of a content-length header field does not equal the sum
+      -- # of the DATA frame payload lengths that form the content, unless the
+      -- # message is defined as having no content.
+      andThen (giveBack plen c) (\c1 -> streamErrorBecause ContentNotAsDeclared c1 sid st ProtocolError)
+  -- an empty DATA that does not end the stream does nothing, and costs
+  -- one (C10)
+  | len == 0 && not end = charge 1 c $ \c1 -> deliver c1
+  | otherwise = deliver c
+  where
+    len = B.length d
+    received = sReceived st + fromIntegral len
+    -- a slice under a quarter of its buffer is copied, so that a client
+    -- cannot pin more than four times its window (C3)
+    d' = if 4 * len < cSource c then B.copy d else d
+    deliver c1 =
+      let st' = st { sRecvWindow = sRecvWindow st - plen
+                   , sReceived = received
+                   , sQueued = sQueued st + len
+                   -- content arrived: no 100 is owed any more (C9)
+                   , sExpect100 = sExpect100 st && len == 0
+                   , sState = if end then HalfClosedRemote else Open }
+          c2 = c1 { cStreams = M.insert sid st' (cStreams c1) }
+          outs = [RequestData (StreamId sid) d' | len > 0] ++ [RequestEnd (StreamId sid) emptyFields | end]
+          -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.1
+          -- # The entire
+          -- # DATA frame payload is included in flow control, including the Pad
+          -- # Length and Padding fields if present.
+          --
+          -- The padding is credit the handler can never give back: it comes
+          -- back at once (C3).
+          padding = plen - len
+      in if padding == 0 then result c2 outs
+         else andThen (giveBackStream sid padding c2) (\c3 -> (c3, outs))
+
+-- | The handler read content: its credit comes back (D6).
+consumed :: Word32 -> Int -> Conn -> (Conn, [Output])
+consumed sid n c = case M.lookup sid (cStreams c) of
+  Just st | sState st /= ClosedHeld ->
+    if n > sQueued st then misuse ConsumedMoreThanQueued c
+    else giveBackStream sid n c { cStreams = M.insert sid st { sQueued = sQueued st - n } (cStreams c) }
+  -- a stream already ended: its credit came back when it ended (C2, C3)
+  _ -> result c []
+
+-- | Credit for content on a stream, at both levels: the stream's only
+-- while the client may still send on it.
+giveBackStream :: Word32 -> Int -> Conn -> (Conn, [Output])
+giveBackStream sid n c = case M.lookup sid (cStreams c) of
+  Just st | sState st == Open ->
+    let unreturned = sUnreturned st + n
+        window = streamWindow (cConfig c)
+    in if 2 * unreturned >= window
+         then let c1 = c { cStreams = M.insert sid st { sUnreturned = 0, sRecvWindow = sRecvWindow st + unreturned } (cStreams c) }
+              in andThen (emit [renderWindowUpdate (StreamId sid) (fromIntegral unreturned)] c1) (giveBack n)
+         else giveBack n c { cStreams = M.insert sid st { sUnreturned = unreturned } (cStreams c) }
+  _ -> giveBack n c
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.1
+-- # Receivers are advised to have mechanisms in
+-- # place to avoid sending WINDOW_UPDATE frames with very small
+-- # increments; see Section 4.2.3.3 of [RFC1122].
+
+-- | Connection credit: a WINDOW_UPDATE once half the window is owed
+-- (D6).
+giveBack :: Int -> Conn -> (Conn, [Output])
+giveBack n c
+  | n <= 0 = result c []
+  | 2 * unreturned >= window =
+      emit [renderWindowUpdate (StreamId 0) (fromIntegral unreturned)]
+           c { cUnreturned = 0, cRecvWindow = cRecvWindow c + unreturned }
+  | otherwise = result c { cUnreturned = unreturned } []
+  where
+    unreturned = cUnreturned c + n
+    window = connectionWindow (cConfig c)
+
+-- one step, then another on its state, the outputs joined
+andThen :: (Conn, [Output]) -> (Conn -> (Conn, [Output])) -> (Conn, [Output])
+andThen (c, outs) k
+  | cClosed c = result c outs
+  | otherwise = let (c', outs') = k c in result c' (outs ++ outs')
+
+-- | The handler read with nothing queued: the 100 (Continue), if one is
+-- owed, goes now (C9). It never carries END_STREAM (Section 8.1).
+wantContent :: Word32 -> Conn -> (Conn, [Output])
+wantContent sid c = case M.lookup sid (cStreams c) of
+  Just st | sState st == Open, sExpect100 st ->
+    let (block, enc) = encodeBlock (cEncoder c) [(":status", "100")]
+        c1 = c { cEncoder = enc, cStreams = M.insert sid st { sExpect100 = False } (cStreams c) }
+    in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) False block) c1
+  _ -> result c []
+
+-- | A stream above the highest opened is idle (C4).
+idle :: Word32 -> Conn -> Bool
+idle sid c = sid > cLastStream c
 
 -- the largest encoded field block (C7): four times MAX_HEADER_LIST_SIZE
 maxEncoded :: Conn -> Int
@@ -582,7 +753,10 @@ newStream c sid endStream decoded
                 , sHandler = True
                 , sExpect100 = not endStream && not (null expectations)
                 , sContentLength = controlContentLength rc
-                , sReceived = 0 }
+                , sReceived = 0
+                , sRecvWindow = streamWindow cfg
+                , sUnreturned = 0
+                , sQueued = 0 }
           in result c { cStreams = M.insert sid st (cStreams c) }
                     [NewRequest (StreamId sid) (RequestHead rc (not endStream))]
       where
@@ -618,15 +792,18 @@ streamError c sid st code = streamErrorBecause (ResetByServer code) c sid st cod
 
 streamErrorBecause :: AbortReason -> Conn -> Word32 -> StreamEntry -> ErrorCode -> (Conn, [Output])
 streamErrorBecause reason c sid st code = charge 1 c $ \c1 ->
-  let (c2, outs) = emit [renderRstStream (StreamId sid) code] (ended sid st c1)
-  in result c2 (RequestAborted (StreamId sid) reason : outs)
+  andThen (ended sid st c1) $ \c2 ->
+    let (c3, outs) = emit [renderRstStream (StreamId sid) code] c2
+    in result c3 (RequestAborted (StreamId sid) reason : outs)
 
 -- | A stream ended early: out of the map, or kept closed while its
--- handler still runs (C6).
-ended :: Word32 -> StreamEntry -> Conn -> Conn
-ended sid st c
-  | sHandler st = c { cStreams = M.insert sid st { sState = ClosedHeld } (cStreams c) }
-  | otherwise = c { cStreams = M.delete sid (cStreams c) }
+-- handler still runs (C6). Content passed on and not consumed will never
+-- be: its connection credit comes back (C3).
+ended :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
+ended sid st c =
+  let c1 | sHandler st = c { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0 } (cStreams c) }
+         | otherwise = c { cStreams = M.delete sid (cStreams c) }
+  in giveBack (sQueued st) c1
 
 -- | A response the core writes itself (D10's case 3): the status with no
 -- content, then RST_STREAM NO_ERROR if the request is still sending.
@@ -645,7 +822,8 @@ handlerDone sid c = case M.lookup sid (cStreams c) of
   Nothing -> result c []
   Just st -> case sState st of
     ClosedHeld -> result c { cStreams = M.delete sid (cStreams c) } []
-    s' -> respond InternalServerError sid (s' == HalfClosedRemote) c { cStreams = M.delete sid (cStreams c) }
+    s' -> andThen (giveBack (sQueued st) c { cStreams = M.delete sid (cStreams c) })
+                  (respond InternalServerError sid (s' == HalfClosedRemote))
 
 (>>>) :: a -> (a -> b) -> b
 x >>> g = g x

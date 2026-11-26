@@ -3064,6 +3064,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]:    received whose Stream Identifier field is 0x00, the recipient MUST
     TEXT[!MUST,implementation,test]:    respond with a connection error (Section 5.4.1) of type
     TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
+    TEXT[implementation,test]: The entire
+    TEXT[implementation,test]:    DATA frame payload is included in flow control, including the Pad
+    TEXT[implementation,test]:    Length and Padding fields if present.
     TEXT[!MUST]: If a DATA frame is received
     TEXT[!MUST]:    whose stream is not in the "open" or "half-closed (local)" state, the
     TEXT[!MUST]:    recipient MUST respond with a stream error (Section 5.4.2) of type
@@ -3314,22 +3317,26 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]:    MUST be treated as a connection error (Section 5.4.1).
     TEXT[!MUST]: A receiver MUST NOT treat this as an error (see
     TEXT[!MUST]:    Section 5.1).
-    TEXT[!MUST]:    A receiver that receives a flow-controlled frame MUST always account
-    TEXT[!MUST]:    for its contribution against the connection flow-control window,
-    TEXT[!MUST]:    unless the receiver treats this as a connection error
-    TEXT[!MUST]:    (Section 5.4.1).
+    TEXT[!MUST,implementation]:    A receiver that receives a flow-controlled frame MUST always account
+    TEXT[!MUST,implementation]:    for its contribution against the connection flow-control window,
+    TEXT[!MUST,implementation]:    unless the receiver treats this as a connection error
+    TEXT[!MUST,implementation]:    (Section 5.4.1).
+    TEXT[implementation]:   This is necessary even if the frame is in error.
     TEXT[!MUST,implementation,test]:    A WINDOW_UPDATE frame with a length other than 4 octets MUST be
     TEXT[!MUST,implementation,test]:    treated as a connection error (Section 5.4.1) of type
     TEXT[!MUST,implementation,test]:    FRAME_SIZE_ERROR.
 
   SECTION: [The Flow-Control Window](#section-6.9.1)
-    TEXT[!MUST]: The sender MUST NOT
-    TEXT[!MUST]:    send a flow-controlled frame with a length that exceeds the space
-    TEXT[!MUST]:    available in either of the flow-control windows advertised by the
-    TEXT[!MUST]:    receiver.
+    TEXT[!MUST,implementation,test]: The sender MUST NOT
+    TEXT[!MUST,implementation,test]:    send a flow-controlled frame with a length that exceeds the space
+    TEXT[!MUST,implementation,test]:    available in either of the flow-control windows advertised by the
+    TEXT[!MUST,implementation,test]:    receiver.
     TEXT[!MAY]: Frames with zero length with the END_STREAM flag set (that
     TEXT[!MAY]:    is, an empty DATA frame) MAY be sent if there is no available space
     TEXT[!MAY]:    in either flow-control window.
+    TEXT[implementation]: Receivers are advised to have mechanisms in
+    TEXT[implementation]:    place to avoid sending WINDOW_UPDATE frames with very small
+    TEXT[implementation]:    increments; see Section 4.2.3.3 of [RFC1122].
     TEXT[!MUST]:    A sender MUST NOT allow a flow-control window to exceed 2^31-1
     TEXT[!MUST]:    octets.
     TEXT[!MUST]: If a sender receives a WINDOW_UPDATE that causes a flow-
@@ -3337,6 +3344,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    stream or the connection, as appropriate.
 
   SECTION: [Initial Flow-Control Window Size](#section-6.9.2)
+    TEXT[implementation]: The connection flow-control window can only be changed using
+    TEXT[implementation]:    WINDOW_UPDATE frames.
     TEXT[!MUST]: When the
     TEXT[!MUST]:    value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
     TEXT[!MUST]:    the size of all stream flow-control windows that it maintains by the
@@ -3350,10 +3359,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
 
   SECTION: [Reducing the Stream Window Size](#section-6.9.3)
-    TEXT[!MUST]: However, the receiver
-    TEXT[!MUST]:    MUST be prepared to receive data that exceeds this window size, since
-    TEXT[!MUST]:    the sender might send data that exceeds the lower limit prior to
-    TEXT[!MUST]:    processing the SETTINGS frame.
+    TEXT[!MUST,implementation]: However, the receiver
+    TEXT[!MUST,implementation]:    MUST be prepared to receive data that exceeds this window size, since
+    TEXT[!MUST,implementation]:    the sender might send data that exceeds the lower limit prior to
+    TEXT[!MUST,implementation]:    processing the SETTINGS frame.
     TEXT[!MAY]:    After sending a SETTINGS frame that reduces the initial flow-control
     TEXT[!MAY]:    window size, a receiver MAY continue to process streams that exceed
     TEXT[!MAY]:    flow-control limits.

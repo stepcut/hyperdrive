@@ -385,12 +385,104 @@ why: Sent may not report more than was emitted
 + | n > cUnsent c + 1 -> misuse SentMoreThanEmitted c
 
 why: the connection window starts at 65,535 (Section 6.9.2)
-- raise = fromIntegral (configConnectionWindow config) - 65535 :: Int
-+ raise = fromIntegral (configConnectionWindow config) - 65536 :: Int
+- raise = connectionWindow config - 65535
++ raise = connectionWindow config - 65536
 
 why: INITIAL_WINDOW_SIZE is sent when it differs from 65,535
-- ++ [ InitialWindowSize (configStreamWindow config) | configStreamWindow config /= 65535 ]
-+ ++ [ InitialWindowSize (configStreamWindow config) | configStreamWindow config /= 1048576 ]
+- ++ [ InitialWindowSize (fromIntegral (streamWindow config)) | streamWindow config /= 65535 ]
++ ++ [ InitialWindowSize (fromIntegral (streamWindow config)) | streamWindow config /= 1048576 ]
+
+why: DATA beyond the connection's window is a connection error FLOW_CONTROL_ERROR (Section 6.9.1)
+- | plen > cRecvWindow c -> stop acc (goAway c FlowControlError)
++ | False -> stop acc (goAway c FlowControlError)
+
+why: DATA on an idle stream is a connection error (Section 5.1)
+- | idle sid c -> stop acc (goAway c ProtocolError)
++ | False -> stop acc (goAway c ProtocolError)
+
+why: DATA on a half-closed (remote) stream is a stream error STREAM_CLOSED (Section 5.1)
+- next (andThen (giveBack plen c1) (\c2 -> streamError c2 sid st StreamClosed))
++ next (giveBack plen c1)
+
+why: DATA on a closed stream still counts against the connection window, and its credit comes back (Section 6.9)
+- _ -> next (giveBack plen c1)
++ _ -> next (c1, [])
+
+why: DATA beyond a stream's window is a stream error FLOW_CONTROL_ERROR (C3)
+- | plen > sRecvWindow st = andThen (giveBack plen c) (\c1 -> streamError c1 sid st FlowControlError)
++ | False = andThen (giveBack plen c) (\c1 -> streamError c1 sid st FlowControlError)
+
+why: content beyond its content-length is malformed (Section 8.1.1)
+- | maybe False (< received) (sContentLength st) || end && maybe False (/= received) (sContentLength st) =
++ | False || end && maybe False (/= received) (sContentLength st) =
+
+why: content short of its content-length at the end is malformed (Section 8.1.1)
+- | maybe False (< received) (sContentLength st) || end && maybe False (/= received) (sContentLength st) =
++ | maybe False (< received) (sContentLength st) || False =
+
+why: an empty DATA that does not end the stream costs budget (C10)
+- | len == 0 && not end = charge 1 c $ \c1 -> deliver c1
++ | len == 0 && not end = deliver c
+
+why: a slice under a quarter of its buffer is copied (C3)
+- d' = if 4 * len < cSource c then B.copy d else d
++ d' = d
+
+why: the buffer's size is what the copy rule compares with
+- in c { cBuffer = b, cMore = [], cMoreLength = 0, cSource = B.length b }
++ in c { cBuffer = b, cMore = [], cMoreLength = 0, cSource = 0 }
+
+why: content passed on is counted, so Consumed can be checked and credited
+- , sQueued = sQueued st + len
++ , sQueued = sQueued st
+
+why: content arriving means no 100 is owed (C9)
+- , sExpect100 = sExpect100 st && len == 0
++ , sExpect100 = sExpect100 st
+
+why: END_STREAM on DATA half-closes the stream (Section 5.1)
+- , sState = if end then HalfClosedRemote else Open }
++ , sState = Open }
+
+why: padding's credit comes back at once (C3)
+- in if padding == 0 then result c2 outs
++ in if True then result c2 outs
+
+why: Consumed for more than was passed on is a misuse
+- if n > sQueued st then misuse ConsumedMoreThanQueued c
++ if False then misuse ConsumedMoreThanQueued c
+
+why: a stream's credit goes back once half its window is owed (D6)
+- in if 2 * unreturned >= window
++ in if unreturned >= window
+
+why: the connection's credit goes back once half its window is owed (D6)
+- | 2 * unreturned >= window =
++ | unreturned >= window =
+
+why: a stream that ends gives back the credit of content never consumed (C3)
+- in giveBack (sQueued st) c1
++ in result c1 []
+
+why: a handler that returns without reading gives back its content's credit
+- s' -> andThen (giveBack (sQueued st) c { cStreams = M.delete sid (cStreams c) })
++ s' -> andThen (giveBack 0 c { cStreams = M.delete sid (cStreams c) })
+
+why: the 100 is sent only when one is owed (C9)
+- Just st | sState st == Open, sExpect100 st ->
++ Just st | sState st == Open ->
+
+why: the 100 never carries END_STREAM (Section 8.1)
+- in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) False block) c1
++ in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) True block) c1
+
+why: a stream window is at least 65,535 (Section 6.9.3)
+- streamWindow = max 65535 . fromIntegral . configStreamWindow
++ streamWindow = fromIntegral . configStreamWindow
+
+why: the connection window is at least 65,535 (Section 6.9.2)
+- connectionWindow = max 65535 . fromIntegral . configConnectionWindow
++ connectionWindow = fromIntegral . configConnectionWindow
 
 file: src/Hyperdrive/HPACK/Encode.hs
 
@@ -485,20 +577,20 @@ why: RST_STREAM on an idle stream is a connection error (Section 5.1)
 + | False -> stop acc (goAway c ProtocolError)
 
 why: a client's reset before our response costs budget (rapid reset, C10)
-- charge 1 c $ \c1 -> next (ended sid st c1, [RequestAborted (StreamId sid) (ResetByClient code)])
-+ next (ended sid st c, [RequestAborted (StreamId sid) (ResetByClient code)])
+- charge 1 c $ \c1 -> next (andThen (ended sid st c1) (\c2 -> (c2, [RequestAborted (StreamId sid) (ResetByClient code)])))
++ (\k -> k c) $ \c1 -> next (andThen (ended sid st c1) (\c2 -> (c2, [RequestAborted (StreamId sid) (ResetByClient code)])))
 
 why: a reset stream keeps its slot while its handler runs (C6)
-- | sHandler st = c { cStreams = M.insert sid st { sState = ClosedHeld } (cStreams c) }
-+ | False = c { cStreams = M.insert sid st { sState = ClosedHeld } (cStreams c) }
+- let c1 | sHandler st = c { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0 } (cStreams c) }
++ let c1 | False = c { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0 } (cStreams c) }
 
 why: the handler's return frees a held slot
 - ClosedHeld -> result c { cStreams = M.delete sid (cStreams c) } []
 + ClosedHeld -> result c []
 
 why: a handler that returns without responding failed: 500 (C2)
-- s' -> respond InternalServerError sid (s' == HalfClosedRemote) c { cStreams = M.delete sid (cStreams c) }
-+ s' -> result c { cStreams = M.delete sid (cStreams c) } []
+- (respond InternalServerError sid (s' == HalfClosedRemote))
++ (\c1 -> result c1 [])
 
 why: a new stream raises the highest identifier, which tells idle from closed (C4)
 - | sid > cLastStream c = newStream c { cLastStream = sid } sid endStream decoded
