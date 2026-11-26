@@ -3733,6 +3733,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
   SECTION: [Denial-of-Service Considerations](#section-10.5)
     TEXT[!SHOULD,exception]: A client that accepts server push SHOULD limit the number
     TEXT[!SHOULD,exception]:    of streams it allows to be in the "reserved (remote)" state.
+    TEXT[test]: An endpoint that constructs and remembers
+    TEXT[test]:       frames for sending without considering TCP limits might be subject
+    TEXT[test]:       to resource exhaustion.
     TEXT[implementation]: The SETTINGS frame might also be abused to cause a peer to expend
     TEXT[implementation]:       additional processing time.  This might be done by pointlessly
     TEXT[implementation]:       changing settings, sending multiple undefined settings, or
