@@ -192,7 +192,11 @@ accepts, sets `TCP_NODELAY`, and forks a thread per connection with
 `forkIOWithUnmask`, registered so that shutdown can wait for it.
 Accept errors from running out of descriptors (`EMFILE`, `ENFILE`)
 pause accepting briefly rather than spin or stop. A limit on
-connections is a setting (default: none).
+connections is a setting: at it, accepting waits. Its default is 10,000
+(decided 2026-11-25, after the HTTP/2 attack survey: every other limit
+is per connection, so this is what bounds them together; Envoy's edge
+guidance is 10,000 a listener, nginx's default 512 a worker, h2o's
+1,024).
 
 With `settingsPinConnections` (default: off) the thread is forked with
 `forkOnWithUnmask` on the capabilities in turn, and stays on its

@@ -81,6 +81,9 @@ data Settings = Settings
   , settingsShutdownGrace    :: !Int               -- ^ microseconds before remaining connections are killed
   , settingsHandlerTimeLimit :: !(Maybe Int)       -- ^ microseconds a handler may run; 'Nothing': no limit
   , settingsMaxConnections   :: !(Maybe Int)
+    -- ^ connections served at once; at the limit, accepting waits. 10,000 by
+    -- default (docs/http2-core-design.md, C10: what bounds the per-connection
+    -- budgets and slots together); 'Nothing': no limit
   , settingsPinConnections   :: !Bool
     -- ^ give each connection a capability in turn when it is accepted,
     -- and keep its thread there. For small, even requests this saves
@@ -106,7 +109,7 @@ defaultSettings = Settings
   , settingsTimeouts = defaultTimeouts
   , settingsShutdownGrace = 30000000
   , settingsHandlerTimeLimit = Nothing
-  , settingsMaxConnections = Nothing
+  , settingsMaxConnections = Just 10000
   , settingsPinConnections = False
   , settingsTimerResolution = 100000
   , settingsOnException = \e -> putStrLn ("hyperdrive: " ++ displayException e)
