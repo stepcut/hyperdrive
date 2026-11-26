@@ -28,6 +28,7 @@ module Hyperdrive.HTTP2.Frame
   , parseFrame
     -- * Serializing
   , renderData
+  , renderDataPieces
   , renderHeaders
   , renderRstStream
   , renderSettings
@@ -469,6 +470,11 @@ bytes32 ws = BI.unsafeCreate (4 * length ws) $ \p ->
 -- header and the data are separate pieces, for a gathering write.
 renderData :: StreamId -> Bool -> ByteString -> [ByteString]
 renderData sid end d = [header (B.length d) 0x0 (if end then 0x1 else 0) sid, d]
+
+-- | A DATA frame whose data is several pieces, written as they are (a
+-- gathering write), so that queued chunks need not be joined.
+renderDataPieces :: StreamId -> Bool -> [ByteString] -> [ByteString]
+renderDataPieces sid end ds = header (sum (map B.length ds)) 0x0 (if end then 0x1 else 0) sid : ds
 
 -- | A field block as a HEADERS frame and as many CONTINUATION frames as
 -- the peer's SETTINGS_MAX_FRAME_SIZE requires: the stream, END_STREAM,

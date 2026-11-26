@@ -461,12 +461,12 @@ why: the connection's credit goes back once half its window is owed (D6)
 + | unreturned >= window =
 
 why: a stream that ends gives back the credit of content never consumed (C3)
-- in giveBack (sQueued st) c1
-+ in result c1 []
+- in andThen (giveBack (sQueued st) c1)
++ in andThen (result c1 [])
 
 why: a handler that returns without reading gives back its content's credit
-- s' -> andThen (giveBack (sQueued st) c { cStreams = M.delete sid (cStreams c) })
-+ s' -> andThen (giveBack 0 c { cStreams = M.delete sid (cStreams c) })
+- Awaiting -> andThen (giveBack (sQueued st) c { cStreams = M.delete sid (cStreams c) })
++ Awaiting -> andThen (giveBack 0 c { cStreams = M.delete sid (cStreams c) })
 
 why: the 100 is sent only when one is owed (C9)
 - Just st | sState st == Open, sExpect100 st ->
@@ -581,8 +581,8 @@ why: a client's reset before our response costs budget (rapid reset, C10)
 + (\k -> k c) $ \c1 -> next (andThen (ended sid st c1) (\c2 -> (c2, [RequestAborted (StreamId sid) (ResetByClient code)])))
 
 why: a reset stream keeps its slot while its handler runs (C6)
-- let c1 | sHandler st = c { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0 } (cStreams c) }
-+ let c1 | False = c { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0 } (cStreams c) }
+- c1 | sHandler st = c0 { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0
++ c1 | False = c0 { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0
 
 why: the handler's return frees a held slot
 - ClosedHeld -> result c { cStreams = M.delete sid (cStreams c) } []
@@ -609,5 +609,169 @@ why: the field block's deadline is among the connection's (C1)
 + ++ [] of
 
 why: the client's HEADER_TABLE_SIZE bounds our encoder (H4)
-- , cEncoder = foldl tableSize (cEncoder c1) ss } >>> next
-+ , cEncoder = cEncoder c1 } >>> next
+- , cEncoder = foldl tableSize (cEncoder c1) ss })
++ , cEncoder = cEncoder c1 })
+
+why: a response with no content is HEADERS with END_STREAM (C12)
+- let headerOnly = not (respHasContent h) || sIsHead st
++ let headerOnly = not (respHasContent h)
+
+why: the declared length goes out as content-length (C12)
+- ++ [("content-length", C.pack (show n)) | Just n <- [respLength h], respHasContent h]
++ ++ []
+
+why: a HEAD request is recognised by its method
+- , sIsHead = controlMethod rc == HEAD
++ , sIsHead = False
+
+why: responding twice is a misuse
+- _ -> misuse RespondTwice c
++ _ -> result c []
+
+why: content before the response head is a misuse
+- Awaiting -> misuse BodyBeforeRespond c -- WriteBody
++ Awaiting -> result c [] -- WriteBody
+
+why: trailers before the response head are a misuse
+- Awaiting -> misuse BodyBeforeRespond c -- EndBody
++ Awaiting -> result c [] -- EndBody
+
+why: a write before the last one's Writable is a misuse (C5)
+- | sWaiting st -> misuse WroteBeforeWritable c
++ | False -> misuse WroteBeforeWritable c
+
+why: content beyond the declared length aborts the response (C12)
+- | maybe False (< written') decl -> abort sid c
++ | False -> abort sid c
+
+why: content short of the declared length at the end aborts the response (C12)
+- | maybe False (/= written) decl -> abort sid c
++ | False -> abort sid c
+
+why: a write to a stream no longer sending is still answered (C5)
+- _ -> result c [Writable (StreamId sid)]
++ _ -> result c []
+
+why: Abort resets the stream with INTERNAL_ERROR (D10)
+- let (c2, outs) = emit [renderRstStream (StreamId sid) InternalError] c1
++ let (c2, outs) = result c1 []
+
+why: a response complete before the request is asks the client to stop (Section 8.1)
+- let stillSending = sState st == Open
++ let stillSending = False
+
+why: a complete response frees its stream's slot
+- c1 = c { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
++ c1 = c { cBuffered = cBuffered c - sOutLength st }
+
+why: a handler that returns mid-response is aborted (D10 case 4)
+- Sending _ _ Nothing -> abort sid c
++ Sending _ _ Nothing -> result c []
+
+why: the stream's buffer bounds what is accepted before Writable (C5)
+- full st c = sOutLength st >= configStreamBuffer (cConfig c) || cBuffered c >= configConnectionBuffer (cConfig c)
++ full st c = cBuffered c >= configConnectionBuffer (cConfig c)
+
+why: the connection's buffer bounds what is accepted before Writable (C5)
+- full st c = sOutLength st >= configStreamBuffer (cConfig c) || cBuffered c >= configConnectionBuffer (cConfig c)
++ full st c = sOutLength st >= configStreamBuffer (cConfig c)
+
+why: DATA is paced by what the transport has written (C5)
+- | cUnsent c >= configPacing (cConfig c) = go c acc 0
++ | False = go c acc 0
+
+why: streams take turns (D8)
+- Nothing -> go c { cOrder = rest |> sid } acc (k - 1)
++ Nothing -> go c { cOrder = sid Seq.<| rest } acc (k - 1)
+
+why: a stream with more to send goes to the back of the round (D8)
+- else result (if lastOne && isJust end || not lastOne then schedule sid c2 else c2) outs
++ else result (if lastOne && isJust end || not lastOne then schedule sid c2 { cOrder = sid Seq.<| cOrder c2 } else c2) outs
+
+why: a stream whose content runs out with trailers to send stays in the round
+- else result (if lastOne && isJust end || not lastOne then schedule sid c2 else c2) outs
++ else result (if not lastOne then schedule sid c2 else c2) outs
+
+why: DATA stays within the stream's window (Section 6.9.1)
+- let n = minimum [ sOutLength st, sSendWindow st, cSendWindow c, dataFrameSize c ]
++ let n = minimum [ sOutLength st, cSendWindow c, dataFrameSize c ]
+
+why: DATA stays within the connection's window (Section 6.9.1)
+- let n = minimum [ sOutLength st, sSendWindow st, cSendWindow c, dataFrameSize c ]
++ let n = minimum [ sOutLength st, sSendWindow st, dataFrameSize c ]
+
+why: DATA frames are at most 16 KiB (D8)
+- let n = minimum [ sOutLength st, sSendWindow st, cSendWindow c, dataFrameSize c ]
++ let n = minimum [ sOutLength st, sSendWindow st, cSendWindow c ]
+
+why: no DATA under 1 KiB unless it is the last of what is queued (Section 10.5)
+- in if n <= 0 || n < sOutLength st && n < dataFloor then Nothing
++ in if n <= 0 then Nothing
+
+why: the frame is cut to what may be sent, the rest kept in order
+- | otherwise -> (reverse (B.take n b : acc), B.drop n b Seq.<| rest)
++ | otherwise -> (reverse (B.take n b : acc), rest)
+
+why: sending spends the stream's window
+- st' = st { sOut = rest, sOutLength = sOutLength st - n, sSendWindow = sSendWindow st - n }
++ st' = st { sOut = rest, sOutLength = sOutLength st - n }
+
+why: sending spends the connection's window
+- c1 = c { cStreams = M.insert sid st' (cStreams c), cSendWindow = cSendWindow c - n
++ c1 = c { cStreams = M.insert sid st' (cStreams c)
+
+why: sending frees the connection's buffer
+- , cBuffered = cBuffered c - n }
++ }
+
+why: END_STREAM goes on the last DATA when there are no trailers
+- endHere = lastOne && maybe False isEmptyFields end
++ endHere = False
+
+why: trailers are sent (C12)
+- in Just (andThen (emit frames c { cEncoder = enc }) (finished sid st))
++ in Just (finished sid st c)
+
+why: a reset stream's buffer is freed, and writes waiting on the connection's bound go on (C5)
+- in andThen (giveBack (sQueued st) c1) (if sOutLength st > 0 then writable else (`result` []))
++ in giveBack (sQueued st) c1
+
+why: a reset stream's buffered octets leave the connection's count (C5)
+- let c0 = c { cBuffered = cBuffered c - sOutLength st }
++ let c0 = c
+
+why: WINDOW_UPDATE on the connection opens its window
+- | otherwise -> next (pump c { cSendWindow = cSendWindow c + fromIntegral inc })
++ | otherwise -> next (pump c)
+
+why: the connection's window may not pass 2^31-1 (Section 6.9.1)
+- | cSendWindow c + fromIntegral inc > maxWindow -> stop acc (goAway c FlowControlError)
++ | False -> stop acc (goAway c FlowControlError)
+
+why: a stream's window may not pass 2^31-1 (Section 6.9.1)
+- in if w > maxWindow then next (streamError c sid st FlowControlError)
++ in if False then next (streamError c sid st FlowControlError)
+
+why: WINDOW_UPDATE on an idle stream is a connection error (Section 5.1)
+- | not (idle sid c) -> case M.lookup sid (cStreams c) of
++ | True -> case M.lookup sid (cStreams c) of
+
+why: tiny WINDOW_UPDATEs cost budget (Section 10.5, C10)
+- else (if w < dataFloor then charge 1 c else ($ c)) $ \c1 ->
++ else ($ c) $ \c1 ->
+
+why: INITIAL_WINDOW_SIZE adjusts every stream's window (Section 6.9.2)
+- streams = M.map (\st -> st { sSendWindow = sSendWindow st + delta }) (cStreams c1)
++ streams = cStreams c1
+
+why: INITIAL_WINDOW_SIZE may not take a window past 2^31-1 (Section 6.9.2)
+- if any ((> maxWindow) . sSendWindow) streams then stop acc (goAway c1 FlowControlError)
++ if False then stop acc (goAway c1 FlowControlError)
+
+why: a new stream's window is the client's INITIAL_WINDOW_SIZE
+- , sSendWindow = fromIntegral (peerInitialWindowSize (cPeer c))
++ , sSendWindow = 65535
+
+why: Sent lets paced DATA go on (C5)
+- | otherwise -> pump c { cUnsent = cUnsent c - n }
++ | otherwise -> result c { cUnsent = cUnsent c - n } []

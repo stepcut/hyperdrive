@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns -Wno-x-partial #-}
-module StreamTests (streamTests) where
+module StreamTests (streamTests, responseTests) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -8,14 +8,17 @@ import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Internal as BI
 import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import Foreign.Ptr (minusPtr)
-import Data.Word (Word32)
+import qualified Data.Map.Strict as M
+import Data.Maybe (fromJust)
+import Data.Word (Word32, Word64)
 import Hyperdrive.HPACK.Decode
 import Hyperdrive.HPACK.Encode
 import Hyperdrive.HTTP2.Connection
 import Hyperdrive.HTTP2.Frame
 import Hyperdrive.Semantics.ControlData (RequestControl(..))
-import Hyperdrive.Semantics.Field (fieldNameBytes, fieldValueBytes, fieldsToList)
+import Hyperdrive.Semantics.Field (Fields, emptyFields, fieldNameBytes, fieldValueBytes, fieldsFromList, fieldsToList, mkFieldName, mkFieldValue)
 import Hyperdrive.Semantics.Method (methodBytes)
+import Hyperdrive.Semantics.Status (mkStatus)
 import Test.QuickCheck
 import Test.Tasty
 import Test.Tasty.QuickCheck (testProperty)
@@ -517,3 +520,349 @@ prop_copy = once $
       address bs = let (fp, _) = BI.toForeignPtr0 bs in unsafeForeignPtrToPtr fp
       shares d = let off = address d `minusPtr` address input in off >= 0 && off < B.length input
   in map (shares . snd) (content outs) === [False, True]
+
+------------------------------------------------------------------------------
+-- responses and the scheduler
+------------------------------------------------------------------------------
+
+responseTests :: TestTree
+responseTests = testGroup "The connection core: responses and the scheduler (C5, C12, D8)"
+  [ testProperty "responses, by example" prop_responses
+  , testProperty "content not as declared, Abort, misuse" prop_responseErrors
+  , testProperty "the client's windows: WINDOW_UPDATE, INITIAL_WINDOW_SIZE, the 1 KiB floor" prop_sendWindows
+  , testProperty "round robin, buffers and Writable, pacing" prop_scheduler
+  , testProperty "any writes and window updates: the content arrives whole, in order, within the windows" prop_sendModel
+  ]
+
+-- the transport writes everything it is given at once
+writeAll :: (Conn, [Output]) -> (Conn, [Output])
+writeAll (c, o) = case sum [B.length b | Send bs <- o, b <- bs] of
+  0 -> (c, o)
+  n -> let (c', o') = writeAll (step 0 (Sent n) c) in (c', o ++ o')
+
+-- a connection whose client sent these SETTINGS and then these octets,
+-- its output written at once
+serve :: [Setting] -> ByteString -> (Conn, [Output])
+serve ss b = feedAll (writeAll (newConn defaultConfig 0)) [Received (connectionPreface <> renderSettings ss <> b)]
+
+-- inputs after a start whose output was written
+feedAll :: (Conn, [Output]) -> [Input] -> (Conn, [Output])
+feedAll = foldl' feed
+  where feed (c, outs) i = let (c', o) = writeAll (step 0 i c) in (c', outs ++ o)
+
+-- what a step after the start sends
+from :: (Conn, [Output]) -> [Input] -> [Output]
+from (c, _) is = snd (feedAll (c, []) is)
+
+fieldsOf :: [(ByteString, ByteString)] -> Fields
+fieldsOf fs = fieldsFromList [ (fromJust (mkFieldName n), either (error . show) id (mkFieldValue v)) | (n, v) <- fs ]
+
+response :: Int -> [(ByteString, ByteString)] -> Maybe Word64 -> ResponseHead
+response code fs len = ResponseHead (fromJust (mkStatus code)) (fieldsOf fs) True len
+
+ok :: Maybe Word64 -> ResponseHead
+ok = response 200 []
+
+respondOn :: Word32 -> ResponseHead -> Input
+respondOn s = Respond (StreamId s)
+
+write :: Word32 -> ByteString -> Input
+write s = WriteBody (StreamId s)
+
+endOn :: Word32 -> Input
+endOn s = EndBody (StreamId s) emptyFields
+
+-- DATA frames sent: stream, payload, END_STREAM
+datas :: [Output] -> [(Word32, ByteString, Bool)]
+datas outs = [ (s, d, e) | DataFrame (StreamId s) e d _ <- parsed outs ]
+
+writables :: [Output] -> [Word32]
+writables outs = [ s | Writable (StreamId s) <- outs ]
+
+windowUpdate :: Word32 -> Word32 -> Input
+windowUpdate s n = Received (renderWindowUpdate (StreamId s) n)
+
+-- two GETs, on streams 1 and 3
+twoGets :: ByteString
+twoGets = let [b1, b3] = blocks [base, base] in headers 1 True b1 <> headers 3 True b3
+
+prop_responses :: Property
+prop_responses = once $ conjoin
+  [ counterexample "200 with content-length, two writes, the end: HEADERS, DATA, DATA, empty DATA with END_STREAM" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 (ok (Just 5)), write 1 "hel", write 1 "lo", endOn 1]
+      in [ x | x@SeenHeaders {} <- seen outs ] === [SeenHeaders 1 [(":status", "200"), ("content-length", "5")] False]
+         .&&. datas outs === [(1, "hel", False), (1, "lo", False), (1, "", True)]
+         .&&. writables outs === [1, 1] .&&. not (misused outs)
+  , counterexample "content of unknown length: no content-length" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 (response 200 [("x-a", "1")] Nothing), write 1 "abc", endOn 1]
+      in seen outs === [ SeenHeaders 1 [(":status", "200"), ("x-a", "1")] False
+                       , SeenOther (DataFrame (StreamId 1) False "abc" 3), SeenOther (DataFrame (StreamId 1) True "" 0) ]
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.1.1
+  -- # A response that is defined to have no content, as described in
+  -- # Section 6.4.1 of [HTTP], MAY have a non-zero content-length header
+  -- # field, even though no content is included in DATA frames.
+  , counterexample "HEAD: HEADERS with the declared content-length and END_STREAM; writes discarded, answered" $
+      let [b] = blocks [[(":method", "HEAD"), (":scheme", "http"), (":authority", "example.com"), (":path", "/")]]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 (ok (Just 5)), write 1 "hello", endOn 1]
+      in seen outs === [SeenHeaders 1 [(":status", "200"), ("content-length", "5")] True] .&&. writables outs === [1]
+         .&&. not (misused outs)
+  , counterexample "no content (204): HEADERS with END_STREAM, no content-length" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 ((response 204 [] Nothing) { respHasContent = False })]
+      in seen outs === [SeenHeaders 1 [(":status", "204")] True]
+  , counterexample "trailers: HEADERS with END_STREAM after the content" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b))
+                      [respondOn 1 (ok Nothing), write 1 "abc", EndBody (StreamId 1) (fieldsOf [("x-sum", "1")])]
+      in drop 1 (seen outs) === [SeenOther (DataFrame (StreamId 1) False "abc" 3), SeenHeaders 1 [("x-sum", "1")] True]
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.1
+  -- # A server can
+  -- # send a complete response prior to the client sending an entire
+  -- # request if the response does not depend on any portion of the
+  -- # request that has not been sent and received.  When this is true, a
+  -- # server MAY request that the client abort transmission of a request
+  -- # without error by sending a RST_STREAM with an error code of NO_ERROR
+  -- # after sending a complete response (i.e., a frame with the END_STREAM
+  -- # flag set).
+  , counterexample "a response complete while the request still sends: RST_STREAM NO_ERROR; its slot freed" $
+      let [b] = blocks [post]
+          (c, outs) = feedAll (serve [] (headers 1 False b)) [respondOn 1 ((response 204 [] Nothing) { respHasContent = False })]
+      in drop (length (seen (snd (serve [] (headers 1 False b))))) (seen outs) === [SeenHeaders 1 [(":status", "204")] True, SeenReset 1 NoError]
+         .&&. seen (from (c, []) [HandlerDone (StreamId 1), Received (dataFrames 1 False "late")]) === []
+  , counterexample "the handler returns after the end: nothing more; the stream's slot is free" $
+      let bs = blocks (replicate 101 base)
+          (c, _) = serve [] (B.concat [headers (2 * i + 1) True b | (i, b) <- zip [0 .. 99] bs])
+          (c', o) = feedAll (c, []) [respondOn 1 (ok (Just 0)), endOn 1, HandlerDone (StreamId 1)]
+      in seen o === [SeenHeaders 1 [(":status", "200"), ("content-length", "0")] False, SeenOther (DataFrame (StreamId 1) True "" 0)]
+         .&&. length (requests (from (c', []) [Received (headers 201 True (last bs))])) === 1
+  , counterexample "the handler returns before the end, after responding: RST_STREAM INTERNAL_ERROR" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 "abc", HandlerDone (StreamId 1)]
+      in last (seen outs) === SeenReset 1 InternalError
+  ]
+
+prop_responseErrors :: Property
+prop_responseErrors = once $ conjoin
+  [ counterexample "more content than declared: RST_STREAM INTERNAL_ERROR, the handler told" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 (ok (Just 5)), write 1 "hello!"]
+      in last (seen outs) === SeenReset 1 InternalError .&&. aborted outs === [(1, ResetByServer InternalError)]
+         .&&. datas outs === []
+  , counterexample "less content than declared at the end: the same" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 (ok (Just 5)), write 1 "hell", endOn 1]
+      in last (seen outs) === SeenReset 1 InternalError .&&. aborted outs === [(1, ResetByServer InternalError)]
+         .&&. [e | (_, _, e) <- datas outs] === [False]
+  , counterexample "Abort: RST_STREAM INTERNAL_ERROR" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 (ok Nothing), Abort (StreamId 1)]
+      in last (seen outs) === SeenReset 1 InternalError
+  , counterexample "Respond twice, WriteBody or EndBody before Respond: misuse" $
+      let [b] = blocks [base]
+          start = serve [] (headers 1 True b)
+      in misused (from start [respondOn 1 (ok Nothing), respondOn 1 (ok Nothing)])
+         .&&. misused (from start [write 1 "x"]) .&&. misused (from start [endOn 1])
+  , counterexample "a write before the last one's Writable: misuse" $
+      let [b] = blocks [base]
+          outs = from (serve [InitialWindowSize 0] (headers 1 True b))
+                      [respondOn 1 (ok Nothing), write 1 (B.replicate 16384 0x61), write 1 "x"]
+      in writables outs === [] .&&. misused outs
+  , counterexample "a response to a stream the client reset: discarded" $
+      let [b] = blocks [post]
+          outs = from (serve [] (headers 1 False b <> rst 1 Cancel)) [respondOn 1 (ok Nothing), write 1 "abc", endOn 1]
+      in seen outs === [] .&&. writables outs === [1] .&&. not (misused outs)
+  , counterexample "the client resets a stream with content buffered: the buffer is freed" $
+      let bs = blocks (replicate 17 base)
+          opened = B.concat [headers (2 * i + 1) True b | (i, b) <- zip [0 ..] bs]
+          -- 16 streams fill the connection's 256 KiB with nothing sent
+          fill = concat [[respondOn (2 * i + 1) (ok Nothing), write (2 * i + 1) (B.replicate 16384 0x61)] | i <- [0 .. 15]]
+          (c, o) = feedAll (serve [InitialWindowSize 0] opened) fill
+          o' = from (c, []) [respondOn 33 (ok Nothing), write 33 "x", Received (rst 1 Cancel)]
+      in writables o === [] .&&. writables o' === [33]
+  ]
+
+prop_sendWindows :: Property
+prop_sendWindows = once $ conjoin
+  [ counterexample "content beyond the connection's window waits for its WINDOW_UPDATE" $
+      let [b] = blocks [base]
+          (c, o) = feedAll (serve [InitialWindowSize 200000] (headers 1 True b))
+                           [respondOn 1 (ok Nothing), write 1 (B.replicate 100000 0x61), endOn 1]
+          o' = from (c, []) [windowUpdate 0 34465]
+      in sum [B.length d | (_, d, _) <- datas o] === 65535
+         .&&. sum [B.length d | (_, d, _) <- datas o'] === 34465 .&&. [e | (_, _, e) <- datas o'] === [False, False, True]
+  , counterexample "the stream's window: what is sent is within it; the rest follows its WINDOW_UPDATE" $
+      let [b] = blocks [base]
+          (c, o) = feedAll (serve [InitialWindowSize 5000] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 8000 0x61)]
+          o' = from (c, []) [windowUpdate 1 3000]
+      in map (\(_, d, _) -> B.length d) (datas o) === [5000] .&&. map (\(_, d, _) -> B.length d) (datas o') === [3000]
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-10.5
+  -- # Providing tiny increments to flow control in WINDOW_UPDATE frames can
+  -- #    cause a sender to generate a large number of DATA frames.
+  , counterexample "under 1 KiB of window and more queued: nothing sent; the last octets go whatever their size" $
+      let [b] = blocks [base]
+          (c, o) = feedAll (serve [InitialWindowSize 1023] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 1500 0x61)]
+          o1 = from (c, []) [windowUpdate 1 1]
+          (c2, _) = feedAll (serve [InitialWindowSize 1023] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 1000 0x61)]
+      in datas o === [] .&&. map (\(_, d, _) -> B.length d) (datas o1) === [1024]
+         .&&. map (\(_, d, _) -> B.length d) (datas (from (c2, []) [endOn 1])) === [0] .&&. writables o === [1]
+  , counterexample "an empty DATA with END_STREAM needs no window" $
+      let [b] = blocks [base]
+      in datas (from (serve [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok (Just 0)), endOn 1]) === [(1, "", True)]
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2
+  -- # A change to SETTINGS_INITIAL_WINDOW_SIZE can cause the available
+  -- # space in a flow-control window to become negative.  A sender MUST
+  -- # track the negative flow-control window and MUST NOT send new flow-
+  -- # controlled frames until it receives WINDOW_UPDATE frames that cause
+  -- # the flow-control window to become positive.
+  , counterexample "INITIAL_WINDOW_SIZE lowered below what was sent: negative, then credit restores it" $
+      let [b] = blocks [base]
+          (c, o) = feedAll (serve [] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 30000 0x61)]
+          -- the window, 35,535, becomes -30,000
+          (c1, o1) = feedAll (c, []) [Received (renderSettings [InitialWindowSize 0]), write 1 "x", endOn 1]
+          o2 = from (c1, []) [windowUpdate 1 30000]
+          o3 = from (c1, []) [windowUpdate 1 30001]
+      in map (\(_, d, _) -> B.length d) (datas o) === [16384, 13616] .&&. seen o1 === []
+         .&&. datas o2 === [] .&&. datas o3 === [(1, "x", True)]
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2
+  -- # When the
+  -- # value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
+  -- # the size of all stream flow-control windows that it maintains by the
+  -- # difference between the new value and the old value.
+  , counterexample "INITIAL_WINDOW_SIZE raised: what waited goes" $
+      let [b] = blocks [base]
+          (c, _) = feedAll (serve [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 "abc"]
+      in datas (from (c, []) [Received (renderSettings [InitialWindowSize 10])]) === [(1, "abc", False)]
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2
+  -- # An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
+  -- # causes any flow-control window to exceed the maximum size as a
+  -- # connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
+  , counterexample "INITIAL_WINDOW_SIZE raised past 2^31-1 for a stream: FLOW_CONTROL_ERROR on the connection" $
+      let [b] = blocks [base]
+          (c, _) = serve [] (headers 1 True b <> renderWindowUpdate (StreamId 1) 2147418112)
+      in seen (from (c, []) [Received (renderSettings [InitialWindowSize 65536])]) === [SeenGoAway FlowControlError]
+         .&&. seen (from (c, []) [Received (renderSettings [InitialWindowSize 65535])]) === []
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.1
+  -- # A sender MUST NOT allow a flow-control window to exceed 2^31-1
+  -- # octets.  If a sender receives a WINDOW_UPDATE that causes a flow-
+  -- # control window to exceed this maximum, it MUST terminate either the
+  -- # stream or the connection, as appropriate.
+  , counterexample "WINDOW_UPDATE past 2^31-1: on the connection, a connection error; on a stream, a stream error" $
+      let [b] = blocks [base]
+          (c, _) = serve [] (headers 1 True b)
+      in seen (from (c, []) [windowUpdate 0 2147418112]) === []
+         .&&. seen (from (c, []) [windowUpdate 0 2147418113]) === [SeenGoAway FlowControlError]
+         .&&. seen (from (c, []) [windowUpdate 1 2147418112]) === []
+         .&&. seen (from (c, []) [windowUpdate 1 2147418113]) === [SeenReset 1 FlowControlError]
+  , counterexample "WINDOW_UPDATE on an idle stream: PROTOCOL_ERROR; on a closed one: ignored" $
+      let [b] = blocks [base]
+          (c, _) = feedAll (serve [] (headers 1 True b)) [HandlerDone (StreamId 1)]
+      in seen (from (c, []) [windowUpdate 3 1]) === [SeenGoAway ProtocolError]
+         .&&. seen (from (c, []) [windowUpdate 1 1]) === []
+  , counterexample "WINDOW_UPDATEs leaving a stream's window under 1 KiB cost one each" $
+      let [b] = blocks [base]
+          tiny n = B.concat (replicate n (renderWindowUpdate (StreamId 1) 1))
+      in closed (snd (serve [InitialWindowSize 0] (headers 1 True b <> tiny 999))) === False
+         .&&. closed (snd (serve [InitialWindowSize 0] (headers 1 True b <> tiny 1000))) === True
+         .&&. closed (snd (serve [InitialWindowSize 1024] (headers 1 True b <> tiny 1000))) === False
+  ]
+
+prop_scheduler :: Property
+prop_scheduler = once $ conjoin
+  [ counterexample "two streams take turns, frame by frame, 16 KiB at most" $
+      let (c, _) = feedAll (serve [InitialWindowSize 0] twoGets)
+                           [ respondOn 1 (ok Nothing), write 1 (B.replicate 40000 0x61)
+                           , respondOn 3 (ok Nothing), write 3 (B.replicate 40000 0x62) ]
+          o = from (c, []) [Received (renderSettings [InitialWindowSize 65535])]
+      in [(s, B.length d) | (s, d, _) <- datas o] === [(1, 16384), (3, 16384), (1, 16384), (3, 16383)]
+  , counterexample "a stream that cannot send does not hold up one that can" $
+      let (c, _) = feedAll (serve [InitialWindowSize 0] twoGets)
+                           [respondOn 1 (ok Nothing), write 1 "a", respondOn 3 (ok Nothing), write 3 "b"]
+      in datas (from (c, []) [windowUpdate 3 10]) === [(3, "b", False)]
+  , counterexample "content and trailers queued behind the window: both go once it opens" $
+      let [b] = blocks [base]
+          (c, _) = feedAll (serve [InitialWindowSize 0] (headers 1 True b))
+                           [respondOn 1 (ok Nothing), write 1 "abc", EndBody (StreamId 1) (fieldsOf [("x-sum", "1")])]
+      in seen (from (c, []) [windowUpdate 1 10])
+           === [SeenOther (DataFrame (StreamId 1) False "abc" 3), SeenHeaders 1 [("x-sum", "1")] True]
+  , counterexample "the client's larger MAX_FRAME_SIZE: DATA still 16 KiB at most" $
+      let [b] = blocks [base]
+          o = from (serve [MaxFrameSize 1048576] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 40000 0x61)]
+      in map (\(_, d, _) -> B.length d) (datas o) === [16384, 16384, 7232]
+  , counterexample "Writable at once while under 16 KiB buffered; at 16 KiB, once it is sent" $
+      let [b] = blocks [base]
+          (c, o) = feedAll (serve [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 16383 0x61)]
+          (c1, o1) = feedAll (c, []) [write 1 "x"]
+          o2 = from (c1, []) [windowUpdate 1 1023]
+          o3 = from (c1, []) [windowUpdate 1 1024]
+      in writables o === [1] .&&. writables o1 === [] .&&. writables o2 === [] .&&. writables o3 === [1]
+  , counterexample "the connection's 256 KiB: a stream with room waits too, until any is sent" $
+      let bs = blocks (replicate 17 base)
+          opened = B.concat [headers (2 * i + 1) True b | (i, b) <- zip [0 ..] bs]
+          fill = concat [[respondOn (2 * i + 1) (ok Nothing), write (2 * i + 1) (B.replicate 16384 0x61)] | i <- [0 .. 15]]
+          (c, o) = feedAll (serve [InitialWindowSize 0] opened) fill
+          (c1, o1) = feedAll (c, []) [respondOn 33 (ok Nothing), write 33 "x"]
+          o2 = from (c1, []) [windowUpdate 33 1]
+          o3 = from (c1, []) [windowUpdate 1 1024]
+      in writables o === [] .&&. writables o1 === [] .&&. writables o2 === [] .&&. writables o3 === [1, 33]
+  , counterexample "DATA stops at 64 KiB not yet written, and resumes as the transport writes" $
+      let [b] = blocks [base]
+          -- the transport writes nothing
+          (c, o) = runWith defaultConfig
+                     [ (0, Received (connectionPreface <> renderSettings [InitialWindowSize 1000000] <> headers 1 True b
+                                     <> renderWindowUpdate (StreamId 0) 1000000))
+                     , (0, respondOn 1 (ok Nothing)), (0, write 1 (B.replicate 200000 0x61)) ]
+          emitted = sum [B.length x | Send xs <- o, x <- xs]
+          o1 = snd (step 0 (Sent emitted) c)
+      in counterexample (show emitted) (emitted >= 65536 .&&. emitted < 65536 + 16384 + 9)
+         .&&. sum [B.length d | (_, d, _) <- datas o1] === 65536
+  ]
+
+-- the reference model: whatever the writes and the window updates, each
+-- stream's DATA is what was written, in order, ended once; no frame
+-- goes beyond either window; nothing is a misuse
+data SendOp = WriteOp Word32 Int | UpdateOp Word32 Word32
+  deriving (Show)
+
+prop_sendModel :: Property
+prop_sendModel =
+  forAll (choose (0, 70000)) $ \w0 ->
+  forAll (listOf1 op) $ \ops ->
+    let (c0, _) = serve [InitialWindowSize (fromIntegral w0)] twoGets
+        (c1, o1) = feedAll (c0, []) [respondOn 1 (ok Nothing), respondOn 3 (ok Nothing)]
+        -- the driver writes only after the last write's Writable
+        go (c, ss, waiting, ws) o = case o of
+          WriteOp s n
+            | s `elem` waiting -> (c, ss ++ [[]], waiting, ws)
+            | otherwise ->
+                let d = B.replicate n (fromIntegral (length ss `mod` 251))
+                    (c', o') = writeAll (step 0 (write s d) c)
+                in (c', ss ++ [o'], filter (`notElem` writables o') (s : waiting), M.insertWith (flip (<>)) s d ws)
+          UpdateOp s n ->
+            let (c', o') = writeAll (step 0 (windowUpdate s n) c)
+            in (c', ss ++ [o'], filter (`notElem` writables o') waiting, ws)
+        (c2, steps, _, written) = foldl' go (c1, [], [], M.empty) ops
+        flush = from (c2, []) [endOn 1, endOn 3, windowUpdate 0 1000000, windowUpdate 1 1000000, windowUpdate 3 1000000]
+        allOuts = o1 ++ concat steps ++ flush
+        on s = [(d, e) | (s', d, e) <- datas allOuts, s' == s]
+    in conjoin
+         [ counterexample ("stream " ++ show s) $
+             B.concat (map fst (on s)) === M.findWithDefault "" s written
+             .&&. map snd (on s) === map (const False) (drop 1 (on s)) ++ [True]
+         | s <- [1, 3] ]
+       .&&. not (misused allOuts) .&&. not (closed allOuts)
+       .&&. conjoin (windows (M.fromList [(0, 65535), (1, w0), (3, w0)]) M.empty (zip ops steps))
+  where
+    op = oneof [ WriteOp <$> elements [1, 3] <*> choose (0, 20000)
+               , UpdateOp <$> elements [0, 1, 3] <*> choose (1, 40000) ]
+    -- after each step, what was sent on each stream and on the
+    -- connection is within the credit given so far
+    windows _ _ [] = []
+    windows credit sent ((o, outs) : rest) =
+      let credit' = case o of
+            UpdateOp s n -> M.insertWith (+) s (fromIntegral n) credit
+            WriteOp _ _ -> credit
+          sent' = foldl' (\m (s, d, _) -> M.insertWith (+) 0 (B.length d) (M.insertWith (+) s (B.length d) m)) sent (datas outs)
+      in [ counterexample ("over the window of " ++ show s) (M.findWithDefault 0 s sent' <= M.findWithDefault (0 :: Int) s credit')
+         | s <- [0, 1, 3 :: Word32] ] ++ windows credit' sent' rest

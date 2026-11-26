@@ -771,7 +771,15 @@ the second review and the survey: Go holds 4 KiB a stream, mod_http2
 waits for `Writable` (writing more is a misuse), so a handler blocks
 on its `MVar` while its buffer is full, and `Writable` goes to the
 waiting streams in turn. The core does not copy the application's
-chunks.
+chunks. (As built in part 4, 2026-11-26: every `WriteBody` is answered
+by exactly one `Writable`, at once when the buffers are under their
+bounds, since the driver cannot tell otherwise whether a write filled
+them; a write to a response no longer sent is discarded and answered
+too, and a stream reset while a write waits gets `RequestAborted`
+instead. DATA frames carry at most 16 KiB whatever the client's
+MAX_FRAME_SIZE, so streams take turns finely and one frame stays far
+below the unsent-output cap; END_STREAM rides on the last DATA when
+the end is already known, else an empty DATA carries it.)
 
 - The core emits DATA only while what it has emitted and the driver
   has not yet reported written (`Sent`) is under a bound (64 KiB, a

@@ -8,9 +8,9 @@
 -- nuisance budget. Part 2: streams and their field blocks, to
 -- 'NewRequest' (C4, C6, C7, D10, D11), client resets, trailers, and the
 -- responses the core writes itself. Part 3: request content and its
--- flow-control credit (C3, C9). WINDOW_UPDATE is not handled yet: it
--- ends the connection with INTERNAL_ERROR, so that nothing half-handled
--- passes silently.
+-- flow-control credit (C3, C9). Part 4: responses, the client's
+-- windows and the scheduler (C5, C12, D8). Timers per stream, GOAWAY and
+-- shutdown come in part 5.
 module Hyperdrive.HTTP2.Connection
   ( -- * Configuration
     Config(..)
@@ -28,6 +28,7 @@ module Hyperdrive.HTTP2.Connection
   , Output(..)
   , AbortReason(..)
   , RequestHead(..)
+  , ResponseHead(..)
   , Misuse(..)
   , connectionPreface
   ) where
@@ -38,7 +39,9 @@ import qualified Data.ByteString.Char8 as C
 import Data.Char (toLower)
 import Data.List (nub)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
+import Data.Sequence (Seq, ViewL(..), viewl, (|>))
+import qualified Data.Sequence as Seq
 import Data.Word (Word32, Word64)
 import Hyperdrive.HPACK.Decode
 import Hyperdrive.HPACK.Encode (Encoder, encodeBlock, newEncoder, setPeerTableSize)
@@ -46,6 +49,7 @@ import Hyperdrive.HTTP2.Frame
 import Hyperdrive.Semantics.ControlData hiding (Refused)
 import qualified Hyperdrive.Semantics.ControlData as CD
 import Hyperdrive.Semantics.Field (Fields, emptyFields, fieldNameBytes, fieldValueBytes, fieldsToList)
+import Hyperdrive.Semantics.Method (pattern HEAD)
 import Hyperdrive.Semantics.Status (Status, mkStatus, statusCode, pattern ExpectationFailed, pattern InternalServerError)
 import Hyperdrive.Semantics.Target (TargetContext(..))
 import Hyperdrive.Semantics.URI (pattern HTTP)
@@ -71,6 +75,9 @@ data Config = Config
   , configMaxHeldStreams       :: !Int     -- ^ C6: reset streams whose handlers still run, 100
   , configMaxFields            :: !Int     -- ^ D9: fields in a request, 100
   , configBlockTimeout         :: !Time    -- ^ C8: a field block left unfinished, 30 s
+  , configStreamBuffer         :: !Int     -- ^ C5: response octets buffered per stream, 16 KiB
+  , configConnectionBuffer     :: !Int     -- ^ C5: response octets buffered per connection, 256 KiB
+  , configPacing               :: !Int     -- ^ C5: DATA emitted and not yet written, 64 KiB
   , configTarget               :: !TargetContext
     -- ^ the connection's scheme and default authority, and whether its
     -- peer is a trusted gateway (D11)
@@ -93,6 +100,9 @@ defaultConfig = Config
   , configMaxHeldStreams = 100
   , configMaxFields = 100
   , configBlockTimeout = 30000
+  , configStreamBuffer = 16384
+  , configConnectionBuffer = 262144
+  , configPacing = 65536
   , configTarget = TargetContext HTTP Nothing False
   }
 
@@ -136,6 +146,7 @@ data Input
   = Received !ByteString            -- ^ octets from the transport (the preface first)
   | Sent !Int                       -- ^ the transport has written this many more octets (C5)
   | PeerClosed
+  | Respond !StreamId !ResponseHead -- ^ the handler's response head (C12)
   | WriteBody !StreamId !ByteString -- ^ response content (C5)
   | EndBody !StreamId !Fields       -- ^ the end of the content, with trailers
   | Abort !StreamId                 -- ^ the handler failed after responding
@@ -155,6 +166,16 @@ data AbortReason
   | ConnectionEnded
   deriving (Eq, Show)
 
+-- | A handler's response head (C12), as HTTP/1.1's: the status, the
+-- header fields (the driver has added @date@), whether there is
+-- content, and its length if known.
+data ResponseHead = ResponseHead
+  { respStatus     :: !Status
+  , respFields     :: !Fields
+  , respHasContent :: !Bool
+  , respLength     :: !(Maybe Word64)
+  } deriving (Show)
+
 -- | A request for a handler: D11's mapping of its field list, and
 -- whether content follows.
 data RequestHead = RequestHead
@@ -167,7 +188,8 @@ data Output
   | RequestData !StreamId !ByteString -- ^ request content (C3)
   | RequestEnd !StreamId !Fields    -- ^ the end of the request's content, with its trailers
   | RequestAborted !StreamId !AbortReason
-  | Writable !StreamId
+  | Writable !StreamId               -- ^ the answer to a 'WriteBody': write again (C5);
+                                    --   a stream aborted instead gets 'RequestAborted'
   | Send ![ByteString]
   | Close                           -- ^ after a GOAWAY, staged as HTTP/1.1's
   | ProtocolMisuse !Misuse
@@ -178,6 +200,9 @@ data Output
 data Misuse
   = SentMoreThanEmitted             -- ^ 'Sent' for octets never emitted
   | ConsumedMoreThanQueued          -- ^ 'Consumed' for content never passed on
+  | RespondTwice
+  | BodyBeforeRespond               -- ^ 'WriteBody' or 'EndBody' before 'Respond'
+  | WroteBeforeWritable             -- ^ 'WriteBody' before the last one's 'Writable' (C5)
   | TimedOutWithoutDeadline         -- ^ 'TimedOut' before 'nextDeadline'
   deriving (Eq, Show)
 
@@ -206,7 +231,20 @@ data StreamEntry = StreamEntry
   , sRecvWindow    :: !Int           -- ^ what the client may still send (C3)
   , sUnreturned    :: !Int           -- ^ credit consumed and not yet given back
   , sQueued        :: !Int           -- ^ content passed on and not yet consumed
+  , sIsHead        :: !Bool          -- ^ the request's method is HEAD (C12)
+  , sResponse      :: !Response
+  , sSendWindow    :: !Int           -- ^ what we may still send on the stream (C5)
+  , sOut           :: !(Seq ByteString) -- ^ response content not yet sent
+  , sOutLength     :: !Int
+  , sWaiting       :: !Bool          -- ^ a write waits for its 'Writable' (C5)
   }
+
+-- | Where a stream's response is (C12).
+data Response
+  = Awaiting                         -- ^ no response head yet
+  -- | the length declared, the content the handler has written, and
+  -- the end (with trailers) once the handler has said so
+  | Sending !(Maybe Word64) !Word64 !(Maybe Fields)
 
 -- | A field block whose HEADERS has come and whose CONTINUATIONs have
 -- not all (C7).
@@ -239,6 +277,9 @@ data Conn = Conn
   , cRecvWindow  :: !Int            -- ^ what the client may still send on the connection (C3)
   , cUnreturned  :: !Int            -- ^ connection credit consumed and not yet given back
   , cSource      :: !Int            -- ^ the size of the buffer frames are now read from (C3)
+  , cSendWindow  :: !Int            -- ^ what we may still send on the connection (C5)
+  , cBuffered    :: !Int            -- ^ response content buffered, all streams (C5)
+  , cOrder       :: !(Seq Word32)   -- ^ streams with something to send, in turn (D8)
   , cEncoder     :: !Encoder
   , cClosed      :: !Bool
   }
@@ -288,6 +329,9 @@ newConn config now =
         , cRecvWindow = connectionWindow config
         , cUnreturned = 0
         , cSource = 0
+        , cSendWindow = 65535
+        , cBuffered = 0
+        , cOrder = Seq.empty
         , cEncoder = newEncoder 4096
         , cClosed = False
         }
@@ -324,15 +368,16 @@ step now input c0 = let c = refill now c0 in case input of
   Received bs -> advance now c { cMore = bs : cMore c, cMoreLength = cMoreLength c + B.length bs } []
   Sent n
     | n > cUnsent c -> misuse SentMoreThanEmitted c
-    | otherwise -> result c { cUnsent = cUnsent c - n } []
+    | otherwise -> pump c { cUnsent = cUnsent c - n }
   PeerClosed -> close c []
   TimedOut -> timedOut now c
   Shutdown -> goAway c NoError
   -- C2: inputs for streams the core does not serve are ignored (the
   -- handler races the owner). This part serves none.
-  WriteBody _ _ -> result c []
-  EndBody _ _ -> result c []
-  Abort _ -> result c []
+  Respond (StreamId sid) h -> respondHandler sid h c
+  WriteBody (StreamId sid) d -> writeBody sid d c
+  EndBody (StreamId sid) tr -> endBody sid tr c
+  Abort (StreamId sid) -> abort sid c
   WantContent (StreamId sid) -> wantContent sid c
   Consumed (StreamId sid) n -> consumed sid n c
   HandlerDone (StreamId sid) -> handlerDone sid c
@@ -488,6 +533,29 @@ frameOutsideBlock now c f acc = case f of
              -- a closed stream: discarded, its credit given back at once
              -- (C3, C4; Section 6.9)
              _ -> next (giveBack plen c1)
+  WindowUpdateFrame (StreamId 0) inc
+    -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.1
+    -- # A sender MUST NOT allow a flow-control window to exceed 2^31-1
+    -- # octets.  If a sender receives a WINDOW_UPDATE that causes a flow-
+    -- # control window to exceed this maximum, it MUST terminate either the
+    -- # stream or the connection, as appropriate.
+    | cSendWindow c + fromIntegral inc > maxWindow -> stop acc (goAway c FlowControlError)
+    | otherwise -> next (pump c { cSendWindow = cSendWindow c + fromIntegral inc })
+  WindowUpdateFrame (StreamId sid) inc
+    -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1
+    -- # Receiving any frame other than HEADERS or PRIORITY on a stream in
+    -- #    this state MUST be treated as a connection error (Section 5.4.1)
+    -- #    of type PROTOCOL_ERROR.
+    | not (idle sid c) -> case M.lookup sid (cStreams c) of
+        Just st | sState st /= ClosedHeld ->
+          let w = sSendWindow st + fromIntegral inc
+          in if w > maxWindow then next (streamError c sid st FlowControlError)
+             -- a window left under the DATA floor costs one (C5, C10)
+             else (if w < dataFloor then charge 1 c else ($ c)) $ \c1 ->
+                    next (pump c1 { cStreams = M.insert sid st { sSendWindow = w } (cStreams c1) })
+        -- a closed stream: ignored (C4)
+        _ -> next (c, [])
+    | otherwise -> stop acc (goAway c ProtocolError)
   RstStreamFrame (StreamId sid) code
     -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1
     -- # Receiving any frame other than HEADERS or PRIORITY on a stream in
@@ -517,8 +585,24 @@ frameOutsideBlock now c f acc = case f of
         -- # Once all values have been processed, the
         -- # recipient MUST immediately emit a SETTINGS frame with the ACK flag
         -- # set.
-        emit [renderSettingsAck] c1 { cPeer = foldl apply (cPeer c1) ss
-                                    , cEncoder = foldl tableSize (cEncoder c1) ss } >>> next
+        let peer = foldl apply (cPeer c1) ss
+            delta = fromIntegral (peerInitialWindowSize peer) - fromIntegral (peerInitialWindowSize (cPeer c1)) :: Int
+            streams = M.map (\st -> st { sSendWindow = sSendWindow st + delta }) (cStreams c1)
+        in
+           -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2
+           -- # When the
+           -- # value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
+           -- # the size of all stream flow-control windows that it maintains by the
+           -- # difference between the new value and the old value.
+           --
+           -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2
+           -- # An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
+           -- # causes any flow-control window to exceed the maximum size as a
+           -- # connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
+           if any ((> maxWindow) . sSendWindow) streams then stop acc (goAway c1 FlowControlError)
+           else andThen (emit [renderSettingsAck] c1 { cPeer = peer, cStreams = streams
+                                                    , cEncoder = foldl tableSize (cEncoder c1) ss })
+                        pump >>> next
   SettingsAckFrame -> case cSettingsSent c of
     -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.3
     -- # Upon receiving a SETTINGS frame with the ACK flag set, the
@@ -756,7 +840,13 @@ newStream c sid endStream decoded
                 , sReceived = 0
                 , sRecvWindow = streamWindow cfg
                 , sUnreturned = 0
-                , sQueued = 0 }
+                , sQueued = 0
+                , sIsHead = controlMethod rc == HEAD
+                , sResponse = Awaiting
+                , sSendWindow = fromIntegral (peerInitialWindowSize (cPeer c))
+                , sOut = Seq.empty
+                , sOutLength = 0
+                , sWaiting = False }
           in result c { cStreams = M.insert sid st (cStreams c) }
                     [NewRequest (StreamId sid) (RequestHead rc (not endStream))]
       where
@@ -801,9 +891,13 @@ streamErrorBecause reason c sid st code = charge 1 c $ \c1 ->
 -- be: its connection credit comes back (C3).
 ended :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
 ended sid st c =
-  let c1 | sHandler st = c { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0 } (cStreams c) }
-         | otherwise = c { cStreams = M.delete sid (cStreams c) }
-  in giveBack (sQueued st) c1
+  let c0 = c { cBuffered = cBuffered c - sOutLength st }
+      c1 | sHandler st = c0 { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0
+                                                           , sOut = Seq.empty, sOutLength = 0, sWaiting = False } (cStreams c0) }
+         | otherwise = c0 { cStreams = M.delete sid (cStreams c0) }
+  -- its buffered response freed: other writes may be waiting on the
+  -- connection's bound (C5)
+  in andThen (giveBack (sQueued st) c1) (if sOutLength st > 0 then writable else (`result` []))
 
 -- | A response the core writes itself (D10's case 3): the status with no
 -- content, then RST_STREAM NO_ERROR if the request is still sending.
@@ -815,15 +909,210 @@ respond status sid requestEnded c =
                ++ [renderRstStream (StreamId sid) NoError | not requestEnded]
   in emit frames c { cEncoder = enc }
 
--- | A handler returned. Before its response (which comes in part 4), it
--- failed: the core answers 500 (C2).
+-- | A handler returned. Before its response, it failed: the core
+-- answers 500 (C2). While its response is being sent, the stream stays
+-- until the response is out, its handler no longer counted.
 handlerDone :: Word32 -> Conn -> (Conn, [Output])
 handlerDone sid c = case M.lookup sid (cStreams c) of
   Nothing -> result c []
   Just st -> case sState st of
     ClosedHeld -> result c { cStreams = M.delete sid (cStreams c) } []
-    s' -> andThen (giveBack (sQueued st) c { cStreams = M.delete sid (cStreams c) })
-                  (respond InternalServerError sid (s' == HalfClosedRemote))
+    s' -> case sResponse st of
+      Awaiting -> andThen (giveBack (sQueued st) c { cStreams = M.delete sid (cStreams c) })
+                          (respond InternalServerError sid (s' == HalfClosedRemote))
+      -- returned without ending its content: as Abort (D10 case 4)
+      Sending _ _ Nothing -> abort sid c
+      Sending {} -> result c { cStreams = M.insert sid st { sHandler = False } (cStreams c) } []
+
+------------------------------------------------------------------------------
+-- Responses (C5, C12)
+------------------------------------------------------------------------------
+
+-- the largest flow-control window (Section 6.9.1)
+maxWindow :: Int
+maxWindow = 2147483647
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-10.5
+-- # Providing tiny increments to flow control in WINDOW_UPDATE frames can
+-- #    cause a sender to generate a large number of DATA frames.
+--
+-- So a DATA frame is at least this long unless it carries the last of
+-- what is queued (C5).
+dataFloor :: Int
+dataFloor = 1024
+
+-- | The handler's response head. A response with no content (HEAD,
+-- 204, 304, no content at all) is a HEADERS with END_STREAM, with the
+-- declared content-length for HEAD (Section 8.1.1: such a response "MAY
+-- have a non-zero content-length header field").
+respondHandler :: Word32 -> ResponseHead -> Conn -> (Conn, [Output])
+respondHandler sid h c = case M.lookup sid (cStreams c) of
+  Just st | sState st /= ClosedHeld -> case sResponse st of
+    Awaiting ->
+      let headerOnly = not (respHasContent h) || sIsHead st
+          fields = responseToFields (respStatus h) (respFields h)
+                   ++ [("content-length", C.pack (show n)) | Just n <- [respLength h], respHasContent h]
+          (block, enc) = encodeBlock (cEncoder c) fields
+          frames = renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) headerOnly block
+          c1 = c { cEncoder = enc }
+      in if headerOnly then andThen (emit frames c1) (finished sid st)
+         else emit frames c1 { cStreams = M.insert sid st { sResponse = Sending (respLength h) 0 Nothing } (cStreams c1) }
+    _ -> misuse RespondTwice c
+  -- a stream no longer served: the handler raced a reset (C2)
+  _ -> result c []
+
+-- | Response content: queued for the scheduler (C5). Each write is
+-- answered by one 'Writable', at once while the stream's and the
+-- connection's buffers are under their bounds, else when they are again;
+-- the driver writes again only after it. A write of content beyond the
+-- declared length aborts the response, as on HTTP/1.1 (C12). A write
+-- to a response that is no longer sent is discarded, and answered.
+writeBody :: Word32 -> ByteString -> Conn -> (Conn, [Output])
+writeBody sid d c = case M.lookup sid (cStreams c) of
+  Just st | sState st /= ClosedHeld -> case sResponse st of
+    Awaiting -> misuse BodyBeforeRespond c -- WriteBody
+    Sending decl written end
+      | sWaiting st -> misuse WroteBeforeWritable c
+      | isJust end -> result c [Writable (StreamId sid)]
+      | maybe False (< written') decl -> abort sid c
+      | otherwise ->
+          let st' = st { sResponse = Sending decl written' Nothing
+                       , sOut = if B.null d then sOut st else sOut st |> d
+                       , sOutLength = sOutLength st + B.length d
+                       , sWaiting = True }
+          in pump (schedule sid c { cStreams = M.insert sid st' (cStreams c), cBuffered = cBuffered c + B.length d })
+      where written' = written + fromIntegral (B.length d)
+  -- a header-only response, or a stream no longer served
+  _ -> result c [Writable (StreamId sid)]
+
+-- | The end of the content, with trailers. Short of the declared length,
+-- the response is aborted (C12).
+endBody :: Word32 -> Fields -> Conn -> (Conn, [Output])
+endBody sid tr c = case M.lookup sid (cStreams c) of
+  Just st | sState st /= ClosedHeld -> case sResponse st of
+    Awaiting -> misuse BodyBeforeRespond c -- EndBody
+    Sending decl written Nothing
+      | maybe False (/= written) decl -> abort sid c
+      | otherwise -> pump (schedule sid c { cStreams = M.insert sid st { sResponse = Sending decl written (Just tr) } (cStreams c) })
+    Sending {} -> result c []
+  _ -> result c []
+
+-- | The handler failed after responding, or its content was not as
+-- declared: RST_STREAM INTERNAL_ERROR, and the handler told (D10 case 4).
+abort :: Word32 -> Conn -> (Conn, [Output])
+abort sid c = case M.lookup sid (cStreams c) of
+  Just st | sState st /= ClosedHeld ->
+    andThen (ended sid st c) $ \c1 ->
+      let (c2, outs) = emit [renderRstStream (StreamId sid) InternalError] c1
+      in result c2 (RequestAborted (StreamId sid) (ResetByServer InternalError) : outs)
+  _ -> result c []
+
+-- | A stream's response is complete. A request still sending is told to
+-- stop (D6: RST_STREAM NO_ERROR, which Section 8.1 allows); the stream is
+-- closed, its slot freed, the credit of content never consumed given
+-- back.
+finished :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
+finished sid st c =
+  let stillSending = sState st == Open
+      c1 = c { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
+  in andThen (if stillSending then emit [renderRstStream (StreamId sid) NoError] c1 else result c1 [])
+             (giveBack (sQueued st))
+
+-- | Put a stream in the round, if it is not there (D8).
+schedule :: Word32 -> Conn -> Conn
+schedule sid c
+  | sid `elem` cOrder c = c
+  | otherwise = c { cOrder = cOrder c |> sid }
+
+-- the stream's buffer, or the connection's, is full (C5)
+full :: StreamEntry -> Conn -> Bool
+full st c = sOutLength st >= configStreamBuffer (cConfig c) || cBuffered c >= configConnectionBuffer (cConfig c)
+
+-- | Send what the windows and the transport allow: one frame at a time
+-- from each stream that can send, in turn (D8), while the DATA emitted
+-- and not yet written is under the pacing bound (C5). Then 'Writable'
+-- for the streams waiting whose buffers have room again.
+pump :: Conn -> (Conn, [Output])
+pump c0 = go c0 [] (Seq.length (cOrder c0))
+  where
+    go c acc 0 = andThen (result c (concat (reverse acc))) writable
+    go c acc k
+      | cUnsent c >= configPacing (cConfig c) = go c acc 0
+      | otherwise = case viewl (cOrder c) of
+          EmptyL -> go c acc 0
+          sid :< rest -> case M.lookup sid (cStreams c) of
+            Just st | sState st /= ClosedHeld, Sending {} <- sResponse st ->
+              case sendOne sid st c { cOrder = rest } of
+                -- nothing could be sent: to the back of the round, untouched
+                Nothing -> go c { cOrder = rest |> sid } acc (k - 1)
+                Just (c', outs) -> if cClosed c' then result c' (concat (reverse (outs : acc)))
+                                   else go c' (outs : acc) (Seq.length (cOrder c'))
+            -- a stream no longer sending: out of the round
+            _ -> go c { cOrder = rest } acc (k - 1)
+
+-- | One frame of a stream's response, if the windows allow: DATA (with
+-- END_STREAM when it carries the last of the content and there are no
+-- trailers), or the trailers' HEADERS.
+sendOne :: Word32 -> StreamEntry -> Conn -> Maybe (Conn, [Output])
+sendOne sid st c = case sResponse st of
+  Sending _ _ end
+    | sOutLength st > 0 ->
+        let n = minimum [ sOutLength st, sSendWindow st, cSendWindow c, dataFrameSize c ]
+        -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2
+        -- # A sender MUST
+        -- # track the negative flow-control window and MUST NOT send new flow-
+        -- # controlled frames until it receives WINDOW_UPDATE frames that cause
+        -- # the flow-control window to become positive.
+        in if n <= 0 || n < sOutLength st && n < dataFloor then Nothing
+           else
+             let (pieces, rest) = takeOut n (sOut st)
+                 lastOne = n == sOutLength st
+                 endHere = lastOne && maybe False isEmptyFields end
+                 st' = st { sOut = rest, sOutLength = sOutLength st - n, sSendWindow = sSendWindow st - n }
+                 c1 = c { cStreams = M.insert sid st' (cStreams c), cSendWindow = cSendWindow c - n
+                        , cBuffered = cBuffered c - n }
+                 (c2, outs) = emit (renderDataPieces (StreamId sid) endHere pieces) c1
+             in Just $ if endHere then andThen (c2, outs) (finished sid st')
+                       else result (if lastOne && isJust end || not lastOne then schedule sid c2 else c2) outs
+    | Just tr <- end ->
+        if isEmptyFields tr
+          -- the content ended with nothing left to send: an empty DATA
+          -- with END_STREAM (Section 6.9.1 allows it even with no window)
+          then Just (andThen (emit (renderData (StreamId sid) True B.empty) c) (finished sid st))
+          else
+            let (block, enc) = encodeBlock (cEncoder c) (trailersToFields tr)
+                frames = renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) True block
+            in Just (andThen (emit frames c { cEncoder = enc }) (finished sid st))
+    | otherwise -> Nothing
+  Awaiting -> Nothing
+
+-- | DATA frames carry at most 16 KiB, whatever larger frames the client
+-- allows, so that streams take turns finely (D8) and one frame never
+-- approaches the unsent-output cap (C5).
+dataFrameSize :: Conn -> Int
+dataFrameSize c = min 16384 (fromIntegral (peerMaxFrameSize (cPeer c)))
+
+isEmptyFields :: Fields -> Bool
+isEmptyFields = null . fieldsToList
+
+-- the first n octets of the queued chunks, as pieces, and the rest
+takeOut :: Int -> Seq ByteString -> ([ByteString], Seq ByteString)
+takeOut = go []
+  where
+    go acc 0 q = (reverse acc, q)
+    go acc n q = case viewl q of
+      EmptyL -> (reverse acc, q)
+      b :< rest
+        | B.length b <= n -> go (b : acc) (n - B.length b) rest
+        | otherwise -> (reverse (B.take n b : acc), B.drop n b Seq.<| rest)
+
+-- | 'Writable' for each write waiting whose stream's and connection's
+-- buffers have room (C5).
+writable :: Conn -> (Conn, [Output])
+writable c =
+  let ready = [ sid | (sid, st) <- M.toList (cStreams c), sWaiting st, not (full st c) ]
+      streams = foldl (\m sid -> M.adjust (\st -> st { sWaiting = False }) sid m) (cStreams c) ready
+  in result c { cStreams = streams } [Writable (StreamId sid) | sid <- ready]
 
 (>>>) :: a -> (a -> b) -> b
 x >>> g = g x

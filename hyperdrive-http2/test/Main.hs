@@ -7,7 +7,7 @@ import EncodeTests (encodeTests)
 import FrameTests (frameTests)
 import HuffmanTests (huffmanTests)
 import IntegerTests (integerTests)
-import StreamTests (streamTests)
+import StreamTests (responseTests, streamTests)
 import RFC7541 (huffmanTable, rfc7541)
 import Test.Tasty
 
@@ -16,4 +16,4 @@ main = do
   text <- rfc7541
   corpus <- corpusTests
   defaultMain $ localOption (mkTimeout (120 * 1000000)) $ testGroup "hyperdrive-http2"
-    [ integerTests, huffmanTests (huffmanTable text), decodeTests text, encodeTests, corpus, frameTests, connectionTests, streamTests ]
+    [ integerTests, huffmanTests (huffmanTable text), decodeTests text, encodeTests, corpus, frameTests, connectionTests, streamTests, responseTests ]

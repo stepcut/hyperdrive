@@ -3337,26 +3337,28 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[implementation]: Receivers are advised to have mechanisms in
     TEXT[implementation]:    place to avoid sending WINDOW_UPDATE frames with very small
     TEXT[implementation]:    increments; see Section 4.2.3.3 of [RFC1122].
-    TEXT[!MUST]:    A sender MUST NOT allow a flow-control window to exceed 2^31-1
-    TEXT[!MUST]:    octets.
-    TEXT[!MUST]: If a sender receives a WINDOW_UPDATE that causes a flow-
-    TEXT[!MUST]:    control window to exceed this maximum, it MUST terminate either the
-    TEXT[!MUST]:    stream or the connection, as appropriate.
+    TEXT[!MUST,implementation,test]:    A sender MUST NOT allow a flow-control window to exceed 2^31-1
+    TEXT[!MUST,implementation,test]:    octets.
+    TEXT[!MUST,implementation,test]: If a sender receives a WINDOW_UPDATE that causes a flow-
+    TEXT[!MUST,implementation,test]:    control window to exceed this maximum, it MUST terminate either the
+    TEXT[!MUST,implementation,test]:    stream or the connection, as appropriate.
 
   SECTION: [Initial Flow-Control Window Size](#section-6.9.2)
     TEXT[implementation]: The connection flow-control window can only be changed using
     TEXT[implementation]:    WINDOW_UPDATE frames.
-    TEXT[!MUST]: When the
-    TEXT[!MUST]:    value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
-    TEXT[!MUST]:    the size of all stream flow-control windows that it maintains by the
-    TEXT[!MUST]:    difference between the new value and the old value.
-    TEXT[!MUST]: A sender MUST
-    TEXT[!MUST]:    track the negative flow-control window and MUST NOT send new flow-
-    TEXT[!MUST]:    controlled frames until it receives WINDOW_UPDATE frames that cause
-    TEXT[!MUST]:    the flow-control window to become positive.
-    TEXT[!MUST]:    An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
-    TEXT[!MUST]:    causes any flow-control window to exceed the maximum size as a
-    TEXT[!MUST]:    connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
+    TEXT[!MUST,implementation,test]: When the
+    TEXT[!MUST,implementation,test]:    value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
+    TEXT[!MUST,implementation,test]:    the size of all stream flow-control windows that it maintains by the
+    TEXT[!MUST,implementation,test]:    difference between the new value and the old value.
+    TEXT[test]:    A change to SETTINGS_INITIAL_WINDOW_SIZE can cause the available
+    TEXT[test]:    space in a flow-control window to become negative.
+    TEXT[!MUST,implementation,test]: A sender MUST
+    TEXT[!MUST,implementation,test]:    track the negative flow-control window and MUST NOT send new flow-
+    TEXT[!MUST,implementation,test]:    controlled frames until it receives WINDOW_UPDATE frames that cause
+    TEXT[!MUST,implementation,test]:    the flow-control window to become positive.
+    TEXT[!MUST,implementation,test]:    An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
+    TEXT[!MUST,implementation,test]:    causes any flow-control window to exceed the maximum size as a
+    TEXT[!MUST,implementation,test]:    connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
 
   SECTION: [Reducing the Stream Window Size](#section-6.9.3)
     TEXT[!MUST,implementation]: However, the receiver
@@ -3406,10 +3408,14 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]:    set after receiving the HEADERS frame that opens a request or after
     TEXT[!MUST,implementation,test]:    receiving a final (non-informational) status code MUST treat the
     TEXT[!MUST,implementation,test]:    corresponding request or response as malformed (Section 8.1.1).
-    TEXT[!MAY]: When this is true, a server MAY
-    TEXT[!MAY]:    request that the client abort transmission of a request without error
-    TEXT[!MAY]:    by sending a RST_STREAM with an error code of NO_ERROR after sending
-    TEXT[!MAY]:    a complete response (i.e., a frame with the END_STREAM flag set).
+    TEXT[test]: A server can
+    TEXT[test]:    send a complete response prior to the client sending an entire
+    TEXT[test]:    request if the response does not depend on any portion of the request
+    TEXT[test]:    that has not been sent and received.
+    TEXT[!MAY,test]: When this is true, a server MAY
+    TEXT[!MAY,test]:    request that the client abort transmission of a request without error
+    TEXT[!MAY,test]:    by sending a RST_STREAM with an error code of NO_ERROR after sending
+    TEXT[!MAY,test]:    a complete response (i.e., a frame with the END_STREAM flag set).
     TEXT[!MUST,exception]:    Clients MUST NOT discard responses as a result of receiving such a
     TEXT[!MUST,exception]:    RST_STREAM, though clients can always discard responses at their
     TEXT[!MUST,exception]:    discretion for other reasons.
@@ -3419,9 +3425,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[implementation,test]:    if the value of a content-length header field does not equal the sum
     TEXT[implementation,test]:    of the DATA frame payload lengths that form the content, unless the
     TEXT[implementation,test]:    message is defined as having no content.
-    TEXT[!MAY]:    A response that is defined to have no content, as described in
-    TEXT[!MAY]:    Section 6.4.1 of [HTTP], MAY have a non-zero content-length header
-    TEXT[!MAY]:    field, even though no content is included in DATA frames.
+    TEXT[!MAY,test]:    A response that is defined to have no content, as described in
+    TEXT[!MAY,test]:    Section 6.4.1 of [HTTP], MAY have a non-zero content-length header
+    TEXT[!MAY,test]:    field, even though no content is included in DATA frames.
     TEXT[!MUST,exception]:    Intermediaries that process HTTP requests or responses (i.e., any
     TEXT[!MUST,exception]:    intermediary not acting as a tunnel) MUST NOT forward a malformed
     TEXT[!MUST,exception]:    request or response.
@@ -3747,6 +3753,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
   SECTION: [Denial-of-Service Considerations](#section-10.5)
     TEXT[!SHOULD,exception]: A client that accepts server push SHOULD limit the number
     TEXT[!SHOULD,exception]:    of streams it allows to be in the "reserved (remote)" state.
+    TEXT[implementation,test]: Providing tiny increments to flow control in WINDOW_UPDATE
+    TEXT[implementation,test]:          frames can cause a sender to generate a large number of DATA
+    TEXT[implementation,test]:          frames.
     TEXT[test]: An endpoint that constructs and remembers
     TEXT[test]:       frames for sending without considering TCP limits might be subject
     TEXT[test]:       to resource exhaustion.
