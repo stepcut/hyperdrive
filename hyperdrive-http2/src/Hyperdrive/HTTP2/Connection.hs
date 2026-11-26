@@ -52,6 +52,7 @@ data Config = Config
   , configBudgetBurst          :: !Word64  -- ^ C10: 1,000
   , configBudgetRate           :: !Word64  -- ^ C10: 100 a second
   , configMaxSettings          :: !Int     -- ^ C10: settings in one SETTINGS frame, 100
+  , configMaxUnsent            :: !Int     -- ^ C5: octets emitted and not yet written, 1 MiB
   } deriving (Eq, Show)
 
 defaultConfig :: Config
@@ -67,6 +68,7 @@ defaultConfig = Config
   , configBudgetBurst = 1000
   , configBudgetRate = 100
   , configMaxSettings = 100
+  , configMaxUnsent = 1048576
   }
 
 -- | What the client's SETTINGS have told us so far (Section 6.5.2's
@@ -136,7 +138,9 @@ data Phase
 data Conn = Conn
   { cConfig      :: !Config
   , cPhase       :: !Phase
-  , cBuffer      :: !ByteString     -- ^ received and not yet used
+  , cBuffer      :: !ByteString     -- ^ received and not yet used, joined
+  , cMore        :: ![ByteString]   -- ^ received after it, not yet joined, newest first
+  , cMoreLength  :: !Int
   , cPeer        :: !PeerSettings
   , cHeadDeadline :: !(Maybe Time)  -- ^ the preface and first SETTINGS (C8)
   , cSettingsSent :: ![Time]        -- ^ the deadlines of our SETTINGS not yet acknowledged,
@@ -179,6 +183,8 @@ newConn config now =
         { cConfig = config
         , cPhase = AwaitingPreface
         , cBuffer = B.empty
+        , cMore = []
+        , cMoreLength = 0
         , cPeer = initialPeerSettings
         , cHeadDeadline = Just (now + configHeadTimeout config)
         , cSettingsSent = [now]
@@ -217,7 +223,7 @@ nextDeadline c
 step :: Time -> Input -> Conn -> (Conn, [Output])
 step _ _ c | cClosed c = result c []
 step now input c0 = let c = refill now c0 in case input of
-  Received bs -> advance now c { cBuffer = if B.null (cBuffer c) then bs else cBuffer c <> bs } []
+  Received bs -> advance now c { cMore = bs : cMore c, cMoreLength = cMoreLength c + B.length bs } []
   Sent n
     | n > cUnsent c -> misuse SentMoreThanEmitted c
     | otherwise -> result c { cUnsent = cUnsent c - n } []
@@ -256,23 +262,42 @@ timedOut now c = case nextDeadline c of
       else goAway c SettingsTimeout
   _ -> misuse TimedOutWithoutDeadline c
 
--- Use as much of the buffer as makes whole frames.
-advance :: Time -> Conn -> [Output] -> (Conn, [Output])
-advance now c outs
-  | cClosed c = result c outs
+-- What has been received and not used.
+available :: Conn -> Int
+available c = B.length (cBuffer c) + cMoreLength c
+
+-- The chunks received joined into one buffer. Done only once a whole
+-- frame (or the preface) is there, so that each octet is copied at most
+-- twice however the input is split: joining on every chunk would copy a
+-- frame sent an octet at a time once for each octet.
+joined :: Conn -> Conn
+joined c
+  | null (cMore c) = c
+  | otherwise = c { cBuffer = B.concat (cBuffer c : reverse (cMore c)), cMore = [], cMoreLength = 0 }
+
+-- Use as much of the input as makes whole frames. The outputs are
+-- collected newest first, a list for each frame, and joined once at the
+-- end.
+advance :: Time -> Conn -> [[Output]] -> (Conn, [Output])
+advance now c acc
+  | cClosed c = done c acc
   | otherwise = case cPhase c of
-      AwaitingPreface
-        | B.length (cBuffer c) < B.length connectionPreface ->
-            if cBuffer c `B.isPrefixOf` connectionPreface then result c outs else badPreface
-        -- = https://www.rfc-editor.org/rfc/rfc9113#section-3.4
-        -- # Clients and servers MUST treat an invalid connection preface as a
-        -- # connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-        | not (connectionPreface `B.isPrefixOf` cBuffer c) -> badPreface
-        | otherwise -> advance now c { cPhase = AwaitingSettings
-                                     , cBuffer = B.drop (B.length connectionPreface) (cBuffer c) } outs
+      AwaitingPreface ->
+        let c1 = joined c
+            buf = cBuffer c1
+        in if B.length buf < B.length connectionPreface
+             then if buf `B.isPrefixOf` connectionPreface then done c1 acc else badPreface c1
+             -- = https://www.rfc-editor.org/rfc/rfc9113#section-3.4
+             -- # Clients and servers MUST treat an invalid connection preface as a
+             -- # connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+             else if not (connectionPreface `B.isPrefixOf` buf) then badPreface c1
+             else advance now c1 { cPhase = AwaitingSettings
+                                 , cBuffer = B.drop (B.length connectionPreface) buf } acc
       _ -> case parseFrame (configMaxFrameSize (cConfig c)) (cBuffer c) of
-        Incomplete _ -> result c outs
-        Refused (FrameError _ code _) -> prefix outs (goAway c code)
+        Incomplete n
+          | available c >= n && not (null (cMore c)) -> advance now (joined c) acc
+          | otherwise -> done c acc
+        Refused (FrameError _ code _) -> stop acc (goAway c code)
         Parsed f n ->
           let c' = c { cBuffer = B.drop n (cBuffer c) }
           in case cPhase c' of
@@ -282,18 +307,26 @@ advance now c outs
                AwaitingSettings -> case f of
                  SettingsFrame _ _ ->
                    let started = map (const (now + configSettingsTimeout (cConfig c'))) (cSettingsSent c')
-                   in frame now c' { cPhase = Running, cHeadDeadline = Nothing, cSettingsSent = started } f outs
-                 _ -> prefix outs (goAway c' ProtocolError)
-               _ -> frame now c' f outs
+                   in frame now c' { cPhase = Running, cHeadDeadline = Nothing, cSettingsSent = started } f acc
+                 _ -> stop acc (goAway c' ProtocolError)
+               _ -> frame now c' f acc
   where
     -- = https://www.rfc-editor.org/rfc/rfc9113#section-3.4
     -- # A GOAWAY frame (Section 6.8) MAY be omitted in this case, since an
     -- # invalid preface indicates that the peer is not using HTTP/2.
-    badPreface = prefix outs (close c [])
+    badPreface c1 = stop acc (close c1 [])
 
--- One frame, then the rest of the buffer.
-frame :: Time -> Conn -> Frame -> [Output] -> (Conn, [Output])
-frame now c f outs = case f of
+-- the state and the outputs collected so far
+done :: Conn -> [[Output]] -> (Conn, [Output])
+done c acc = result c (concat (reverse acc))
+
+-- the collected outputs, then those of a last step
+stop :: [[Output]] -> (Conn, [Output]) -> (Conn, [Output])
+stop acc (c, outs) = done c (outs : acc)
+
+-- One frame, then the rest of the input.
+frame :: Time -> Conn -> Frame -> [[Output]] -> (Conn, [Output])
+frame now c f acc = case f of
   SettingsFrame count ss
     -- = https://www.rfc-editor.org/rfc/rfc9113#section-10.5
     -- # The SETTINGS frame might also be abused to cause a peer to
@@ -302,8 +335,8 @@ frame now c f outs = case f of
     -- #    settings, or changing the same setting multiple times in the
     -- #    same frame.
     --
-    -- Refused outright, as Go and nghttp2 do (C10).
-    | count > configMaxSettings (cConfig c) || hasRepeats ss -> prefix outs (goAway c ProtocolError)
+    -- Refused outright, as Go does (C10).
+    | count > configMaxSettings (cConfig c) || hasRepeats ss -> stop acc (goAway c ProtocolError)
     -- one, and one for each setting after the first six (C10)
     | otherwise -> charge (1 + fromIntegral (max 0 (count - 6))) c $ \c1 ->
         -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.3
@@ -318,7 +351,7 @@ frame now c f outs = case f of
     -- # unacknowledged SETTINGS frame having been applied.
     (_ : rest) -> next (c { cSettingsSent = rest }, [])
     -- an acknowledgement of nothing we sent: as Go and nghttp2 (C10)
-    [] -> prefix outs (goAway c ProtocolError)
+    [] -> stop acc (goAway c ProtocolError)
   -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.7
   -- # Receivers of a PING frame that does not include an ACK flag MUST send
   -- # a PING frame with the ACK flag set in response, with an identical
@@ -327,13 +360,18 @@ frame now c f outs = case f of
   -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.7
   -- # An endpoint MUST NOT respond to PING frames containing
   -- #    this flag.
-  PingFrame False d -> charge 1 c $ \c1 -> emit [renderPing True d] c1 >>> next
+  --
+  -- PINGs cost no budget (C10): the acknowledgements not yet written are
+  -- what is bounded, by the cap on unsent output (C5).
+  PingFrame False d -> emit [renderPing True d] c >>> next
   PingFrame True _ -> next (c, [])
+  -- PRIORITY_UPDATE (RFC 9218) is free until RFC 9218 is supported (C10)
+  UnknownFrame 0x10 _ _ -> next (c, [])
   UnknownFrame _ _ _ -> charge 1 c $ \c1 -> next (c1, [])
   PriorityFrame _ -> charge 1 c $ \c1 -> next (c1, [])
-  _ -> prefix outs (goAway c InternalError)
+  _ -> stop acc (goAway c InternalError)
   where
-    next (c', outs') = advance now c' (outs ++ outs')
+    next (c', outs') = advance now c' (outs' : acc)
     hasRepeats ss = length (nub (map settingId ss)) /= length ss
 
 (>>>) :: a -> (a -> b) -> b
@@ -367,9 +405,17 @@ apply p s = case s of
   MaxFrameSize v -> p { peerMaxFrameSize = v }
   MaxHeaderListSize v -> p { peerMaxHeaderListSize = Just v }
 
--- | Send frames, counting them as emitted (C5).
+-- | Send frames, counting them as emitted (C5). Over the cap on what
+-- has been emitted and not yet written, the connection is ended
+-- instead: a client that does not read cannot grow the queue (C5).
 emit :: [ByteString] -> Conn -> (Conn, [Output])
-emit frames c = result c { cUnsent = cUnsent c + sum (map B.length frames) } [Send frames]
+emit frames c
+  | cUnsent c + size > configMaxUnsent (cConfig c) = goAway c EnhanceYourCalm
+  | otherwise = emitUncapped frames c
+  where size = sum (map B.length frames)
+
+emitUncapped :: [ByteString] -> Conn -> (Conn, [Output])
+emitUncapped frames c = result c { cUnsent = cUnsent c + sum (map B.length frames) } [Send frames]
 
 -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.4.1
 -- # An endpoint that encounters a connection error SHOULD first send a
@@ -379,7 +425,7 @@ emit frames c = result c { cUnsent = cUnsent c + sum (map B.length frames) } [Se
 -- | GOAWAY with the code, then close (D10).
 goAway :: Conn -> ErrorCode -> (Conn, [Output])
 goAway c code =
-  let (c', outs) = emit [renderGoAway (StreamId (cLastStream c)) code B.empty] c
+  let (c', outs) = emitUncapped [renderGoAway (StreamId (cLastStream c)) code B.empty] c
   in close c' outs
 
 misuse :: Misuse -> Conn -> (Conn, [Output])
@@ -387,9 +433,6 @@ misuse m c = close c [ProtocolMisuse m]
 
 close :: Conn -> [Output] -> (Conn, [Output])
 close c outs = result c { cClosed = True } (outs ++ [Close])
-
-prefix :: [Output] -> (Conn, [Output]) -> (Conn, [Output])
-prefix outs (c, outs') = result c (outs ++ outs')
 
 -- | The new state, evaluated, and the outputs (as HTTP/1.1's core: a
 -- lazily built state is a thunk the driver runs at once).

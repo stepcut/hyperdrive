@@ -204,7 +204,7 @@ Receiving: the server opens a stream's window as the handler *reads*
 stops its client after one window, and the memory held per stream is
 bounded by the window. The connection window is also given back only
 as handlers read, so the memory held per connection is bounded by that
-one setting (100 streams of 64 KiB would otherwise be 6.4 MB a
+one setting (100 streams of 1 MiB would otherwise be 100 MiB a
 connection). A few stalled streams can then use up the connection
 window and stall the connection's other streams, but every stream on a
 connection is the same client's, so that harm is self-inflicted.
@@ -680,9 +680,16 @@ arrive between its action and the owner seeing it. When the connection
 ends for any reason (a connection error, `PeerClosed`, the client's
 GOAWAY once its streams are done, the end of the shutdown grace
 period), every stream still served gets `RequestAborted`, so that no
-handler waits for ever on its `MVar` (D5 has no asynchronous
-exceptions but the grace period's); `HandlerDone` is still accepted
-after `Close`. The driver always reads (Section 5.2.2: "Endpoints MUST
+handler waits for ever on its `MVar`; `HandlerDone` is still accepted
+after `Close`. A handler of a connection that has ended and that has
+not returned after a grace period (5 s, a setting) is killed with an
+asynchronous exception, as warp kills them at once (decided
+2026-11-25 after the attack survey: otherwise handlers of dead
+connections run on, counted nowhere, as in Go). This is a third use of
+asynchronous exceptions, beside the end of the shutdown grace period
+and the handler time limit (D5). The connection keeps its place in
+the server's count of connections until its last handler has returned
+or been killed. The driver always reads (Section 5.2.2: "Endpoints MUST
 read and process HTTP/2 frames from the TCP receive buffer as soon as
 data is available").
 
@@ -708,17 +715,19 @@ window; here the window is the pull.
   6.1); all of a DATA frame for a stream nobody will read (reset,
   refused, closed, or ended by D6's NO_ERROR), which Section 6.9
   requires be counted; and, when a stream ends, what was passed on but
-  not consumed (else sixteen uploads that each send 64 KiB and cancel
-  would use up a 1 MiB connection window for good). A `Consumed` for a
+  not consumed (else an upload that sends its 1 MiB window and cancels
+  would use up the connection window for good). A `Consumed` for a
   stream already ended is ignored (C2), its credit having come back.
 - The DATA received is checked against `Content-Length`: more than it,
   or less at END_STREAM, makes the request malformed (Section 8.1.1;
   D10 case 2).
-- A `RequestData` that is small beside the receive buffer it is a
-  slice of is copied when it is queued (under 4 KiB and under a quarter
-  of the buffer, to start): otherwise a client could pin a 16 KiB
-  buffer with each octet of window on a stream whose handler does not
-  read, by pairing it with data for a stream that does.
+- A `RequestData` that is under a quarter of the receive buffer it is
+  a slice of is copied when it is queued, whatever its size (changed
+  after the attack survey: "under 4 KiB and under a quarter" let a
+  client pin 8 octets of buffer for each octet of window), so that a
+  client cannot pin more than four times its window, by pairing data
+  for a stream whose handler does not read with data for one that
+  does.
 
 **C4. Stream states.** A server that never pushes uses idle, open,
 half-closed (both kinds) and closed (Section 5.1). Client streams are
@@ -742,8 +751,8 @@ C6) and the highest identifier opened.
   field blocks decoded for HPACK, DATA counted against the connection
   window and its credit returned. A HEADERS there may be trailers the
   client sent before our reset reached it, so it cannot be told from a
-  reused identifier; nghttp2 also discards. Each such frame costs
-  nuisance budget (C10), so it is not free. h2spec, written to RFC
+  reused identifier; nghttp2 also discards. Such frames are not
+  charged (C10): they cost only the client's bandwidth. h2spec, written to RFC
   7540, expects errors in four "closed" cases; those are listed as
   known differences, with this reason, when h2spec runs (D12 step 6).
 
@@ -774,7 +783,13 @@ chunks.
   RST_STREAM, GOAWAY) go before any DATA and are not paced, but those
   queued and not yet written are capped (a setting, 10,000 frames, as
   Go caps them); over the cap, the connection is closed with
-  ENHANCE_YOUR_CALM. This replaces D9's "stop reading".
+  ENHANCE_YOUR_CALM. This replaces D9's "stop reading". And all output
+  emitted and not yet written, of every frame type, is capped too (1
+  MiB, a setting; as Envoy caps all frames at 10,000): otherwise a
+  client that never reads could have the core answer requests it
+  refuses itself (a 421 costs the client about 13 octets) and grow the
+  queue with HEADERS, which are not paced (added after the attack
+  survey).
 - Response heads go out as soon as they come (HEADERS is not
   flow-controlled, and HPACK's encoder must see blocks in the order
   sent; a HEADERS and its CONTINUATIONs are one contiguous `Send`).
@@ -817,9 +832,10 @@ is a connection error ENHANCE_YOUR_CALM (D9: it cannot be skipped).
 Below that the block is decoded, and a field list over
 MAX_HEADER_LIST_SIZE (32 KiB) is answered with 431 (Section 10.5.1: "A
 server that receives a larger field block than it is willing to handle
-can send an HTTP 431"), as D10 case 2 says (the 431, then the reset, or
-the reset alone if the request has ended); real header sections above
-64 KiB exist (Kerberos tokens, SSO cookies). Then D11's mapping. A
+can send an HTTP 431"), as D10 case 3 says (the response, then RST_STREAM
+NO_ERROR if the request is still sending); real header sections above
+64 KiB exist (Kerberos tokens, SSO cookies). The fragments are joined once, in time linear in the
+block. Then D11's mapping. A
 second HEADERS on an open stream is its trailers and must carry
 END_STREAM, or the request is malformed (Section 8.1); after that the
 stream is half-closed (remote) (C4).
@@ -835,18 +851,27 @@ stream is half-closed (remote) (C4).
   60 s: GOAWAY NO_ERROR, then close), which a PING from the client
   restarts, so that a client keeping a quiet connection alive (gRPC's
   keepalive) is not closed, the budget bounding how often it may ping.
-- Each stream: an idle timer that any frame in either direction on the
-  stream restarts (5 minutes, as Envoy's `stream_idle_timeout`), not
-  running while the stream waits on our side (a handler not reading
-  with content queued, or a buffer full); and an upload-stall timer (30
-  s, as HTTP/1.1's body timer) that runs only while a `WantContent` is
-  unanswered, both windows are open and no 100 is owed. Both end with
-  RST_STREAM CANCEL and `RequestAborted`. Long-lived streams (gRPC
-  subscriptions, slow consumers exerting back-pressure, SSE) live
-  as long as anything moves; a client that has stopped reading its
-  socket altogether is ended by the driver's write timeout, as for
-  HTTP/1.1. (The first version had per-stream 30 s timers on content
-  in each direction, which would have ended every quiet gRPC stream.)
+- The field block timer is total: CONTINUATIONs do not restart it (the
+  CONTINUATION flood's "drip the last fragment" variant).
+- Each stream: an idle timer (5 minutes, as Envoy's
+  `stream_idle_timeout`) that only progress restarts (content moved
+  in either direction, not any frame), not running while the stream
+  waits on our side (a handler not reading with content queued, or a
+  handler not writing); and a minimum transfer rate, as Kestrel's
+  (240 octets a second after a 5 s grace, both settings), checked
+  only while the client is what holds the stream up: while we hold
+  response content that the client's windows or its socket do not
+  take, and while a `WantContent` is unanswered with no 100 owed.
+  Both end with RST_STREAM CANCEL and `RequestAborted`, for that
+  stream only (Kestrel closes the whole connection). Long-lived streams
+  whose handler is the quiet side (gRPC subscriptions, SSE) are not
+  timed. (Decided 2026-11-25 after the attack survey and a survey of
+  ten implementations: only Kestrel has a minimum rate by default;
+  nginx, h2o, warp and Envoy restart their timers on any progress, so
+  a client that moves one octet in time keeps a stream for ever, which
+  is Imperva's slow read. The first version restarted the idle timer
+  on any frame and had a 30 s upload-stall timer that one octet every
+  29 s defeated.)
 
 **C9. `Expect`.** `Expect` is taken out of the fields, as HTTP/1.1
 does. `100-continue` (when content is to follow): the core sends the
@@ -862,29 +887,45 @@ never carries END_STREAM (Section 8.1).
 **C10. The nuisance budget (D9).** A leaky bucket, a burst of 1,000
 and 100 a second, both settings and provisional until measured against
 real browser sessions in step 6 (navigating away, scrolling, seeking
-send bursts of resets). Each costs one: PING, SETTINGS (not
+send bursts of resets). Each costs one: SETTINGS (not
 acknowledgements), each setting in a SETTINGS after its first six,
 PRIORITY, empty DATA without END_STREAM, an empty CONTINUATION, a
-frame of unknown type, a frame on a closed stream (C4), a refused
-stream, a WINDOW_UPDATE that leaves the window under the 1 KiB DATA
-floor (C5), each RST_STREAM we send for a stream error, and a
-RST_STREAM from the client before our response ended (rapid reset).
-Not counted: other WINDOW_UPDATEs (a client with generous windows
-sends many) and PRIORITY_UPDATE (type 0x10, RFC 9218, ignored until
-RFC 9218 is supported, D8). Over budget: GOAWAY ENHANCE_YOUR_CALM.
+frame of unknown type, a refused stream, a request the core answers
+itself (D10's cases 2 and 3: the 400, 421, 431, 417), a WINDOW_UPDATE
+that leaves the window under the 1 KiB DATA floor (C5), each
+RST_STREAM we send for a stream error (FLOW_CONTROL_ERROR,
+STREAM_CLOSED, PROTOCOL_ERROR, FRAME_SIZE_ERROR; not NO_ERROR, the
+timers' CANCEL, or REFUSED_STREAM, charged as a refused stream), and a
+RST_STREAM from the client before our response ended (rapid reset;
+1,000 then 100 a second is looser than nghttp2's 1,000 then 33, which
+Envoy, nghttpx and mod_http2 run by default). No RST_STREAM is sent for
+a stream that is already closed. Not counted (changed after the
+survey of ten implementations, none of which counts them): PING (Go,
+nghttp2, h2o, Kestrel, Rust's h2 and Envoy only cap the acknowledgements
+not yet written, which C5 does; grpc-go's clients send one a round trip
+while downloading), frames on closed streams (C4: they cost only the
+client's bandwidth, and a client's in-flight DATA after we end a stream
+early would otherwise use up the budget), other WINDOW_UPDATEs (a
+client with generous windows sends many) and PRIORITY_UPDATE (type
+0x10, RFC 9218, ignored until RFC 9218 is supported, D8). Over budget: GOAWAY ENHANCE_YOUR_CALM.
 Refused outright: a SETTINGS acknowledgement for a SETTINGS we did not
 send (as Go and nghttp2), and a SETTINGS that repeats a setting or has
 more than 100 (as Go; nghttp2 keeps the last value) (connection errors PROTOCOL_ERROR; Section 10.5
 names "changing the same setting multiple times in the same frame").
 The budget, the slots and the threads are per connection; the server's
 limit on connections is what bounds them together, so its default
-becomes finite.
+becomes finite: 10,000 (decided 2026-11-25; Envoy's edge guidance is
+10,000 a listener, nginx's default 512 a worker, h2o's 1,024; Go,
+Kestrel, warp and hyper have none). There is no server-wide limit on
+running handlers, as none of the ten implementations has one; per
+connection slots (C6), the connection limit and C2's killing of a dead
+connection's handlers bound them.
 
 **C11. The preface, and the client's GOAWAY.** The core expects the
 client's preface (24 octets, Section 3.4) and then a SETTINGS frame;
 anything else is a connection error PROTOCOL_ERROR. `newConn` returns
 the server's preface as its first output: SETTINGS with D9's values
-(INITIAL_WINDOW_SIZE 65,536), and a WINDOW_UPDATE on stream 0 that
+(INITIAL_WINDOW_SIZE 1 MiB, D6), and a WINDOW_UPDATE on stream 0 that
 raises the connection window from the protocol's 65,535 to 1 MiB (D6;
 a SETTINGS cannot change it, Section 6.9.2). The driver (D2) only
 recognises the preface; the core checks it. A GOAWAY from the client
@@ -969,6 +1010,33 @@ with nghttpx, Apache's mod_http2 and Envoy.
   h2o before a body is read) through 1 MiB (Go, hyper) and 256 KiB
   (warp) to 16 MiB (Envoy); only mod_http2 grows windows. (D6, C5.)
 
+## Known attacks (surveyed 2026-11-25)
+
+Twenty attacks were catalogued from their primary sources (RFC 9113
+Section 10 and RFC 7541 Section 7; Imperva's 2016 report; the Netflix
+advisory of 2019, CVE-2019-9511 to 9518; Rapid Reset, CVE-2023-44487;
+the CONTINUATION flood, VU#421644; MadeYouReset, CVE-2025-8671; HTTP/2
+smuggling; h2c smuggling; CRIME, BREACH and HEIST; the advisories of
+the major servers since 2016) and each was checked against this
+design. The named attacks were covered; the gaps were combinations and
+scale, and were closed as follows.
+
+- Output not paced when it is HEADERS: a cap on all unsent output (C5),
+  and a charge for each request the core refuses itself (C10).
+- Slow read and slow upload: progress-only idle timers and Kestrel's
+  minimum rate, per stream (C8).
+- Work across connections and orphaned handlers: a connection limit
+  of 10,000 by default and a dead connection's handlers killed after
+  5 s (C2, C10).
+- Quadratic work: frames and field blocks joined once (C7, and part 1
+  of the core).
+- Receive buffers pinned by slices: copy below a quarter (C3).
+- Budget rules that legitimate clients would trip: PINGs and frames on
+  closed streams no longer charged (C10, after a second survey of ten
+  implementations).
+- To enforce when building: D9's limit of 100 fields; PRIORITY_UPDATE
+  free until RFC 9218.
+
 ## Testing
 
 - HPACK: RFC 7541 Appendix C's examples verbatim; the hpack-test-case
@@ -992,7 +1060,7 @@ with nghttpx, Apache's mod_http2 and Envoy.
 - **D3.** Our own TLS binding through a C shim; AWS-LC first, OpenSSL 3.5 behind the same interface.
 - **D4.** One owner thread per connection; a thread per request's handler.
 - **D5.** The handler interface unchanged; cancellation cooperative (`ConnectionClosed`); a stream's slot held until its handler returns.
-- **D6.** Credit given as the handler reads, at both levels; 64 KiB streams, 1 MiB connection; unread bodies reset with NO_ERROR.
+- **D6.** Credit given as the handler reads, at both levels; 1 MiB streams and connection; unread bodies reset with NO_ERROR.
 - **D7.** No server push; the MUSTs on receiving push signals kept.
 - **D8.** No RFC 7540 priorities; round robin first (changed after review), then RFC 9218 after the warp benchmarks.
 - **D9.** The settings, a defence for each known attack, a nuisance budget with the coarse time as an input.

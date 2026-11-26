@@ -17,11 +17,16 @@ connectionTests = testGroup "The connection core: prefaces, SETTINGS, PING (C1, 
   , testProperty "connection errors, by example" prop_errors
   , testProperty "the nuisance budget, at its boundary and refilled" prop_budget
   , testProperty "timers" prop_timers
+  , testProperty "output not yet written is capped (C5)" prop_unsent
+  , testProperty "input an octet at a time gives the same outputs" prop_drip
   ]
 
 -- run the inputs at the given times, from a new connection at time 0
 run :: [(Time, Input)] -> (Conn, [Output])
-run = foldl go (newConn defaultConfig 0)
+run = runWith defaultConfig
+
+runWith :: Config -> [(Time, Input)] -> (Conn, [Output])
+runWith config = foldl go (newConn config 0)
   where go (c, outs) (t, i) = let (c', outs') = step t i c in (c', outs ++ outs')
 
 -- every frame the server sent, and whether it closed
@@ -137,29 +142,64 @@ renderSettingsRaw ss =
 
 prop_budget :: Property
 prop_budget = once $ conjoin
-  [ counterexample "1,000 PINGs at once are answered" $
-      goAwayCode (replies [(0, Received (clientStart' <> pings 999))]) === Nothing
+  [ counterexample "1,000 unknown frames at once (with the client's SETTINGS, which costs one)" $
+      goAwayCode (replies [(0, Received (clientStart <> unknowns 999))]) === Nothing
   , counterexample "the 1,001st is too many" $
-      goAwayCode (replies [(0, Received (clientStart' <> pings 1000))]) === Just EnhanceYourCalm
+      goAwayCode (replies [(0, Received (clientStart <> unknowns 1000))]) === Just EnhanceYourCalm
   , counterexample "a second later, 100 more are allowed" $
-      goAwayCode (replies [(0, Received (clientStart' <> pings 999)), (1000, Received (pings 100))]) === Nothing
+      goAwayCode (replies [(0, Received (clientStart <> unknowns 999)), (1000, Received (unknowns 100))]) === Nothing
   , counterexample "but not 101" $
-      goAwayCode (replies [(0, Received (clientStart' <> pings 999)), (1000, Received (pings 101))]) === Just EnhanceYourCalm
+      goAwayCode (replies [(0, Received (clientStart <> unknowns 999)), (1000, Received (unknowns 101))]) === Just EnhanceYourCalm
   , counterexample "a SETTINGS of 100 settings costs 95 (one, and one for each after six)" $
-      goAwayCode (replies [(0, Received (clientStart' <> settings100 <> pings 904))]) === Nothing
-      .&&. goAwayCode (replies [(0, Received (clientStart' <> settings100 <> pings 905))]) === Just EnhanceYourCalm
+      goAwayCode (replies [(0, Received (clientStart <> settings100 <> unknowns 904))]) === Nothing
+      .&&. goAwayCode (replies [(0, Received (clientStart <> settings100 <> unknowns 905))]) === Just EnhanceYourCalm
   , counterexample "a long quiet time refills the budget only to its burst" $
-      goAwayCode (replies [(0, Received clientStart'), (100000, Received (pings 1000))]) === Nothing
-      .&&. goAwayCode (replies [(0, Received clientStart'), (100000, Received (pings 1001))]) === Just EnhanceYourCalm
-  , counterexample "an unknown frame costs one too" $
-      goAwayCode (replies [(0, Received (clientStart' <> pings 999 <> B.pack [0, 0, 0, 0xFA, 0, 0, 0, 0, 0]))])
-        === Just EnhanceYourCalm
+      goAwayCode (replies [(0, Received clientStart), (100000, Received (unknowns 1000))]) === Nothing
+      .&&. goAwayCode (replies [(0, Received clientStart), (100000, Received (unknowns 1001))]) === Just EnhanceYourCalm
+  , counterexample "PINGs cost nothing: 5,000 at once are answered" $
+      goAwayCode (replies [(0, Received (clientStart <> pings 5000))]) === Nothing
+  , counterexample "PRIORITY_UPDATE (type 0x10) costs nothing" $
+      goAwayCode (replies [(0, Received (clientStart <> B.concat (replicate 2000 (frameOfType 0x10))))]) === Nothing
+  , counterexample "PRIORITY costs one" $
+      goAwayCode (replies [(0, Received (clientStart <> B.concat (replicate 1000 priority)))]) === Just EnhanceYourCalm
   ]
   where
-    -- the client's SETTINGS costs one: 999 PINGs then use up the burst
-    clientStart' = clientStart
     pings n = B.concat (replicate n (renderPing False (B.replicate 8 0)))
+    unknowns n = B.concat (replicate n (frameOfType 0xFA))
+    frameOfType t = B.pack [0, 0, 0, t, 0, 0, 0, 0, 0]
+    priority = B.pack [0, 0, 5, 2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
     settings100 = renderSettingsRaw [(i, 0) | i <- [7 .. 106]]
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-10.5
+-- # An endpoint that constructs and remembers frames for sending without
+-- # considering TCP limits might be subject to resource exhaustion.
+prop_unsent :: Property
+prop_unsent = once $ conjoin
+  [ counterexample "within the cap, every PING is answered" $
+      goAwayCode (frames' (runWith small [(0, Received (clientStart <> pings fits))])) === Nothing
+  , counterexample "one more, and the connection ends: the client is not reading" $
+      goAwayCode (frames' (runWith small [(0, Received (clientStart <> pings (fits + 1)))])) === Just EnhanceYourCalm
+  , counterexample "what the driver reports written makes room again" $
+      let (c, _) = runWith small [(0, Received (clientStart <> pings fits))]
+          (c', _) = step 0 (Sent 17) c
+      in goAwayCode (frames' (step 0 (Received (pings 1)) c')) === Nothing
+  ]
+  where
+    pings n = B.concat (replicate n (renderPing False (B.replicate 8 0)))
+    -- the server's preface and the SETTINGS acknowledgement, then
+    -- room for exactly ten PING acknowledgements (17 octets each)
+    preface = B.length (B.concat (concat [bs | Send bs <- snd (newConn defaultConfig 0)]))
+    small = defaultConfig { configMaxUnsent = preface + 9 + 10 * 17 }
+    fits = 10 :: Int
+    frames' (_, outs) = let (fs, closed) = frames outs in (drop 2 fs, closed)
+
+prop_drip :: Property
+prop_drip = once $
+  let input = clientStart <> renderPing False "12345678" <> renderSettings [MaxFrameSize 20000]
+      dripped = run [(0, Received (B.singleton o)) | o <- B.unpack input]
+      whole = run [(0, Received input)]
+      sent (_, outs) = B.concat (concat [bs | Send bs <- outs])
+  in sent dripped === sent whole .&&. peerSettings (fst dripped) === peerSettings (fst whole)
 
 prop_timers :: Property
 prop_timers = once $ conjoin

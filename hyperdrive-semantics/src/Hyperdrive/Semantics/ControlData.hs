@@ -6,8 +6,8 @@
 -- 'Response' (docs/http2-core-design.md, D11).
 --
 -- A request that breaks a rule is either malformed (RFC 9113 Section
--- 8.1.1: answered with 400, then the stream is reset) or well formed
--- but refused (answered with a status, as HTTP/1.1 answers the same
+-- 8.1.1: the stream is reset with PROTOCOL_ERROR) or well formed but
+-- refused (answered with a status, as HTTP/1.1 answers the same
 -- request; D10).
 module Hyperdrive.Semantics.ControlData
   ( RequestControl(..)
@@ -48,7 +48,7 @@ data RequestControl = RequestControl
   } deriving (Show)
 
 data ControlDataError
-  = Malformed !Malformation       -- ^ 400, then RST_STREAM PROTOCOL_ERROR (D10's case 2)
+  = Malformed !Malformation       -- ^ RST_STREAM PROTOCOL_ERROR (D10's case 2)
   | Refused !Status !Refusal      -- ^ this status, a normal response (D10's case 3)
   deriving (Eq, Show)
 

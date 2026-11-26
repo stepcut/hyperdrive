@@ -305,36 +305,52 @@ why: no CONTINUATION is longer than the peer's SETTINGS_MAX_FRAME_SIZE
 file: src/Hyperdrive/HTTP2/Connection.hs
 
 why: octets that cannot start the preface end the connection at once, not after 24 have come
-- if cBuffer c `B.isPrefixOf` connectionPreface then result c outs else badPreface
-+ result c outs
+- then if buf `B.isPrefixOf` connectionPreface then done c1 acc else badPreface c1
++ then done c1 acc
 
 why: an invalid preface is a connection error (RFC 9113 Section 3.4)
-- | not (connectionPreface `B.isPrefixOf` cBuffer c) -> badPreface
-+ | False -> badPreface
+- else if not (connectionPreface `B.isPrefixOf` buf) then badPreface c1
++ else if False then badPreface c1
 
 why: the preface must be followed by SETTINGS (Section 3.4)
-- _ -> prefix outs (goAway c' ProtocolError)
-+ _ -> frame now c' { cPhase = Running, cHeadDeadline = Nothing } f outs
+- _ -> stop acc (goAway c' ProtocolError)
++ _ -> frame now c' { cPhase = Running, cHeadDeadline = Nothing } f acc
 
 why: a SETTINGS of more than 100 settings is refused (C10)
-- | count > configMaxSettings (cConfig c) || hasRepeats ss -> prefix outs (goAway c ProtocolError)
-+ | count > configMaxSettings (cConfig c) + 1 || hasRepeats ss -> prefix outs (goAway c ProtocolError)
+- | count > configMaxSettings (cConfig c) || hasRepeats ss -> stop acc (goAway c ProtocolError)
++ | count > configMaxSettings (cConfig c) + 1 || hasRepeats ss -> stop acc (goAway c ProtocolError)
 
 why: a SETTINGS that repeats a setting is refused (C10, Section 10.5)
-- | count > configMaxSettings (cConfig c) || hasRepeats ss -> prefix outs (goAway c ProtocolError)
-+ | count > configMaxSettings (cConfig c) -> prefix outs (goAway c ProtocolError)
+- | count > configMaxSettings (cConfig c) || hasRepeats ss -> stop acc (goAway c ProtocolError)
++ | count > configMaxSettings (cConfig c) -> stop acc (goAway c ProtocolError)
 
 why: each setting after the first six costs budget (C10)
 - | otherwise -> charge (1 + fromIntegral (max 0 (count - 6))) c $ \c1 ->
 + | otherwise -> charge 1 c $ \c1 ->
 
 why: an acknowledgement of a SETTINGS we did not send is refused (C10)
-- [] -> prefix outs (goAway c ProtocolError)
+- [] -> stop acc (goAway c ProtocolError)
 + [] -> next (c, [])
 
 why: a PING is answered with its own payload (Section 6.7)
-- PingFrame False d -> charge 1 c $ \c1 -> emit [renderPing True d] c1 >>> next
-+ PingFrame False _ -> charge 1 c $ \c1 -> emit [renderPing True (B.replicate 8 0)] c1 >>> next
+- PingFrame False d -> emit [renderPing True d] c >>> next
++ PingFrame False _ -> emit [renderPing True (B.replicate 8 0)] c >>> next
+
+why: PINGs cost no budget: grpc-go's clients send one a round trip while downloading (C10)
+- PingFrame False d -> emit [renderPing True d] c >>> next
++ PingFrame False d -> charge 1 c $ \c1 -> emit [renderPing True d] c1 >>> next
+
+why: PRIORITY_UPDATE costs no budget until RFC 9218 is supported (C10)
+- UnknownFrame 0x10 _ _ -> next (c, [])
++ UnknownFrame 0x11 _ _ -> next (c, [])
+
+why: output emitted and not yet written is capped, at exactly its limit (C5)
+- | cUnsent c + size > configMaxUnsent (cConfig c) = goAway c EnhanceYourCalm
++ | cUnsent c + size > configMaxUnsent (cConfig c) + 17 = goAway c EnhanceYourCalm
+
+why: a frame is parsed as soon as all of it has arrived
+- | available c >= n && not (null (cMore c)) -> advance now (joined c) acc
++ | available c > n && not (null (cMore c)) -> advance now (joined c) acc
 
 why: a frame of unknown type costs budget (C10)
 - UnknownFrame _ _ _ -> charge 1 c $ \c1 -> next (c1, [])
