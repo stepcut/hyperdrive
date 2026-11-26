@@ -211,8 +211,8 @@ prop_timers = once $ conjoin
       nextDeadline (fst (run [(5000, Received clientStart)])) === Just 15000
   , counterexample "our SETTINGS unacknowledged after 10 s: SETTINGS_TIMEOUT" $
       goAwayCode (replies [(0, Received clientStart), (10000, TimedOut)]) === Just SettingsTimeout
-  , counterexample "acknowledged in time: no deadline left" $
-      nextDeadline (fst (run [(0, Received (clientStart <> renderSettingsAck))])) === Nothing
+  , counterexample "acknowledged in time: only the idle timer left (C8)" $
+      nextDeadline (fst (run [(0, Received (clientStart <> renderSettingsAck))])) === Just 60000
   , counterexample "TimedOut before the deadline is a misuse" $
       let (c, _) = newConn defaultConfig 0
       in not (null [() | ProtocolMisuse _ <- snd (step 9999 TimedOut c)])

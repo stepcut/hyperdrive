@@ -379,6 +379,26 @@ stages; at the end of the grace period, RST_STREAM CANCEL for the
 streams left, GOAWAY, the staged close, and the handlers' threads
 killed (one of the two places asynchronous exceptions are used).
 
+As built (part 5 of the core, 2026-11-26): the grace period stays the
+driver's, as on HTTP/1.1 (docs/server-design.md's two stages), and the
+driver gives `Shutdown` a second time when it ends; the core then
+resets what is left with CANCEL (not the streams already reset), sends
+its GOAWAY and closes. The final GOAWAY's last stream is the highest
+the client has opened, or is opening, when the PING is answered or
+its 1 s runs out (a field block begun then counts as opened); HEADERS
+above it get REFUSED_STREAM, not charged, and every later GOAWAY
+carries the lower of the two, so the last stream never rises (Section
+6.8). The connection closes once every stream left is one already
+reset whose handler still runs: those need nothing from the client
+and were told. Before the client's preface, `Shutdown` closes without
+a GOAWAY; between the preface and its SETTINGS, GOAWAY and close. A
+`configPingTimeout` of 0 sends the final GOAWAY at once. The client's
+GOAWAY with NO_ERROR: new streams refused (charged as refused streams),
+the open ones finished, then our GOAWAY and the close; with an error
+code, the close at once (Section 5.4.1: the client is closing). A
+PUSH_PROMISE from the client is a connection error PROTOCOL_ERROR
+(Section 8.4; it reached the catch-all INTERNAL_ERROR before).
+
 **D11. Pseudo-header fields to `Request` (decided, 2026-11-25: as
 below, with the additions after it; `:scheme` corrected the same day).** `:method`, `:scheme`,
 `:authority` and `:path` become the method and a `Target` through the
@@ -884,6 +904,27 @@ stream is half-closed (remote) (C4).
   is Imperva's slow read. The first version restarted the idle timer
   on any frame and had a 30 s upload-stall timer that one octet every
   29 s defeated.)
+- As built in part 5 (2026-11-26): each stream has one clock, which
+  runs while the client holds it up (a `WantContent` with nothing
+  queued, or response content or its end that the windows or the
+  pacing bound keep back after the step). The minimum rate is an
+  allowance, not Kestrel's average since the start: it begins at the
+  grace period's worth (1,200 octets), drains at 240 a second while
+  the clock runs, grows by each octet moved in either direction, and is
+  capped at the idle timeout's worth (72,000 octets), so that a fast
+  start cannot buy a slow drip later (an average would let 100 MB moved
+  fast pay for 116 hours at an octet a second). So no stall is allowed
+  longer than the idle timeout, and with both timers on, the allowance
+  always expires first; the idle timer matters when the minimum rate is
+  off. Deadlines are kept in a set with at most one entry per stream,
+  entered at the end of a step for a stream still held up; progress
+  moves a deadline later without touching the set, and an entry found
+  early when it expires is renewed (one extra `TimedOut` for a stream
+  that was held up and moved on).
+- Every connection ends with a `RequestAborted ConnectionEnded` for each
+  handler still waiting on a stream that was not already told of a
+  reset: a connection error, `PeerClosed`, the client's GOAWAY with an
+  error, the idle timeout, the end of a shutdown.
 
 **C9. `Expect`.** `Expect` stays in the fields, as HTTP/1.1 leaves it
 (corrected while building part 2: the first version said HTTP/1.1

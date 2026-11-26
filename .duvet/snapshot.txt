@@ -3269,6 +3269,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]:    FRAME_SIZE_ERROR.
 
   SECTION: [GOAWAY](#section-6.8)
+    TEXT[implementation]:    Once the GOAWAY is sent, the sender will ignore frames sent on
+    TEXT[implementation]:    streams initiated by the receiver if the stream has an identifier
+    TEXT[implementation]:    higher than the included last stream identifier.
     TEXT[!MUST]: Receivers of a
     TEXT[!MUST]:    GOAWAY frame MUST NOT open additional streams on the connection,
     TEXT[!MUST]:    although a new connection can be established for new streams.
@@ -3283,15 +3286,18 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]:    than 0x00 as a connection error (Section 5.4.1) of type
     TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
     TEXT[!MAY]:    An endpoint MAY send multiple GOAWAY frames if circumstances change.
-    TEXT[!MUST]: Endpoints MUST NOT increase the
-    TEXT[!MUST]:    value they send in the last stream identifier, since the peers might
-    TEXT[!MUST]:    already have retried unprocessed requests on another connection.
-    TEXT[!SHOULD]: A server that is attempting to gracefully shut down a
-    TEXT[!SHOULD]:    connection SHOULD send an initial GOAWAY frame with the last stream
-    TEXT[!SHOULD]:    identifier set to 2^31-1 and a NO_ERROR code.
-    TEXT[!MAY]: After allowing time for any in-flight stream
-    TEXT[!MAY]:    creation (at least one round-trip time), the server MAY send another
-    TEXT[!MAY]:    GOAWAY frame with an updated last stream identifier.
+    TEXT[!MUST,implementation,test]: Endpoints MUST NOT increase the
+    TEXT[!MUST,implementation,test]:    value they send in the last stream identifier, since the peers might
+    TEXT[!MUST,implementation,test]:    already have retried unprocessed requests on another connection.
+    TEXT[!SHOULD,implementation,test]: A server that is attempting to gracefully shut down a
+    TEXT[!SHOULD,implementation,test]:    connection SHOULD send an initial GOAWAY frame with the last stream
+    TEXT[!SHOULD,implementation,test]:    identifier set to 2^31-1 and a NO_ERROR code.
+    TEXT[implementation,test]:   This signals to the
+    TEXT[implementation,test]:    client that a shutdown is imminent and that initiating further
+    TEXT[implementation,test]:    requests is prohibited.
+    TEXT[!MAY,implementation,test]: After allowing time for any in-flight stream
+    TEXT[!MAY,implementation,test]:    creation (at least one round-trip time), the server MAY send another
+    TEXT[!MAY,implementation,test]:    GOAWAY frame with an updated last stream identifier.
     TEXT[!MUST]: For instance, HEADERS,
     TEXT[!MUST]:    PUSH_PROMISE, and CONTINUATION frames MUST be minimally processed to
     TEXT[!MUST]:    ensure that the state maintained for field section compression is
@@ -3599,9 +3605,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,exception]:    client MUST treat a PUSH_PROMISE for which the server is not
     TEXT[!MUST,exception]:    authoritative as a stream error (Section 5.4.2) of type
     TEXT[!MUST,exception]:    PROTOCOL_ERROR.
-    TEXT[!MUST]: Thus, servers MUST treat the receipt of a
-    TEXT[!MUST]:    PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
-    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[implementation,test]:    A client cannot push.
+    TEXT[!MUST,implementation,test]: Thus, servers MUST treat the receipt of a
+    TEXT[!MUST,implementation,test]:    PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+    TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
 
   SECTION: [Push Requests](#section-8.4.1)
     TEXT[!MUST,exception]:    The header fields in PUSH_PROMISE and any subsequent CONTINUATION
@@ -3646,11 +3653,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY,exception]:    automatically retry them, even those with non-idempotent methods.
     TEXT[!MUST]:    A server MUST NOT indicate that a stream has not been processed
     TEXT[!MUST]:    unless it can guarantee that fact.
-    TEXT[!MUST]: If frames that are on a stream
-    TEXT[!MUST]:    are passed to the application layer for any stream, then
-    TEXT[!MUST]:    REFUSED_STREAM MUST NOT be used for that stream, and a GOAWAY frame
-    TEXT[!MUST]:    MUST include a stream identifier that is greater than or equal to the
-    TEXT[!MUST]:    given stream identifier.
+    TEXT[!MUST,implementation,test]: If frames that are on a stream
+    TEXT[!MUST,implementation,test]:    are passed to the application layer for any stream, then
+    TEXT[!MUST,implementation,test]:    REFUSED_STREAM MUST NOT be used for that stream, and a GOAWAY frame
+    TEXT[!MUST,implementation,test]:    MUST include a stream identifier that is greater than or equal to the
+    TEXT[!MUST,implementation,test]:    given stream identifier.
 
   SECTION: [Connection Management](#section-9.1)
     TEXT[!SHOULD,exception]:    Clients SHOULD NOT open more than one HTTP/2 connection to a given

@@ -9,8 +9,9 @@
 -- 'NewRequest' (C4, C6, C7, D10, D11), client resets, trailers, and the
 -- responses the core writes itself. Part 3: request content and its
 -- flow-control credit (C3, C9). Part 4: responses, the client's
--- windows and the scheduler (C5, C12, D8). Timers per stream, GOAWAY and
--- shutdown come in part 5.
+-- windows and the scheduler (C5, C12, D8). Part 5: timers per stream and
+-- the idle connection's (C8), graceful shutdown and the client's GOAWAY
+-- (D10, C11), and every handler told when the connection ends (C2).
 module Hyperdrive.HTTP2.Connection
   ( -- * Configuration
     Config(..)
@@ -39,9 +40,11 @@ import qualified Data.ByteString.Char8 as C
 import Data.Char (toLower)
 import Data.List (nub)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (fromJust, isJust, isNothing, listToMaybe)
 import Data.Sequence (Seq, ViewL(..), viewl, (|>))
 import qualified Data.Sequence as Seq
+import Data.Set (Set)
+import qualified Data.Set as S
 import Data.Word (Word32, Word64)
 import Hyperdrive.HPACK.Decode
 import Hyperdrive.HPACK.Encode (Encoder, encodeBlock, newEncoder, setPeerTableSize)
@@ -78,7 +81,12 @@ data Config = Config
   , configStreamBuffer         :: !Int     -- ^ C5: response octets buffered per stream, 16 KiB
   , configConnectionBuffer     :: !Int     -- ^ C5: response octets buffered per connection, 256 KiB
   , configPacing               :: !Int     -- ^ C5: DATA emitted and not yet written, 64 KiB
-  , configTarget               :: !TargetContext
+  , configIdleTimeout          :: !Time    -- ^ C8: a connection with no streams, 60 s
+  , configPingTimeout          :: !Time    -- ^ C8: the shutdown PING unanswered, 1 s
+  , configStreamIdleTimeout    :: !Time    -- ^ C8: a stream the client holds up with no progress, 5 min
+  , configMinRate              :: !Word64  -- ^ C8: octets a second such a stream must move, 240
+  , configMinRateGrace         :: !Time    -- ^ C8: the minimum rate's grace, 5 s
+  , configTarget              :: !TargetContext
     -- ^ the connection's scheme and default authority, and whether its
     -- peer is a trusted gateway (D11)
   } deriving (Eq, Show)
@@ -103,6 +111,11 @@ defaultConfig = Config
   , configStreamBuffer = 16384
   , configConnectionBuffer = 262144
   , configPacing = 65536
+  , configIdleTimeout = 60000
+  , configPingTimeout = 1000
+  , configStreamIdleTimeout = 300000
+  , configMinRate = 240
+  , configMinRateGrace = 5000
   , configTarget = TargetContext HTTP Nothing False
   }
 
@@ -154,7 +167,8 @@ data Input
   | Consumed !StreamId !Int         -- ^ the handler read this much request content (D6)
   | HandlerDone !StreamId           -- ^ the handler returned (C6)
   | TimedOut                        -- ^ 'nextDeadline' has passed
-  | Shutdown                        -- ^ graceful shutdown (D10)
+  | Shutdown                        -- ^ graceful shutdown (D10); given again, the end of
+                                    --   its grace period: what is left is reset and closed
   deriving (Show)
 
 -- | Why a stream ended early (C2).
@@ -237,6 +251,12 @@ data StreamEntry = StreamEntry
   , sOut           :: !(Seq ByteString) -- ^ response content not yet sent
   , sOutLength     :: !Int
   , sWaiting       :: !Bool          -- ^ a write waits for its 'Writable' (C5)
+  , sWanting       :: !Bool          -- ^ the handler waits for content (C8)
+  , sBlocked       :: !Bool          -- ^ the client holds the stream up: its clock runs (C8)
+  , sSince         :: !Time          -- ^ when the clock was last run up to
+  , sAllowance     :: !Word64        -- ^ the minimum rate's allowance, in thousandths of an octet
+  , sIdleLeft      :: !Time          -- ^ what is left of the idle timer
+  , sTimer         :: !(Maybe Time)  -- ^ the stream's entry in 'cTimers'
   }
 
 -- | Where a stream's response is (C12).
@@ -281,8 +301,25 @@ data Conn = Conn
   , cBuffered    :: !Int            -- ^ response content buffered, all streams (C5)
   , cOrder       :: !(Seq Word32)   -- ^ streams with something to send, in turn (D8)
   , cEncoder     :: !Encoder
+  , cNow         :: !Time           -- ^ the latest time a step was given
+  , cTimers      :: !(Set (Time, Word32))
+    -- ^ the streams' deadlines (C8), one entry for each stream whose
+    -- clock has run; an entry may be earlier than its stream's deadline
+    -- (progress moves deadlines later), and is then renewed when it expires
+  , cTouched     :: ![Word32]       -- ^ streams held up in this step with no deadline yet
+  , cIdleDeadline :: !(Maybe Time)  -- ^ the connection has no streams (C8)
+  , cEnding      :: !Ending
+  , cPeerGoAway  :: !Bool           -- ^ the client sent GOAWAY (C11)
+  , cAcceptLimit :: !Word32         -- ^ the last stream of our final GOAWAY, or 2^31-1 (D10)
   , cClosed      :: !Bool
   }
+
+-- | Graceful shutdown (D10).
+data Ending
+  = Serving
+  | Pinging !Time                    -- ^ GOAWAY with 2^31-1 and a PING sent; the PING's deadline
+  | Draining                         -- ^ the final GOAWAY sent: the streams finish, then the close
+  deriving (Eq, Show)
 
 peerSettings :: Conn -> PeerSettings
 peerSettings = cPeer
@@ -333,6 +370,13 @@ newConn config now =
         , cBuffered = 0
         , cOrder = Seq.empty
         , cEncoder = newEncoder 4096
+        , cNow = now
+        , cTimers = S.empty
+        , cTouched = []
+        , cIdleDeadline = Nothing
+        , cEnding = Serving
+        , cPeerGoAway = False
+        , cAcceptLimit = maxStreamId
         , cClosed = False
         }
   in (c, [Send out])
@@ -354,7 +398,10 @@ nextDeadline c
   | cClosed c = Nothing
   | otherwise = case maybe [] pure (cHeadDeadline c)
                        ++ (if cPhase c == Running then take 1 (cSettingsSent c) else [])
-                       ++ maybe [] (pure . bDeadline) (cBlock c) of
+                       ++ maybe [] (pure . bDeadline) (cBlock c)
+                       ++ maybe [] pure (cIdleDeadline c)
+                       ++ [t | Pinging t <- [cEnding c]]
+                       ++ [t | Just (t, _) <- [S.lookupMin (cTimers c)]] of
       [] -> Nothing
       ds -> Just (minimum ds)
 
@@ -364,16 +411,16 @@ nextDeadline c
 
 step :: Time -> Input -> Conn -> (Conn, [Output])
 step _ _ c | cClosed c = result c []
-step now input c0 = let c = refill now c0 in case input of
+step time input c0 = afterStep $ case input of
   Received bs -> advance now c { cMore = bs : cMore c, cMoreLength = cMoreLength c + B.length bs } []
   Sent n
     | n > cUnsent c -> misuse SentMoreThanEmitted c
     | otherwise -> pump c { cUnsent = cUnsent c - n }
   PeerClosed -> close c []
   TimedOut -> timedOut now c
-  Shutdown -> goAway c NoError
+  Shutdown -> shutdown now c
   -- C2: inputs for streams the core does not serve are ignored (the
-  -- handler races the owner). This part serves none.
+  -- handler races the owner)
   Respond (StreamId sid) h -> respondHandler sid h c
   WriteBody (StreamId sid) d -> writeBody sid d c
   EndBody (StreamId sid) tr -> endBody sid tr c
@@ -381,6 +428,99 @@ step now input c0 = let c = refill now c0 in case input of
   WantContent (StreamId sid) -> wantContent sid c
   Consumed (StreamId sid) n -> consumed sid n c
   HandlerDone (StreamId sid) -> handlerDone sid c
+  where
+    -- time never runs backwards for the core, whatever it is given
+    now = max time (cNow c0)
+    c = refill now c0 { cNow = now }
+
+-- | The end of every step: deadlines for the streams held up (C8), a
+-- connection that is ending closed once its streams are done (D10,
+-- C11), and the idle timer run while there are none (C8).
+afterStep :: (Conn, [Output]) -> (Conn, [Output])
+afterStep (c0, outs)
+  | cClosed c0 = (c0, outs)
+  | (cEnding c == Draining || cPeerGoAway c) && isNothing (cBlock c) && all ((== ClosedHeld) . sState) (cStreams c) =
+      -- streams reset whose handlers still run need nothing more from
+      -- the client; they were told, and the driver ends them (C2)
+      if cEnding c == Draining then close c outs
+      else let (c', o) = emitUncapped [renderGoAway (StreamId (lastProcessed c)) NoError B.empty] c
+           in close c' (outs ++ o)
+  | otherwise = result (idleTimer c) outs
+  where c = armTimers c0
+
+-- C8: a connection with no streams is closed after the idle timeout
+idleTimer :: Conn -> Conn
+idleTimer c
+  | M.null (cStreams c) && cPhase c == Running && configIdleTimeout (cConfig c) > 0 =
+      if isJust (cIdleDeadline c) then c else c { cIdleDeadline = Just (cNow c + configIdleTimeout (cConfig c)) }
+  | isJust (cIdleDeadline c) = c { cIdleDeadline = Nothing }
+  | otherwise = c
+
+-- the idle timer, if it runs, restarted (C8)
+restartIdle :: Time -> Conn -> Conn
+restartIdle now c = c { cIdleDeadline = (now + configIdleTimeout (cConfig c)) <$ cIdleDeadline c }
+
+-- the largest stream identifier
+maxStreamId :: Word32
+maxStreamId = 2147483647
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.8
+-- # Endpoints MUST NOT increase the
+-- # value they send in the last stream identifier, since the peers might
+-- # already have retried unprocessed requests on another connection.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-8.7
+-- # If frames that are on a stream
+-- # are passed to the application layer for any stream, then
+-- # REFUSED_STREAM MUST NOT be used for that stream, and a GOAWAY frame
+-- # MUST include a stream identifier that is greater than or equal to the
+-- # given stream identifier.
+
+-- | The last stream identifier of a GOAWAY: the highest opened, and
+-- never above an earlier GOAWAY's.
+lastProcessed :: Conn -> Word32
+lastProcessed c = min (cLastStream c) (cAcceptLimit c)
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-6.8
+-- # A server that is attempting to gracefully shut down a
+-- # connection SHOULD send an initial GOAWAY frame with the last stream
+-- # identifier set to 2^31-1 and a NO_ERROR code.  This signals to the
+-- # client that a shutdown is imminent and that initiating further
+-- # requests is prohibited.  After allowing time for any in-flight stream
+-- # creation (at least one round-trip time), the server MAY send another
+-- # GOAWAY frame with an updated last stream identifier.
+
+-- | Graceful shutdown (D10): GOAWAY with 2^31-1 and a PING; the final
+-- GOAWAY when the PING is answered or its timer expires; the close when
+-- the streams are done ('afterStep'). Given again (the end of the grace
+-- period), the streams left are reset with CANCEL and the connection
+-- closed.
+shutdown :: Time -> Conn -> (Conn, [Output])
+shutdown now c = case (cPhase c, cEnding c) of
+  -- the client has not started: it may not be speaking HTTP/2
+  (AwaitingPreface, _) -> close c []
+  (AwaitingSettings, _) -> goAway c NoError
+  (_, Serving)
+    | configPingTimeout (cConfig c) == 0 -> drain c
+    | otherwise ->
+        emitUncapped [renderGoAway (StreamId maxStreamId) NoError B.empty, renderPing False shutdownPing]
+                     c { cEnding = Pinging (now + configPingTimeout (cConfig c)) }
+  _ ->
+    let resets = [renderRstStream (StreamId sid) Cancel | (sid, st) <- M.toList (cStreams c), sState st /= ClosedHeld]
+        (c', outs) = emitUncapped (resets ++ [renderGoAway (StreamId (lastProcessed c)) NoError B.empty]) c
+    in close c' outs
+
+-- the opaque data of the shutdown PING
+shutdownPing :: ByteString
+shutdownPing = "shutdown"
+
+-- | The final GOAWAY of a graceful shutdown: the last stream is the
+-- highest the client has opened, or is opening (its HEADERS came before
+-- the PING's answer); streams above it are refused from now on.
+drain :: Conn -> (Conn, [Output])
+drain c =
+  let limit = maybe id (max . bStream) (cBlock c) (cLastStream c)
+  in emitUncapped [renderGoAway (StreamId limit) NoError B.empty] c { cEnding = Draining, cAcceptLimit = limit }
 
 -- the budget refilled for the time since it last was (C10)
 refill :: Time -> Conn -> Conn
@@ -394,19 +534,51 @@ refill now c
 timedOut :: Time -> Conn -> (Conn, [Output])
 timedOut now c = case nextDeadline c of
   Just d | d <= now ->
-    if maybe False (<= now) (cHeadDeadline c)
+    if expired (cHeadDeadline c)
       -- the client never sent its preface and SETTINGS: no GOAWAY,
       -- it may not be speaking HTTP/2 at all
       then close c []
       -- a field block left unfinished (C8): the whole connection waits
       -- on it, since nothing may come between its frames
-      else if maybe False ((<= now) . bDeadline) (cBlock c) then goAway c ProtocolError
+      else if expired (bDeadline <$> cBlock c) then goAway c ProtocolError
       -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.3
       -- # If the sender of a SETTINGS frame does not receive an acknowledgment
       -- # within a reasonable amount of time, it MAY issue a connection error
       -- # (Section 5.4.1) of type SETTINGS_TIMEOUT.
-      else goAway c SettingsTimeout
+      else if cPhase c == Running && expired (listToMaybe (cSettingsSent c)) then goAway c SettingsTimeout
+      -- no streams for the idle timeout (C8)
+      else if expired (cIdleDeadline c) then goAway c NoError
+      -- the shutdown PING unanswered: on as if it had been (C8)
+      else andThen (case cEnding c of
+                      Pinging t | t <= now -> drain c
+                      _ -> result c [])
+                   (expireStreams now)
   _ -> misuse TimedOutWithoutDeadline c
+  where expired = maybe False (<= now)
+
+-- | The streams whose timers have expired are reset with CANCEL (C8);
+-- an entry earlier than its stream's deadline is renewed.
+expireStreams :: Time -> Conn -> (Conn, [Output])
+expireStreams now c = case S.minView (cTimers c) of
+  Just ((t, sid), rest) | t <= now ->
+    let c1 = c { cTimers = rest }
+    in case M.lookup sid (cStreams c1) of
+         Just st | sBlocked st, Just d <- streamDeadline (cConfig c1) st ->
+           if d <= now
+             then andThen (streamTimedOut sid st c1) (expireStreams now)
+             else expireStreams now c1 { cStreams = M.insert sid st { sTimer = Just d } (cStreams c1)
+                                       , cTimers = S.insert (d, sid) rest }
+         Just st -> expireStreams now c1 { cStreams = M.insert sid st { sTimer = Nothing } (cStreams c1) }
+         Nothing -> expireStreams now c1
+  _ -> result c []
+
+-- | A stream's timer expired: RST_STREAM CANCEL, not charged (C10), and
+-- the handler told.
+streamTimedOut :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
+streamTimedOut sid st c =
+  andThen (ended sid st c) $ \c1 ->
+    let (c2, outs) = emit [renderRstStream (StreamId sid) Cancel] c1
+    in result c2 (RequestAborted (StreamId sid) StreamTimedOut : outs)
 
 -- What has been received and not used.
 available :: Conn -> Int
@@ -621,9 +793,25 @@ frameOutsideBlock now c f acc = case f of
   -- #    this flag.
   --
   -- PINGs cost no budget (C10): the acknowledgements not yet written are
-  -- what is bounded, by the cap on unsent output (C5).
-  PingFrame False d -> emit [renderPing True d] c >>> next
-  PingFrame True _ -> next (c, [])
+  -- what is bounded, by the cap on unsent output (C5). A PING restarts
+  -- the idle timer, so that a client keeping a quiet connection alive is
+  -- not closed (C8).
+  PingFrame False d -> emit [renderPing True d] (restartIdle now c) >>> next
+  -- the answer to the shutdown PING: the final GOAWAY (D10)
+  PingFrame True d
+    | Pinging _ <- cEnding c, d == shutdownPing -> next (drain c)
+    | otherwise -> next (c, [])
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.4
+  -- # A client cannot push.  Thus, servers MUST treat the receipt of a
+  -- # PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+  -- # PROTOCOL_ERROR.
+  PushPromiseFrame _ -> stop acc (goAway c ProtocolError)
+  -- the client's GOAWAY (C11): with NO_ERROR, no new streams, and the
+  -- close once those open are done ('afterStep'); with an error, the
+  -- client is closing the connection (Section 5.4.1), and so do we
+  GoAwayFrame _ code _
+    | code == NoError -> next (c { cPeerGoAway = True }, [])
+    | otherwise -> stop acc (close c [])
   -- PRIORITY_UPDATE (RFC 9218) is free until RFC 9218 is supported (C10)
   UnknownFrame 0x10 _ _ -> next (c, [])
   UnknownFrame _ _ _ -> charge 1 c $ \c1 -> next (c1, [])
@@ -668,8 +856,10 @@ requestData c sid st end d plen
                    , sQueued = sQueued st + len
                    -- content arrived: no 100 is owed any more (C9)
                    , sExpect100 = sExpect100 st && len == 0
+                   -- a handler waiting has content, or the end (C8)
+                   , sWanting = sWanting st && len == 0 && not end
                    , sState = if end then HalfClosedRemote else Open }
-          c2 = c1 { cStreams = M.insert sid st' (cStreams c1) }
+          c2 = putStream sid len st' c1
           outs = [RequestData (StreamId sid) d' | len > 0] ++ [RequestEnd (StreamId sid) emptyFields | end]
           -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.1
           -- # The entire
@@ -729,13 +919,18 @@ andThen (c, outs) k
   | otherwise = let (c', outs') = k c in result c' (outs ++ outs')
 
 -- | The handler read with nothing queued: the 100 (Continue), if one is
--- owed, goes now (C9). It never carries END_STREAM (Section 8.1).
+-- owed, goes now (C9). It never carries END_STREAM (Section 8.1). Until
+-- content comes, the client holds the stream up (C8): content passed on
+-- and not yet consumed means the handler has not seen it yet, and does
+-- not wait.
 wantContent :: Word32 -> Conn -> (Conn, [Output])
 wantContent sid c = case M.lookup sid (cStreams c) of
-  Just st | sState st == Open, sExpect100 st ->
-    let (block, enc) = encodeBlock (cEncoder c) [(":status", "100")]
-        c1 = c { cEncoder = enc, cStreams = M.insert sid st { sExpect100 = False } (cStreams c) }
-    in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) False block) c1
+  Just st | sState st == Open ->
+    let c1 = putStream sid 0 st { sExpect100 = False, sWanting = sQueued st == 0 } c
+    in if not (sExpect100 st) then result c1 []
+       else
+         let (block, enc) = encodeBlock (cEncoder c1) [(":status", "100")]
+         in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c1))) (StreamId sid) False block) c1 { cEncoder = enc }
   _ -> result c []
 
 -- | A stream above the highest opened is idle (C4).
@@ -798,7 +993,16 @@ forStream c sid endStream decoded
 
 newStream :: Conn -> Word32 -> Bool -> Decoded -> (Conn, [Output])
 newStream c sid endStream decoded
-  | active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.8
+  -- # Once the GOAWAY is sent, the sender will ignore frames sent on
+  -- # streams initiated by the receiver if the stream has an identifier
+  -- # higher than the included last stream identifier.
+  --
+  -- Above our final GOAWAY's last stream: refused (D10's case 5), not
+  -- charged, since the client sent it before it knew
+  | sid > cAcceptLimit c = emit [renderRstStream (StreamId sid) RefusedStream] c
+  -- after the client's own GOAWAY, no new streams (C11)
+  | cPeerGoAway c || active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
       -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1.2
       -- # An endpoint
       -- # that receives a HEADERS frame that causes its advertised concurrent
@@ -846,7 +1050,13 @@ newStream c sid endStream decoded
                 , sSendWindow = fromIntegral (peerInitialWindowSize (cPeer c))
                 , sOut = Seq.empty
                 , sOutLength = 0
-                , sWaiting = False }
+                , sWaiting = False
+                , sWanting = False
+                , sBlocked = False
+                , sSince = cNow c
+                , sAllowance = configMinRate cfg * configMinRateGrace cfg
+                , sIdleLeft = configStreamIdleTimeout cfg
+                , sTimer = Nothing }
           in result c { cStreams = M.insert sid st (cStreams c) }
                     [NewRequest (StreamId sid) (RequestHead rc (not endStream))]
       where
@@ -872,7 +1082,7 @@ trailers c sid st endStream decoded
               -- content shorter than its declared length (Section 8.1.1)
               streamErrorBecause ContentNotAsDeclared c sid st ProtocolError
           | otherwise ->
-              result c { cStreams = M.insert sid st { sState = HalfClosedRemote, sExpect100 = False } (cStreams c) }
+              result (putStream sid 0 st { sState = HalfClosedRemote, sExpect100 = False, sWanting = False } c)
                      [RequestEnd (StreamId sid) tf]
 
 -- | A stream error (Section 5.4.2): RST_STREAM with the code, the
@@ -891,9 +1101,10 @@ streamErrorBecause reason c sid st code = charge 1 c $ \c1 ->
 -- be: its connection credit comes back (C3).
 ended :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
 ended sid st c =
-  let c0 = c { cBuffered = cBuffered c - sOutLength st }
+  let c0 = (forget sid c) { cBuffered = cBuffered c - sOutLength st }
       c1 | sHandler st = c0 { cStreams = M.insert sid st { sState = ClosedHeld, sQueued = 0
-                                                           , sOut = Seq.empty, sOutLength = 0, sWaiting = False } (cStreams c0) }
+                                                           , sOut = Seq.empty, sOutLength = 0, sWaiting = False
+                                                           , sWanting = False, sBlocked = False, sTimer = Nothing } (cStreams c0) }
          | otherwise = c0 { cStreams = M.delete sid (cStreams c0) }
   -- its buffered response freed: other writes may be waiting on the
   -- connection's bound (C5)
@@ -918,11 +1129,88 @@ handlerDone sid c = case M.lookup sid (cStreams c) of
   Just st -> case sState st of
     ClosedHeld -> result c { cStreams = M.delete sid (cStreams c) } []
     s' -> case sResponse st of
-      Awaiting -> andThen (giveBack (sQueued st) c { cStreams = M.delete sid (cStreams c) })
+      Awaiting -> andThen (giveBack (sQueued st) (forget sid c) { cStreams = M.delete sid (cStreams c) })
                           (respond InternalServerError sid (s' == HalfClosedRemote))
       -- returned without ending its content: as Abort (D10 case 4)
       Sending _ _ Nothing -> abort sid c
       Sending {} -> result c { cStreams = M.insert sid st { sHandler = False } (cStreams c) } []
+
+------------------------------------------------------------------------------
+-- Timers per stream (C8)
+------------------------------------------------------------------------------
+
+-- A stream's clock runs only while the client is what holds it up. Two
+-- timers read it: the idle timer, which content moved restarts, and the
+-- minimum rate, an allowance that starts at the grace period's worth
+-- (240 octets a second for 5 s), drains at the rate while the clock
+-- runs, and grows by each octet moved. The allowance is capped at the
+-- idle timeout's worth, so that a fast start cannot bank hours for a
+-- slow drip afterwards (an average since the stream began, Kestrel's
+-- measure, would let 100 MB moved fast buy 116 hours at one octet a
+-- second); a stall is then never allowed longer than the idle timeout.
+
+-- | Whether the client holds the stream up: the handler waits for
+-- content, or there is response content (or its end) that the client's
+-- windows or its socket have not taken. After every step, buffered
+-- content means exactly that, since the scheduler sends what it can.
+holdsUp :: StreamEntry -> Bool
+holdsUp st = sState st /= ClosedHeld &&
+  (sWanting st && sState st == Open || case sResponse st of
+     Sending _ _ end -> sOutLength st > 0 || isJust end
+     Awaiting -> False)
+
+-- the clock run up to now, if it runs
+runClock :: Config -> Time -> StreamEntry -> StreamEntry
+runClock cfg now st
+  | sBlocked st =
+      let e = now - sSince st
+      in st { sSince = now
+            , sAllowance = sAllowance st - min (sAllowance st) (configMinRate cfg * e)
+            , sIdleLeft = sIdleLeft st - min (sIdleLeft st) e }
+  | otherwise = st { sSince = now }
+
+-- | When the stream's timers expire if its clock runs on, if either is
+-- enabled. It only ever moves later: running the clock leaves it where
+-- it is, and content moved or a pause puts it later.
+streamDeadline :: Config -> StreamEntry -> Maybe Time
+streamDeadline cfg st = case [ sSince st + sAllowance st `div` configMinRate cfg | configMinRate cfg > 0 ]
+                          ++ [ sSince st + sIdleLeft st | configStreamIdleTimeout cfg > 0 ] of
+  [] -> Nothing
+  ds -> Just (minimum ds)
+
+-- | A stream's entry stored, after a change that moved this many octets
+-- of content: its clock run, its timers given the progress, and its
+-- deadline entered if its clock has started.
+putStream :: Word32 -> Int -> StreamEntry -> Conn -> Conn
+putStream sid moved st c =
+  let cfg = cConfig c
+      st1 = runClock cfg (cNow c) st
+      st2 | moved > 0 = st1 { sAllowance = min (configMinRate cfg * max (configMinRateGrace cfg) (configStreamIdleTimeout cfg))
+                                               (sAllowance st1 + 1000 * fromIntegral moved)
+                            , sIdleLeft = configStreamIdleTimeout cfg }
+          | otherwise = st1
+      st3 = st2 { sBlocked = holdsUp st2 }
+  in c { cStreams = M.insert sid st3 (cStreams c)
+       , cTouched = if sBlocked st3 && isNothing (sTimer st3) then sid : cTouched c else cTouched c }
+
+-- | At the end of a step, a deadline for each stream still held up that
+-- has none: not before, since a write holds its stream up only until
+-- the scheduler sends it, in the same step.
+armTimers :: Conn -> Conn
+armTimers c
+  | null (cTouched c) = c
+  | otherwise = foldl arm c { cTouched = [] } (cTouched c)
+  where
+    arm c1 sid = case M.lookup sid (cStreams c1) of
+      Just st | sBlocked st, isNothing (sTimer st), Just d <- streamDeadline (cConfig c1) st ->
+        c1 { cStreams = M.insert sid st { sTimer = Just d } (cStreams c1), cTimers = S.insert (d, sid) (cTimers c1) }
+      _ -> c1
+
+-- | The stream's deadline taken out, as it leaves the map or is closed.
+forget :: Word32 -> Conn -> Conn
+forget sid c = case M.lookup sid (cStreams c) >>= sTimer of
+  Just t -> c { cTimers = S.delete (t, sid) (cTimers c) }
+  Nothing -> c
 
 ------------------------------------------------------------------------------
 -- Responses (C5, C12)
@@ -980,7 +1268,7 @@ writeBody sid d c = case M.lookup sid (cStreams c) of
                        , sOut = if B.null d then sOut st else sOut st |> d
                        , sOutLength = sOutLength st + B.length d
                        , sWaiting = True }
-          in pump (schedule sid c { cStreams = M.insert sid st' (cStreams c), cBuffered = cBuffered c + B.length d })
+          in pump (schedule sid (putStream sid 0 st' c { cBuffered = cBuffered c + B.length d }))
       where written' = written + fromIntegral (B.length d)
   -- a header-only response, or a stream no longer served
   _ -> result c [Writable (StreamId sid)]
@@ -993,7 +1281,7 @@ endBody sid tr c = case M.lookup sid (cStreams c) of
     Awaiting -> misuse BodyBeforeRespond c -- EndBody
     Sending decl written Nothing
       | maybe False (/= written) decl -> abort sid c
-      | otherwise -> pump (schedule sid c { cStreams = M.insert sid st { sResponse = Sending decl written (Just tr) } (cStreams c) })
+      | otherwise -> pump (schedule sid (putStream sid 0 st { sResponse = Sending decl written (Just tr) } c))
     Sending {} -> result c []
   _ -> result c []
 
@@ -1014,7 +1302,7 @@ abort sid c = case M.lookup sid (cStreams c) of
 finished :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
 finished sid st c =
   let stillSending = sState st == Open
-      c1 = c { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
+      c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
   in andThen (if stillSending then emit [renderRstStream (StreamId sid) NoError] c1 else result c1 [])
              (giveBack (sQueued st))
 
@@ -1069,8 +1357,7 @@ sendOne sid st c = case sResponse st of
                  lastOne = n == sOutLength st
                  endHere = lastOne && maybe False isEmptyFields end
                  st' = st { sOut = rest, sOutLength = sOutLength st - n, sSendWindow = sSendWindow st - n }
-                 c1 = c { cStreams = M.insert sid st' (cStreams c), cSendWindow = cSendWindow c - n
-                        , cBuffered = cBuffered c - n }
+                 c1 = putStream sid n st' c { cSendWindow = cSendWindow c - n, cBuffered = cBuffered c - n }
                  (c2, outs) = emit (renderDataPieces (StreamId sid) endHere pieces) c1
              in Just $ if endHere then andThen (c2, outs) (finished sid st')
                        else result (if lastOne && isJust end || not lastOne then schedule sid c2 else c2) outs
@@ -1170,14 +1457,20 @@ emitUncapped frames c = result c { cUnsent = cUnsent c + sum (map B.length frame
 -- | GOAWAY with the code, then close (D10).
 goAway :: Conn -> ErrorCode -> (Conn, [Output])
 goAway c code =
-  let (c', outs) = emitUncapped [renderGoAway (StreamId (cLastStream c)) code B.empty] c
+  let (c', outs) = emitUncapped [renderGoAway (StreamId (lastProcessed c)) code B.empty] c
   in close c' outs
 
 misuse :: Misuse -> Conn -> (Conn, [Output])
 misuse m c = close c [ProtocolMisuse m]
 
+-- | The connection ends: every handler still waiting on a stream is told
+-- (C2), so that none waits for ever. Those of streams already reset were
+-- told then.
 close :: Conn -> [Output] -> (Conn, [Output])
-close c outs = result c { cClosed = True } (outs ++ [Close])
+close c outs =
+  let aborts = [ RequestAborted (StreamId sid) ConnectionEnded
+               | (sid, st) <- M.toList (cStreams c), sHandler st, sState st /= ClosedHeld ]
+  in result c { cClosed = True } (outs ++ aborts ++ [Close])
 
 -- | The new state, evaluated, and the outputs (as HTTP/1.1's core: a
 -- lazily built state is a thunk the driver runs at once).

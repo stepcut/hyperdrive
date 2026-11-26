@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns -Wno-x-partial #-}
-module StreamTests (streamTests, responseTests) where
+module StreamTests (streamTests, responseTests, endingTests) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -866,3 +866,249 @@ prop_sendModel =
           sent' = foldl' (\m (s, d, _) -> M.insertWith (+) 0 (B.length d) (M.insertWith (+) s (B.length d) m)) sent (datas outs)
       in [ counterexample ("over the window of " ++ show s) (M.findWithDefault 0 s sent' <= M.findWithDefault (0 :: Int) s credit')
          | s <- [0, 1, 3 :: Word32] ] ++ windows credit' sent' rest
+
+------------------------------------------------------------------------------
+-- errors, timers and shutdown
+------------------------------------------------------------------------------
+
+endingTests :: TestTree
+endingTests = testGroup "The connection core: timers, GOAWAY, shutdown (C2, C8, C11, D10)"
+  [ testProperty "a stream's timers run only while the client holds it up" prop_streamTimers
+  , testProperty "the idle connection" prop_idle
+  , testProperty "graceful shutdown: GOAWAY, PING, the final GOAWAY, the close" prop_shutdown
+  , testProperty "the client's GOAWAY" prop_peerGoAway
+  , testProperty "the end of a connection tells every handler waiting" prop_closing
+  ]
+
+-- a connection with this configuration whose client sent these SETTINGS,
+-- acknowledged ours, and sent these octets, its output written at once
+serveWith :: Config -> [Setting] -> ByteString -> (Conn, [Output])
+serveWith config ss b =
+  feedAll (writeAll (newConn config 0)) [Received (connectionPreface <> renderSettings ss <> renderSettingsAck <> b)]
+
+-- inputs at the given times, the output written at once
+feedAt :: (Conn, [Output]) -> [(Time, Input)] -> (Conn, [Output])
+feedAt = foldl' feed
+  where feed (c, outs) (t, i) = let (c', o) = writeAll (step t i c) in (c', outs ++ o)
+
+-- the GOAWAYs sent: the last stream and the code
+goAways :: [Output] -> [(Word32, ErrorCode)]
+goAways outs = [ (l, code) | GoAwayFrame (StreamId l) code _ <- parsed outs ]
+
+pingAnswer :: Input
+pingAnswer = Received (renderPing True "shutdown")
+
+prop_streamTimers :: Property
+prop_streamTimers = once $ conjoin
+  [ counterexample "a response the client's window holds up: CANCEL when the 5 s grace has gone without progress" $
+      let [b] = blocks [base]
+          (c, _) = feedAll (serveWith defaultConfig [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 "abc"]
+          (_, o) = feedAt (c, []) [(5000, TimedOut)]
+      in nextDeadline c === Just 5000 .&&. seen o === [SeenReset 1 Cancel] .&&. aborted o === [(1, StreamTimedOut)]
+         .&&. misused (snd (step 4999 TimedOut c))
+  , counterexample "a stream that waits on its handler has no deadline" $
+      let [b] = blocks [post]
+          (c, _) = feedAll (serveWith defaultConfig [] (headers 1 False b <> dataFrames 1 False "abc")) [respondOn 1 (ok Nothing), write 1 "x"]
+      -- content queued and not consumed: the handler has not seen it yet
+      in nextDeadline c === Nothing .&&. nextDeadline (fst (feedAll (c, []) [WantContent (StreamId 1)])) === Nothing
+  , counterexample "a handler waiting for content: timed; content moved adds to the allowance; time paused while the handler has it" $
+      let [b] = blocks [post]
+          (c, _) = feedAt (serveWith defaultConfig [] (headers 1 False b)) [(0, WantContent (StreamId 1))]
+          -- 3 s waited (720 of the 1,200 octets' allowance), then 10 octets
+          -- (+10), then the handler reads them and waits again at 100 s
+          (c1, _) = feedAt (c, []) [ (3000, Received (dataFrames 1 False "0123456789"))
+                                   , (3000, Consumed (StreamId 1) 10), (100000, WantContent (StreamId 1)) ]
+          -- the timer entry from the first wait, now early, is renewed
+          (c2, o2) = feedAt (c1, []) [(5000, TimedOut)]
+      in nextDeadline c === Just 5000 .&&. seen o2 === [] .&&. nextDeadline c2 === Just (100000 + 490000 `div` 240)
+  , counterexample "the allowance is capped at the idle timeout's worth: a slow drip after a fast start is caught" $
+      let [b] = blocks [base]
+          -- 165,535 octets go at once (the connection's window), 14,689 wait
+          (c, o) = feedAll (serveWith defaultConfig [InitialWindowSize 1000000] (headers 1 True b <> renderWindowUpdate (StreamId 0) 100000))
+                           (respondOn 1 (ok Nothing) : replicate 11 (write 1 (B.replicate 16384 0x61)))
+          -- the client opens 1,024 octets after 250 s; the timer's entry,
+          -- at 300 s since the allowance was capped, is then early
+          (c1, o1) = feedAt (c, []) [(250000, windowUpdate 0 1024)]
+          (c2, o2) = feedAt (c1, []) [(300000, TimedOut)]
+          capped = 72000000 - 240 * 250000 + 1024 * 1000
+      in sum [B.length d | (_, d, _) <- datas o] === 165535 .&&. nextDeadline c === Just 300000
+         .&&. map (\(_, d, _) -> B.length d) (datas o1) === [1024]
+         .&&. seen o2 === [] .&&. nextDeadline c2 === Just (250000 + capped `div` 240)
+  , counterexample "with the minimum rate off, the idle timer: 5 minutes without progress" $
+      let [b] = blocks [base]
+          config = defaultConfig { configMinRate = 0 }
+          (c, _) = feedAll (serveWith config [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 "abc"]
+      in nextDeadline c === Just 300000 .&&. aborted (snd (feedAt (c, []) [(300000, TimedOut)])) === [(1, StreamTimedOut)]
+  , counterexample "the idle timer: what has run of it is kept when the clock is read, and progress restarts it" $
+      let [b] = blocks [post]
+          config = defaultConfig { configMinRate = 0 }
+          (c, _) = feedAt (serveWith config [] (headers 1 False b)) [(0, WantContent (StreamId 1))]
+          -- an empty DATA at 100 s: no progress, but the clock is read
+          stalled = feedAt (c, []) [(100000, Received (dataFrames 1 False "")), (300000, TimedOut)]
+          -- content at 100 s: progress; the handler waits again at once
+          moving = feedAt (c, []) [ (100000, Received (dataFrames 1 False "x")), (100000, Consumed (StreamId 1) 1)
+                                  , (100000, WantContent (StreamId 1)), (300000, TimedOut) ]
+      in aborted (snd stalled) === [(1, StreamTimedOut)] .&&. aborted (snd moving) === []
+         .&&. nextDeadline (fst moving) === Just 400000
+  , counterexample "both off: no deadline" $
+      let [b] = blocks [base]
+          config = defaultConfig { configMinRate = 0, configStreamIdleTimeout = 0 }
+      in nextDeadline (fst (feedAll (serveWith config [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 "abc"]))
+           === Nothing
+  , counterexample "a stream that ends leaves no deadline behind" $
+      let [b] = blocks [base]
+          (c, _) = feedAll (serveWith defaultConfig [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 "abc"]
+          (c1, _) = feedAll (c, []) [Received (rst 1 Cancel)]
+          -- or that is sent and finishes: only the idle timer is left
+          (c2, _) = feedAll (c, []) [endOn 1, windowUpdate 1 10]
+      in nextDeadline c1 === Nothing .&&. nextDeadline c2 === Just 60000
+  , counterexample "the trailers, held up by pacing, keep the clock running" $
+      let [b] = blocks [base]
+          (c, _) = runWith defaultConfig { configPacing = 1 }
+                     [ (0, Received (connectionPreface <> renderSettings [] <> renderSettingsAck <> headers 1 True b))
+                     , (0, respondOn 1 (ok Nothing)), (0, EndBody (StreamId 1) (fieldsOf [("x-sum", "1")])) ]
+      in nextDeadline c === Just 5000
+  ]
+
+prop_idle :: Property
+prop_idle = once $ conjoin
+  [ counterexample "no streams for 60 s: GOAWAY NO_ERROR, then the close" $
+      let (c, _) = serveWith defaultConfig [] ""
+          o = snd (feedAt (c, []) [(60000, TimedOut)])
+      in nextDeadline c === Just 60000 .&&. goAways o === [(0, NoError)] .&&. closed o
+  , counterexample "a PING from the client restarts it" $
+      nextDeadline (fst (feedAt (serveWith defaultConfig [] "") [(30000, Received (renderPing False "12345678"))])) === Just 90000
+  , counterexample "a stream stops it; it starts again when the last stream is done" $
+      let [b] = blocks [base]
+          (c, _) = feedAt (serveWith defaultConfig [] "") [(10000, Received (headers 1 True b))]
+          (c1, _) = feedAt (c, []) [(20000, respondOn 1 (ok (Just 0))), (20000, endOn 1)]
+          (c2, _) = feedAt (c1, []) [(25000, HandlerDone (StreamId 1))]
+      in nextDeadline c === Nothing .&&. nextDeadline c2 === Just 80000
+  , counterexample "off: no deadline" $
+      nextDeadline (fst (serveWith defaultConfig { configIdleTimeout = 0 } [] "")) === Nothing
+  ]
+
+prop_shutdown :: Property
+prop_shutdown = once $ conjoin
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.8
+  -- # A server that is attempting to gracefully shut down a
+  -- # connection SHOULD send an initial GOAWAY frame with the last stream
+  -- # identifier set to 2^31-1 and a NO_ERROR code.  This signals to the
+  -- # client that a shutdown is imminent and that initiating further
+  -- # requests is prohibited.  After allowing time for any in-flight stream
+  -- # creation (at least one round-trip time), the server MAY send another
+  -- # GOAWAY frame with an updated last stream identifier.
+  [ counterexample "GOAWAY 2^31-1 and a PING; on the answer, GOAWAY with the last stream; the stream finishes; the close" $
+      let [b] = blocks [base]
+          (c, o) = feedAll (serveWith defaultConfig [] (headers 1 True b)) [Shutdown]
+          (c1, o1) = feedAll (c, []) [pingAnswer]
+          o2 = from (c1, []) [respondOn 1 (ok (Just 0)), endOn 1]
+      in goAways o === [(2147483647, NoError)] .&&. SeenOther (PingFrame False "shutdown") `elem` seen o
+         .&&. not (closed o) .&&. goAways o1 === [(1, NoError)] .&&. not (closed o1)
+         .&&. datas o2 === [(1, "", True)] .&&. closed o2
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.7
+  -- # If frames that are on a stream
+  -- # are passed to the application layer for any stream, then
+  -- # REFUSED_STREAM MUST NOT be used for that stream, and a GOAWAY frame
+  -- # MUST include a stream identifier that is greater than or equal to the
+  -- # given stream identifier.
+  , counterexample "a stream opened before the answer is served; one after it is refused" $
+      let [b1, b3, b5] = blocks [base, base, base]
+          (c, _) = feedAll (serveWith defaultConfig [] (headers 1 True b1)) [Shutdown, Received (headers 3 True b3)]
+          (c1, o1) = feedAll (c, []) [pingAnswer]
+          o2 = from (c1, []) [Received (headers 5 True b5)]
+      in goAways o1 === [(3, NoError)] .&&. requests o2 === [] .&&. seen o2 === [SeenReset 5 RefusedStream]
+  , counterexample "a field block begun when the PING's timer expires: its stream counts as opened" $
+      let [b1, b3] = blocks [base, base]
+          (c, _) = feedAll (serveWith defaultConfig [] (headers 1 True b1)) [Shutdown, Received (rawFrame 1 1 3 (B.take 2 b3))]
+          (c1, o1) = feedAt (c, []) [(1000, TimedOut)]
+      in goAways o1 === [(3, NoError)] .&&. length (requests (from (c1, []) [Received (rawFrame 9 4 3 (B.drop 2 b3))])) === 1
+  , counterexample "a field block begun keeps a connection with no streams open until it ends" $
+      let [b] = blocks [base]
+          (c, o) = feedAt (serveWith defaultConfig [] "") [(0, Shutdown), (0, Received (rawFrame 1 1 1 (B.take 2 b))), (1000, TimedOut)]
+      in not (closed o) .&&. length (requests (from (c, []) [Received (rawFrame 9 4 1 (B.drop 2 b))])) === 1
+  , counterexample "streams reset whose handlers still run do not hold the close" $
+      let [b] = blocks [post]
+          o = snd (feedAll (serveWith defaultConfig [] (headers 1 False b <> rst 1 Cancel)) [Shutdown, pingAnswer])
+      in closed o .&&. aborted o === [(1, ResetByClient Cancel)]
+  , counterexample "the PING unanswered: the final GOAWAY after 1 s" $
+      let [b] = blocks [base]
+          (c, _) = feedAll (serveWith defaultConfig [] (headers 1 True b)) [Shutdown]
+      in nextDeadline c === Just 1000 .&&. goAways (snd (feedAt (c, []) [(1000, TimedOut)])) === [(1, NoError)]
+  , counterexample "no streams: closed once the PING is answered" $
+      let o = snd (feedAll (serveWith defaultConfig [] "") [Shutdown, pingAnswer])
+      in goAways o === [(2147483647, NoError), (0, NoError)] .&&. closed o
+  , counterexample "another PING's answer is not the shutdown's" $
+      goAways (snd (feedAll (serveWith defaultConfig [] "") [Shutdown, Received (renderPing True "12345678")]))
+        === [(2147483647, NoError)]
+  , counterexample "with the PING timer off, the final GOAWAY at once" $
+      let [b] = blocks [base]
+      in goAways (snd (feedAll (serveWith defaultConfig { configPingTimeout = 0 } [] (headers 1 True b)) [Shutdown])) === [(1, NoError)]
+  , counterexample "Shutdown again (the grace period's end): CANCEL for what is left, GOAWAY, handlers told, the close" $
+      let [b1, b3, b5] = blocks [base, post, post]
+          -- stream 5 was reset, and its handler still runs: no second reset
+          (c, _) = feedAll (serveWith defaultConfig [] (headers 1 True b1 <> headers 3 False b3 <> headers 5 False b5 <> rst 5 Cancel))
+                           [Shutdown]
+          o = from (c, []) [Shutdown]
+      in seen o === [SeenReset 1 Cancel, SeenReset 3 Cancel, SeenGoAway NoError] .&&. goAways o === [(5, NoError)]
+         .&&. aborted o === [(1, ConnectionEnded), (3, ConnectionEnded)] .&&. closed o
+  , counterexample "before the client's preface: closed, nothing sent" $
+      let (c, _) = newConn defaultConfig 0
+          o = snd (step 0 Shutdown c)
+      in parsed o === [] .&&. closed o
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.8
+  -- # Endpoints MUST NOT increase the
+  -- # value they send in the last stream identifier, since the peers might
+  -- # already have retried unprocessed requests on another connection.
+  , counterexample "a connection error after the final GOAWAY does not raise its last stream" $
+      let [b1, b3] = blocks [base, base]
+          (c, _) = feedAll (serveWith defaultConfig [] (headers 1 True b1)) [Shutdown, pingAnswer, Received (headers 3 True b3)]
+      in goAways (from (c, []) [Received (rawFrame 0xA 0 0 "")]) === []
+         .&&. goAways (from (c, []) [Received (rawFrame 1 4 2 "")]) === [(1, ProtocolError)]
+  ]
+
+prop_peerGoAway :: Property
+prop_peerGoAway = once $ conjoin
+  [ counterexample "with a stream open: it finishes, then our GOAWAY and the close" $
+      let [b] = blocks [base]
+          (c, o) = feedAll (serveWith defaultConfig [] (headers 1 True b)) [Received (renderGoAway (StreamId 0) NoError "")]
+          o1 = from (c, []) [respondOn 1 (ok (Just 0)), endOn 1]
+      in goAways o === [] .&&. not (closed o) .&&. datas o1 === [(1, "", True)] .&&. goAways o1 === [(1, NoError)] .&&. closed o1
+  , counterexample "with none: our GOAWAY and the close at once" $
+      let o = snd (serveWith defaultConfig [] (renderGoAway (StreamId 0) NoError ""))
+      in goAways o === [(0, NoError)] .&&. closed o
+  , counterexample "a new stream after it: refused" $
+      let [b1, b3] = blocks [base, base]
+          o = snd (serveWith defaultConfig [] (headers 1 True b1 <> renderGoAway (StreamId 0) NoError "" <> headers 3 True b3))
+      in map (\(s, _, _, _) -> s) (requests o) === [1] .&&. seen o === [SeenReset 3 RefusedStream]
+  , counterexample "with an error: the close at once, the handlers told" $
+      let [b] = blocks [base]
+          o = snd (serveWith defaultConfig [] (headers 1 True b <> renderGoAway (StreamId 0) InternalError ""))
+      in goAways o === [] .&&. aborted o === [(1, ConnectionEnded)] .&&. closed o
+  ]
+
+prop_closing :: Property
+prop_closing = once $ conjoin
+  [ counterexample "PeerClosed: the handlers waiting are told; one already told of its reset is not told again" $
+      let [b1, b3] = blocks [post, post]
+          (c, _) = serveWith defaultConfig [] (headers 1 False b1 <> headers 3 False b3 <> rst 3 Cancel)
+          o = from (c, []) [PeerClosed]
+      in aborted o === [(1, ConnectionEnded)] .&&. closed o
+  , counterexample "a response being sent after its handler returned: no one to tell" $
+      let [b] = blocks [base]
+          (c, _) = feedAll (serveWith defaultConfig [InitialWindowSize 0] (headers 1 True b))
+                           [respondOn 1 (ok Nothing), write 1 "abc", endOn 1, HandlerDone (StreamId 1)]
+      in aborted (from (c, []) [PeerClosed]) === []
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.4
+  -- # A client cannot push.  Thus, servers MUST treat the receipt of a
+  -- # PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+  -- # PROTOCOL_ERROR.
+  , counterexample "a connection error (PUSH_PROMISE from the client): GOAWAY, the handlers told" $
+      let [b] = blocks [base]
+          o = snd (serveWith defaultConfig [] (headers 1 True b <> rawFrame 5 4 1 (B.pack [0, 0, 0, 2]))) 
+      in goAways o === [(1, ProtocolError)] .&&. aborted o === [(1, ConnectionEnded)] .&&. closed o
+  , counterexample "after the close, a handler's inputs are ignored" $
+      let [b] = blocks [base]
+          (c, _) = feedAll (serveWith defaultConfig [] (headers 1 True b)) [PeerClosed]
+      in null (snd (step 0 (HandlerDone (StreamId 1)) c)) .&&. null (snd (step 0 (respondOn 1 (ok Nothing)) c))
+  ]

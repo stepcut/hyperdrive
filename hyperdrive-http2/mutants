@@ -333,12 +333,12 @@ why: an acknowledgement of a SETTINGS we did not send is refused (C10)
 + [] -> next (c, [])
 
 why: a PING is answered with its own payload (Section 6.7)
-- PingFrame False d -> emit [renderPing True d] c >>> next
-+ PingFrame False _ -> emit [renderPing True (B.replicate 8 0)] c >>> next
+- PingFrame False d -> emit [renderPing True d] (restartIdle now c) >>> next
++ PingFrame False _ -> emit [renderPing True (B.replicate 8 0)] (restartIdle now c) >>> next
 
 why: PINGs cost no budget: grpc-go's clients send one a round trip while downloading (C10)
-- PingFrame False d -> emit [renderPing True d] c >>> next
-+ PingFrame False d -> charge 1 c $ \c1 -> emit [renderPing True d] c1 >>> next
+- PingFrame False d -> emit [renderPing True d] (restartIdle now c) >>> next
++ PingFrame False d -> charge 1 c $ \c1 -> emit [renderPing True d] (restartIdle now c1) >>> next
 
 why: PRIORITY_UPDATE costs no budget until RFC 9218 is supported (C10)
 - UnknownFrame 0x10 _ _ -> next (c, [])
@@ -465,16 +465,16 @@ why: a stream that ends gives back the credit of content never consumed (C3)
 + in andThen (result c1 [])
 
 why: a handler that returns without reading gives back its content's credit
-- Awaiting -> andThen (giveBack (sQueued st) c { cStreams = M.delete sid (cStreams c) })
-+ Awaiting -> andThen (giveBack 0 c { cStreams = M.delete sid (cStreams c) })
+- Awaiting -> andThen (giveBack (sQueued st) (forget sid c) { cStreams = M.delete sid (cStreams c) })
++ Awaiting -> andThen (giveBack 0 (forget sid c) { cStreams = M.delete sid (cStreams c) })
 
 why: the 100 is sent only when one is owed (C9)
-- Just st | sState st == Open, sExpect100 st ->
-+ Just st | sState st == Open ->
+- in if not (sExpect100 st) then result c1 []
++ in if False then result c1 []
 
 why: the 100 never carries END_STREAM (Section 8.1)
-- in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) False block) c1
-+ in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) True block) c1
+- in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c1))) (StreamId sid) False block) c1 { cEncoder = enc }
++ in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c1))) (StreamId sid) True block) c1 { cEncoder = enc }
 
 why: a stream window is at least 65,535 (Section 6.9.3)
 - streamWindow = max 65535 . fromIntegral . configStreamWindow
@@ -601,12 +601,12 @@ why: HEADERS on a half-closed (remote) stream is a stream error STREAM_CLOSED (S
 + HalfClosedRemote -> result c []
 
 why: an unfinished field block times out (C8)
-- else if maybe False ((<= now) . bDeadline) (cBlock c) then goAway c ProtocolError
+- else if expired (bDeadline <$> cBlock c) then goAway c ProtocolError
 + else if False then goAway c ProtocolError
 
 why: the field block's deadline is among the connection's (C1)
-- ++ maybe [] (pure . bDeadline) (cBlock c) of
-+ ++ [] of
+- ++ maybe [] (pure . bDeadline) (cBlock c)
++ ++ []
 
 why: the client's HEADER_TABLE_SIZE bounds our encoder (H4)
 - , cEncoder = foldl tableSize (cEncoder c1) ss })
@@ -661,8 +661,8 @@ why: a response complete before the request is asks the client to stop (Section 
 + let stillSending = False
 
 why: a complete response frees its stream's slot
-- c1 = c { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
-+ c1 = c { cBuffered = cBuffered c - sOutLength st }
+- c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
++ c1 = (forget sid c) { cBuffered = cBuffered c - sOutLength st }
 
 why: a handler that returns mid-response is aborted (D10 case 4)
 - Sending _ _ Nothing -> abort sid c
@@ -717,8 +717,8 @@ why: sending spends the stream's window
 + st' = st { sOut = rest, sOutLength = sOutLength st - n }
 
 why: sending spends the connection's window
-- c1 = c { cStreams = M.insert sid st' (cStreams c), cSendWindow = cSendWindow c - n
-+ c1 = c { cStreams = M.insert sid st' (cStreams c)
+- c1 = putStream sid n st' c { cSendWindow = cSendWindow c - n, cBuffered = cBuffered c - n }
++ c1 = putStream sid n st' c { cBuffered = cBuffered c - n }
 
 why: sending frees the connection's buffer
 - , cBuffered = cBuffered c - n }
@@ -737,8 +737,8 @@ why: a reset stream's buffer is freed, and writes waiting on the connection's bo
 + in giveBack (sQueued st) c1
 
 why: a reset stream's buffered octets leave the connection's count (C5)
-- let c0 = c { cBuffered = cBuffered c - sOutLength st }
-+ let c0 = c
+- let c0 = (forget sid c) { cBuffered = cBuffered c - sOutLength st }
++ let c0 = forget sid c
 
 why: WINDOW_UPDATE on the connection opens its window
 - | otherwise -> next (pump c { cSendWindow = cSendWindow c + fromIntegral inc })
@@ -775,3 +775,153 @@ why: a new stream's window is the client's INITIAL_WINDOW_SIZE
 why: Sent lets paced DATA go on (C5)
 - | otherwise -> pump c { cUnsent = cUnsent c - n }
 + | otherwise -> result c { cUnsent = cUnsent c - n } []
+
+# part 5: timers, GOAWAY, shutdown (C2, C8, C11, D10)
+
+why: a client's PING restarts the idle timer (C8)
+- restartIdle now c = c { cIdleDeadline = (now + configIdleTimeout (cConfig c)) <$ cIdleDeadline c }
++ restartIdle _ c = c
+
+why: only the answer to the shutdown PING ends its wait (D10)
+- | Pinging _ <- cEnding c, d == shutdownPing -> next (drain c)
++ | Pinging _ <- cEnding c -> next (drain c)
+
+why: a PUSH_PROMISE from a client is a connection error (Section 8.4)
+- PushPromiseFrame _ -> stop acc (goAway c ProtocolError)
++ PushPromiseFrame _ -> next (c, [])
+
+why: the client's GOAWAY: no new streams, the close when the open ones are done (C11)
+- | code == NoError -> next (c { cPeerGoAway = True }, [])
++ | code == NoError -> next (c, [])
+
+why: the client's GOAWAY with an error closes the connection (Section 5.4.1)
+- | otherwise -> stop acc (close c [])
++ | otherwise -> next (c { cPeerGoAway = True }, [])
+
+why: streams above our final GOAWAY's last stream are refused (D10 case 5)
+- | sid > cAcceptLimit c = emit [renderRstStream (StreamId sid) RefusedStream] c
++ | False = emit [renderRstStream (StreamId sid) RefusedStream] c
+
+why: no new streams after the client's GOAWAY (C11)
+- | cPeerGoAway c || active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
++ | active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
+
+why: a GOAWAY's last stream never rises (Section 6.8)
+- lastProcessed c = min (cLastStream c) (cAcceptLimit c)
++ lastProcessed c = cLastStream c
+
+why: a field block begun before the final GOAWAY counts as opened (D10)
+- let limit = maybe id (max . bStream) (cBlock c) (cLastStream c)
++ let limit = cLastStream c
+
+why: before the client's preface, shutdown closes without a GOAWAY
+- (AwaitingPreface, _) -> close c []
++ (AwaitingPreface, _) -> goAway c NoError
+
+why: with the PING timer off, the final GOAWAY goes at once (C8)
+- | configPingTimeout (cConfig c) == 0 -> drain c
++ | False -> drain c
+
+why: no RST_STREAM for a stream already closed (C10)
+- let resets = [renderRstStream (StreamId sid) Cancel | (sid, st) <- M.toList (cStreams c), sState st /= ClosedHeld]
++ let resets = [renderRstStream (StreamId sid) Cancel | (sid, _) <- M.toList (cStreams c)]
+
+why: a connection ending closes once only reset streams' handlers are left (D10)
+- | (cEnding c == Draining || cPeerGoAway c) && isNothing (cBlock c) && all ((== ClosedHeld) . sState) (cStreams c) =
++ | (cEnding c == Draining || cPeerGoAway c) && isNothing (cBlock c) && M.null (cStreams c) =
+
+why: the client's GOAWAY ends the connection once its streams are done (C11)
+- | (cEnding c == Draining || cPeerGoAway c) && isNothing (cBlock c) && all ((== ClosedHeld) . sState) (cStreams c) =
++ | cEnding c == Draining && isNothing (cBlock c) && all ((== ClosedHeld) . sState) (cStreams c) =
+
+why: a field block begun holds the close (D10)
+- | (cEnding c == Draining || cPeerGoAway c) && isNothing (cBlock c) && all ((== ClosedHeld) . sState) (cStreams c) =
++ | (cEnding c == Draining || cPeerGoAway c) && all ((== ClosedHeld) . sState) (cStreams c) =
+
+why: after the final GOAWAY, no second one at the close (Section 6.8)
+- if cEnding c == Draining then close c outs
++ if False then close c outs
+
+why: the idle timer can be turned off (C8)
+- | M.null (cStreams c) && cPhase c == Running && configIdleTimeout (cConfig c) > 0 =
++ | M.null (cStreams c) && cPhase c == Running =
+
+why: the idle timer runs only while there are no streams (C8)
+- | M.null (cStreams c) && cPhase c == Running && configIdleTimeout (cConfig c) > 0 =
++ | cPhase c == Running && configIdleTimeout (cConfig c) > 0 =
+
+why: the idle timer is not restarted by every step (C8)
+- if isJust (cIdleDeadline c) then c else c { cIdleDeadline = Just (cNow c + configIdleTimeout (cConfig c)) }
++ c { cIdleDeadline = Just (cNow c + configIdleTimeout (cConfig c)) }
+
+why: an idle connection gets GOAWAY NO_ERROR and is closed (C8)
+- else if expired (cIdleDeadline c) then goAway c NoError
++ else if False then goAway c NoError
+
+why: the shutdown PING unanswered: on as if it had been (C8)
+- Pinging t | t <= now -> drain c
++ Pinging t | False -> drain c
+
+why: an early timer entry is renewed, not acted on (C8)
+- if d <= now
++ if True
+
+why: a stream timed out is reset with CANCEL (C8)
+- let (c2, outs) = emit [renderRstStream (StreamId sid) Cancel] c1
++ let (c2, outs) = emit [renderRstStream (StreamId sid) NoError] c1
+
+why: a stream's clock runs only while the client holds it up (C8)
+- | sBlocked st =
++ | True =
+
+why: the minimum rate's allowance drains while the clock runs (C8)
+- , sAllowance = sAllowance st - min (sAllowance st) (configMinRate cfg * e)
++ , sAllowance = sAllowance st
+
+why: the idle timer runs while the clock runs (C8)
+- , sIdleLeft = sIdleLeft st - min (sIdleLeft st) e }
++ , sIdleLeft = sIdleLeft st }
+
+why: progress restarts the idle timer (C8)
+- , sIdleLeft = configStreamIdleTimeout cfg }
++ , sIdleLeft = sIdleLeft st1 }
+
+why: content moved adds to the allowance (C8)
+- (sAllowance st1 + 1000 * fromIntegral moved)
++ (sAllowance st1)
+
+why: the allowance is capped, so a fast start cannot buy a slow drip (C8)
+- st2 | moved > 0 = st1 { sAllowance = min (configMinRate cfg * max (configMinRateGrace cfg) (configStreamIdleTimeout cfg))
++ st2 | moved > 0 = st1 { sAllowance = min maxBound
+
+why: a handler waiting for content is held up by the client (C8)
+- (sWanting st && sState st == Open || case sResponse st of
++ (False || case sResponse st of
+
+why: a response's end that has not gone is held up by the client (C8)
+- Sending _ _ end -> sOutLength st > 0 || isJust end
++ Sending _ _ end -> sOutLength st > 0
+
+why: a handler with content it has not read does not wait (C8)
+- let c1 = putStream sid 0 st { sExpect100 = False, sWanting = sQueued st == 0 } c
++ let c1 = putStream sid 0 st { sExpect100 = False, sWanting = True } c
+
+why: content delivered ends the handler's wait (C8)
+- , sWanting = sWanting st && len == 0 && not end
++ , sWanting = sWanting st
+
+why: a stream reset leaves no deadline behind (C8)
+- let c0 = (forget sid c) { cBuffered = cBuffered c - sOutLength st }
++ let c0 = c { cBuffered = cBuffered c - sOutLength st }
+
+why: a stream finished leaves no deadline behind (C8)
+- c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
++ c1 = c { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
+
+why: handlers that have returned are not told the connection ended (C2)
+- | (sid, st) <- M.toList (cStreams c), sHandler st, sState st /= ClosedHeld ]
++ | (sid, st) <- M.toList (cStreams c), sState st /= ClosedHeld ]
+
+why: handlers told of their stream's reset are not told again (C2)
+- | (sid, st) <- M.toList (cStreams c), sHandler st, sState st /= ClosedHeld ]
++ | (sid, st) <- M.toList (cStreams c), sHandler st ]
