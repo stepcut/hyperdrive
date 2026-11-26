@@ -453,7 +453,7 @@ prop_credit = once $ conjoin
       let [b] = blocks [post]
           config = defaultConfig { configStreamWindow = 1000, configConnectionWindow = 1000 }
           outs = snd (runWith config (received (headers 1 False b <> dataFrames 1 False (B.replicate 65535 0x61))))
-      in take 1 (parsed outs) === [SettingsFrame 2 [MaxConcurrentStreams 100, MaxHeaderListSize 32768]]
+      in take 1 (parsed outs) === [SettingsFrame 3 [MaxConcurrentStreams 100, MaxHeaderListSize 32768, NoRFC7540Priorities True]]
          .&&. seen outs === [] .&&. sum (map (B.length . snd) (content outs)) === 65535
   , counterexample "credit comes back as the handler reads: a WINDOW_UPDATE once half the window is owed" $
       let [b] = blocks [post]
@@ -878,6 +878,7 @@ endingTests = testGroup "The connection core: timers, GOAWAY, shutdown (C2, C8, 
   , testProperty "graceful shutdown: GOAWAY, PING, the final GOAWAY, the close" prop_shutdown
   , testProperty "the client's GOAWAY" prop_peerGoAway
   , testProperty "the end of a connection tells every handler waiting" prop_closing
+  , testProperty "D9's limits: an HPACK bomb, the requests a connection serves" prop_limits
   ]
 
 -- a connection with this configuration whose client sent these SETTINGS,
@@ -1111,4 +1112,37 @@ prop_closing = once $ conjoin
       let [b] = blocks [base]
           (c, _) = feedAll (serveWith defaultConfig [] (headers 1 True b)) [PeerClosed]
       in null (snd (step 0 (HandlerDone (StreamId 1)) c)) .&&. null (snd (step 0 (respondOn 1 (ok Nothing)) c))
+  ]
+
+prop_limits :: Property
+prop_limits = once $ conjoin
+  [ counterexample "an HPACK bomb: a 4,000-octet field in the table, referred to nine times: 431; the table stays in step" $
+      let -- by hand, from the static table: GET, http, /, and :authority
+          start = B.pack [0x82, 0x86, 0x84, 0x01, 0x0B] <> "example.com"
+          -- x-big: 4,000 octets, added to the table (index 62)
+          b1 = start <> B.pack [0x40, 0x05] <> "x-big" <> B.pack [0x7F, 0xA1, 0x1E] <> B.replicate 4000 0x61
+          -- x-n added (now 62, x-big 63), then x-big nine times: 36 KiB
+          -- decoded from 33 octets
+          b2 = start <> B.pack [0x40, 0x03] <> "x-n" <> B.pack [0x01] <> "1" <> B.replicate 9 0xBF
+          -- both, which only a table that took b2's addition has there
+          b3 = start <> B.pack [0xBE, 0xBF]
+          o = snd (serveWith defaultConfig [] (headers 1 True b1 <> headers 3 True b2 <> headers 5 True b3))
+          fieldsOn s' = [ [fieldNameBytes n | (n, _) <- fieldsToList (controlFields (requestControl h))]
+                        | NewRequest (StreamId s'') h <- o, s'' == s' ]
+      in B.length b2 < 40 .&&. map (\(s', _, _, _) -> s') (requests o) === [1, 5] .&&. seen o === [status 3 "431"]
+         .&&. fieldsOn 5 === [["x-n", "x-big"]]
+  , counterexample "after the configured number of requests, the final GOAWAY; later streams refused; the close once done" $
+      let [b1, b3, b5] = blocks [base, base, base]
+          config = defaultConfig { configMaxRequests = 2 }
+          (c, o) = serveWith config [] (headers 1 True b1 <> headers 3 True b3 <> headers 5 True b5)
+          o1 = from (c, []) [ respondOn 1 (ok (Just 0)), endOn 1, HandlerDone (StreamId 1)
+                            , respondOn 3 (ok (Just 0)), endOn 3 ]
+      in map (\(s, _, _, _) -> s) (requests o) === [1, 3] .&&. goAways o === [(3, NoError)]
+         .&&. seen o === [SeenGoAway NoError, SeenReset 5 RefusedStream] .&&. not (closed o) .&&. closed o1
+  , counterexample "off by default: a thousand requests on one connection" $
+      let bs = blocks (replicate 1000 base)
+          o = snd (feedAll (serveWith defaultConfig [] "")
+                           (concat [ [Received (headers (2 * i + 1) True b), respondOn (2 * i + 1) (ok (Just 0)), endOn (2 * i + 1)]
+                                   | (i, b) <- zip [0 ..] bs ]))
+      in length (requests o) === 1000 .&&. goAways o === []
   ]

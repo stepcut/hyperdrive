@@ -86,6 +86,7 @@ data Setting
   | InitialWindowSize !Word32       -- ^ at most 2^31 - 1
   | MaxFrameSize !Word32            -- ^ from 2^14 to 2^24 - 1
   | MaxHeaderListSize !Word32
+  | NoRFC7540Priorities !Bool       -- ^ RFC 9218 Section 2.1 (D8)
   deriving (Eq, Show)
 
 -- | A frame, as the core needs it: flags as fields, unused flags,
@@ -139,6 +140,7 @@ data Reason
   | BadEnablePush        -- ^ SETTINGS_ENABLE_PUSH other than 0 or 1
   | BadInitialWindowSize -- ^ SETTINGS_INITIAL_WINDOW_SIZE above 2^31 - 1
   | BadMaxFrameSize      -- ^ SETTINGS_MAX_FRAME_SIZE outside 2^14 to 2^24 - 1
+  | BadNoRFC7540Priorities -- ^ SETTINGS_NO_RFC7540_PRIORITIES other than 0 or 1
   | ZeroIncrement        -- ^ a WINDOW_UPDATE of 0
   deriving (Eq, Show)
 
@@ -374,6 +376,12 @@ setting ident v = case ident of
   0x5 | v < 0x4000 || v > 0xFFFFFF -> err ProtocolError BadMaxFrameSize
       | otherwise -> Right (Just (MaxFrameSize v))
   0x6 -> Right (Just (MaxHeaderListSize v))
+  -- RFC 9218 Section 2.1 (not in duvet; RFC 9218 is not yet supported, D8):
+  --   The value of SETTINGS_NO_RFC7540_PRIORITIES MUST be 0 or 1.  Any
+  --   value other than 0 or 1 MUST be treated as a connection error (see
+  --   Section 5.4.1 of [HTTP/2]) of type PROTOCOL_ERROR.
+  0x9 | v > 1 -> err ProtocolError BadNoRFC7540Priorities
+      | otherwise -> Right (Just (NoRFC7540Priorities (v == 1)))
   -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.2
   -- # An endpoint that receives a SETTINGS frame with any unknown or
   -- # unsupported identifier MUST ignore that setting.
@@ -506,6 +514,7 @@ renderSettings ss = header (6 * length ss) 0x4 0 (StreamId 0) <> B.concat (map o
     pair (InitialWindowSize v)    = (0x4, v)
     pair (MaxFrameSize v)         = (0x5, v)
     pair (MaxHeaderListSize v)    = (0x6, v)
+    pair (NoRFC7540Priorities b)  = (0x9, if b then 1 else 0)
 
 renderSettingsAck :: ByteString
 renderSettingsAck = header 0 0x4 0x1 (StreamId 0)

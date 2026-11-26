@@ -55,7 +55,7 @@ prop_serverPreface = once $
   -- # SETTINGS frame (Section 6.5) that MUST be the first frame the server
   -- # sends in the HTTP/2 connection.
   fst (frames (snd (newConn defaultConfig 0)))
-    === [ SettingsFrame 3 [MaxConcurrentStreams 100, InitialWindowSize 1048576, MaxHeaderListSize 32768]
+    === [ SettingsFrame 4 [MaxConcurrentStreams 100, InitialWindowSize 1048576, MaxHeaderListSize 32768, NoRFC7540Priorities True]
         , WindowUpdateFrame (StreamId 0) (1048576 - 65535) ]
 
 prop_clientPreface :: Property
@@ -183,6 +183,24 @@ prop_unsent = once $ conjoin
       let (c, _) = runWith small [(0, Received (clientStart <> pings fits))]
           (c', _) = step 0 (Sent 17) c
       in goAwayCode (frames' (step 0 (Received (pings 1)) c')) === Nothing
+  , counterexample "10,000 control frames not yet written: the acknowledgement of SETTINGS and 9,999 PINGs" $
+      goAwayCode (frames' (run [(0, Received (clientStart <> pings 9999))])) === Nothing
+  , counterexample "one more, and the connection ends, though far under the octets' cap" $
+      goAwayCode (frames' (run [(0, Received (clientStart <> pings 10000))])) === Just EnhanceYourCalm
+  , counterexample "control frames written leave the count" $
+      let (c, outs) = run [(0, Received (clientStart <> pings 9999))]
+          (c', _) = step 0 (Sent (B.length (B.concat (concat [bs | Send bs <- outs])))) c
+      in goAwayCode (frames' (step 0 (Received (pings 9999)) c')) === Nothing
+  , counterexample "only what was written leaves it: one octet short of the last frame keeps it counted" $
+      -- a cap of 3: the acknowledgement of SETTINGS and two PINGs'
+      let (c, outs) = runWith defaultConfig { configMaxControlFrames = 3 } [(0, Received (clientStart <> pings 2))]
+          (c', _) = step 0 (Sent (B.length (B.concat (concat [bs | Send bs <- outs])) - 1)) c
+          -- written to the last octet: none left counted
+          (c'', _) = step 0 (Sent 1) c'
+      in goAwayCode (frames' (c, outs)) === Nothing
+         .&&. goAwayCode (frames' (step 0 (Received (pings 3)) c'')) === Nothing
+         .&&. goAwayCode (frames' (step 0 (Received (pings 2)) c')) === Nothing
+         .&&. goAwayCode (frames' (step 0 (Received (pings 3)) c')) === Just EnhanceYourCalm
   ]
   where
     pings n = B.concat (replicate n (renderPing False (B.replicate 8 0)))

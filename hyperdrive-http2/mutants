@@ -333,12 +333,12 @@ why: an acknowledgement of a SETTINGS we did not send is refused (C10)
 + [] -> next (c, [])
 
 why: a PING is answered with its own payload (Section 6.7)
-- PingFrame False d -> emit [renderPing True d] (restartIdle now c) >>> next
-+ PingFrame False _ -> emit [renderPing True (B.replicate 8 0)] (restartIdle now c) >>> next
+- PingFrame False d -> emitControl [renderPing True d] (restartIdle now c) >>> next
++ PingFrame False _ -> emitControl [renderPing True (B.replicate 8 0)] (restartIdle now c) >>> next
 
 why: PINGs cost no budget: grpc-go's clients send one a round trip while downloading (C10)
-- PingFrame False d -> emit [renderPing True d] (restartIdle now c) >>> next
-+ PingFrame False d -> charge 1 c $ \c1 -> emit [renderPing True d] (restartIdle now c1) >>> next
+- PingFrame False d -> emitControl [renderPing True d] (restartIdle now c) >>> next
++ PingFrame False d -> charge 1 c $ \c1 -> emitControl [renderPing True d] (restartIdle now c1) >>> next
 
 why: PRIORITY_UPDATE costs no budget until RFC 9218 is supported (C10)
 - UnknownFrame 0x10 _ _ -> next (c, [])
@@ -533,8 +533,8 @@ why: reset streams whose handlers still run are bounded too (C6)
 + | active >= configMaxConcurrentStreams cfg =
 
 why: a refused stream costs budget (C10)
-- charge 1 c $ \c1 -> emit [renderRstStream (StreamId sid) RefusedStream] c1
-+ emit [renderRstStream (StreamId sid) RefusedStream] c
+- charge 1 c $ \c1 -> emitControl [renderRstStream (StreamId sid) RefusedStream] c1
++ emitControl [renderRstStream (StreamId sid) RefusedStream] c
 
 why: more than 100 fields is a 431 (D9)
 - | length fs > configMaxFields cfg -> refuse tooLarge
@@ -545,12 +545,12 @@ why: a response the core makes itself costs budget (C10)
 + refuse status = respond status sid endStream c
 
 why: a malformed request costs budget (C10)
-- malformed = charge 1 c $ \c1 -> emit [renderRstStream (StreamId sid) ProtocolError] c1
-+ malformed = emit [renderRstStream (StreamId sid) ProtocolError] c
+- malformed = charge 1 c $ \c1 -> emitControl [renderRstStream (StreamId sid) ProtocolError] c1
++ malformed = emitControl [renderRstStream (StreamId sid) ProtocolError] c
 
 why: after a response to a request still sending, RST_STREAM NO_ERROR (D10 case 3)
-- ++ [renderRstStream (StreamId sid) NoError | not requestEnded]
-+ ++ [renderRstStream (StreamId sid) NoError | False]
+- (if requestEnded then (`result` []) else emitControl [renderRstStream (StreamId sid) NoError])
++ (if True then (`result` []) else emitControl [renderRstStream (StreamId sid) NoError])
 
 why: an expectation other than 100-continue gets 417 (C9)
 - | any (/= "100-continue") expectations = refuse ExpectationFailed
@@ -653,7 +653,7 @@ why: a write to a stream no longer sending is still answered (C5)
 + _ -> result c []
 
 why: Abort resets the stream with INTERNAL_ERROR (D10)
-- let (c2, outs) = emit [renderRstStream (StreamId sid) InternalError] c1
+- let (c2, outs) = emitControl [renderRstStream (StreamId sid) InternalError] c1
 + let (c2, outs) = result c1 []
 
 why: a response complete before the request is asks the client to stop (Section 8.1)
@@ -773,8 +773,8 @@ why: a new stream's window is the client's INITIAL_WINDOW_SIZE
 + , sSendWindow = 65535
 
 why: Sent lets paced DATA go on (C5)
-- | otherwise -> pump c { cUnsent = cUnsent c - n }
-+ | otherwise -> result c { cUnsent = cUnsent c - n } []
+- | otherwise -> pump (dropWritten c { cUnsent = cUnsent c - n })
++ | otherwise -> result (dropWritten c { cUnsent = cUnsent c - n }) []
 
 # part 5: timers, GOAWAY, shutdown (C2, C8, C11, D10)
 
@@ -799,8 +799,8 @@ why: the client's GOAWAY with an error closes the connection (Section 5.4.1)
 + | otherwise -> next (c { cPeerGoAway = True }, [])
 
 why: streams above our final GOAWAY's last stream are refused (D10 case 5)
-- | sid > cAcceptLimit c = emit [renderRstStream (StreamId sid) RefusedStream] c
-+ | False = emit [renderRstStream (StreamId sid) RefusedStream] c
+- | sid > cAcceptLimit c = emitControl [renderRstStream (StreamId sid) RefusedStream] c
++ | False = emitControl [renderRstStream (StreamId sid) RefusedStream] c
 
 why: no new streams after the client's GOAWAY (C11)
 - | cPeerGoAway c || active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
@@ -867,8 +867,8 @@ why: an early timer entry is renewed, not acted on (C8)
 + if True
 
 why: a stream timed out is reset with CANCEL (C8)
-- let (c2, outs) = emit [renderRstStream (StreamId sid) Cancel] c1
-+ let (c2, outs) = emit [renderRstStream (StreamId sid) NoError] c1
+- let (c2, outs) = emitControl [renderRstStream (StreamId sid) Cancel] c1
++ let (c2, outs) = emitControl [renderRstStream (StreamId sid) NoError] c1
 
 why: a stream's clock runs only while the client holds it up (C8)
 - | sBlocked st =
@@ -925,3 +925,46 @@ why: handlers that have returned are not told the connection ended (C2)
 why: handlers told of their stream's reset are not told again (C2)
 - | (sid, st) <- M.toList (cStreams c), sHandler st, sState st /= ClosedHeld ]
 + | (sid, st) <- M.toList (cStreams c), sHandler st ]
+
+# part 6: D9's leftovers
+
+why: control frames not yet written are capped by number (C5, D9)
+- | Seq.length (cControlEnds c) + length frames > configMaxControlFrames (cConfig c) = goAway c EnhanceYourCalm
++ | False = goAway c EnhanceYourCalm
+
+why: each control frame emitted is counted (C5)
+- in emit frames c { cControlEnds = cControlEnds c Seq.>< ends }
++ in emit frames c
+
+why: control frames written leave the count (C5)
+- | otherwise -> pump (dropWritten c { cUnsent = cUnsent c - n })
++ | otherwise -> pump c { cUnsent = cUnsent c - n }
+
+why: a control frame written to its last octet leaves the count (C5)
+- dropWritten c = c { cControlEnds = Seq.dropWhileL (<= cEmitted c - cUnsent c) (cControlEnds c) }
++ dropWritten c = c { cControlEnds = Seq.dropWhileL (< cEmitted c - cUnsent c) (cControlEnds c) }
+
+why: every octet emitted moves the count of what is written (C5)
+- in result c { cUnsent = cUnsent c + n, cEmitted = cEmitted c + n } [Send frames]
++ in result c { cUnsent = cUnsent c + n } [Send frames]
+
+why: PING acknowledgements are control frames (C5)
+- PingFrame False d -> emitControl [renderPing True d] (restartIdle now c) >>> next
++ PingFrame False d -> emit [renderPing True d] (restartIdle now c) >>> next
+
+why: the server announces that it ignores RFC 7540's priorities (RFC 9218 Section 2.1, D9)
+- ++ [ NoRFC7540Priorities True ]
++ ++ []
+
+why: the optional request limit is off by default (D9)
+- in if configMaxRequests cfg > 0 && requests >= configMaxRequests cfg && cEnding c /= Draining
++ in if requests >= configMaxRequests cfg && cEnding c /= Draining
+
+why: the request limit allows exactly that many requests (D9)
+- in if configMaxRequests cfg > 0 && requests >= configMaxRequests cfg && cEnding c /= Draining
++ in if configMaxRequests cfg > 0 && requests > configMaxRequests cfg && cEnding c /= Draining
+
+file: src/Hyperdrive/HTTP2/Frame.hs
+why: SETTINGS_NO_RFC7540_PRIORITIES other than 0 or 1 is a connection error (RFC 9218 Section 2.1)
+- 0x9 | v > 1 -> err ProtocolError BadNoRFC7540Priorities
++ 0x9 | False -> err ProtocolError BadNoRFC7540Priorities

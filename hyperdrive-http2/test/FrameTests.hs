@@ -142,7 +142,8 @@ genSetting = oneof
   , (\v -> (0x4, v, Just (InitialWindowSize v))) <$> oneof [choose (0, 0x7FFFFFFF), pure 0x7FFFFFFF]
   , (\v -> (0x5, v, Just (MaxFrameSize v))) <$> oneof [choose (0x4000, 0xFFFFFF), elements [0x4000, 0xFFFFFF]]
   , (\v -> (0x6, v, Just (MaxHeaderListSize v))) <$> arbitrary
-  , (\i v -> (i, v, Nothing)) <$> oneof [pure 0, choose (0x7, 0xFFFF)] <*> arbitrary
+  , (\b -> (0x9, if b then 1 else 0, Just (NoRFC7540Priorities b))) <$> arbitrary
+  , (\i v -> (i, v, Nothing)) <$> oneof [pure 0, choose (0x7, 0x8), choose (0xA, 0xFFFF)] <*> arbitrary
   ]
 
 -- = https://www.rfc-editor.org/rfc/rfc9113#section-4.1
@@ -212,6 +213,9 @@ genNearMiss = oneof
   , do (pre, post) <- settingsAround
        v <- frequency [(2, pure 2), (1, choose (2, maxBound))]
        pure ("SETTINGS_ENABLE_PUSH", settingsWire (pre ++ [(0x2, v)] ++ post), conn ProtocolError BadEnablePush)
+  , do (pre, post) <- settingsAround
+       v <- frequency [(2, pure 2), (1, choose (2, maxBound))]
+       pure ("SETTINGS_NO_RFC7540_PRIORITIES", settingsWire (pre ++ [(0x9, v)] ++ post), conn ProtocolError BadNoRFC7540Priorities)
   , do (pre, post) <- settingsAround
        v <- frequency [(2, pure 0x80000000), (1, choose (0x80000000, maxBound))]
        pure ("SETTINGS_INITIAL_WINDOW_SIZE", settingsWire (pre ++ [(0x4, v)] ++ post), conn FlowControlError BadInitialWindowSize)
@@ -387,6 +391,13 @@ prop_boundaries = once $ conjoin
   , counterexample "SETTINGS_ENABLE_PUSH of 1 and 2" $
       parseFrame ourMax (settingsOne 2 1) === Parsed (SettingsFrame 1 [EnablePush True]) 15
       .&&. parseFrame ourMax (settingsOne 2 2) === conn ProtocolError BadEnablePush
+  , counterexample "PADDED with one octet too few for the Pad Length and the priority fields" $ conjoin
+      [ counterexample (show (t, fl)) $
+          parseFrame ourMax (encodeWire (Wire t fl False 1 (B.replicate (need - 1) 0))) === conn FrameSizeError WrongLength
+      | (t, fl, need) <- [(0x0, 0x8, 1), (0x1, 0x8, 1), (0x1, 0x28, 6), (0x1, 0x20, 5 :: Int)] ]
+  , counterexample "SETTINGS_NO_RFC7540_PRIORITIES of 1 and 2 (RFC 9218 Section 2.1)" $
+      parseFrame ourMax (settingsOne 9 1) === Parsed (SettingsFrame 1 [NoRFC7540Priorities True]) 15
+      .&&. parseFrame ourMax (settingsOne 9 2) === conn ProtocolError BadNoRFC7540Priorities
   , counterexample "SETTINGS_INITIAL_WINDOW_SIZE of 2^31 - 1 and 2^31" $
       parseFrame ourMax (settingsOne 4 0x7FFFFFFF) === Parsed (SettingsFrame 1 [InitialWindowSize 0x7FFFFFFF]) 15
       .&&. parseFrame ourMax (settingsOne 4 0x80000000) === conn FlowControlError BadInitialWindowSize

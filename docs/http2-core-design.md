@@ -336,6 +336,30 @@ Optional and off by default: a number of requests after which the
 server sends GOAWAY (nginx's `keepalive_requests`), to rotate very
 long-lived connections.
 
+As built (part 6 of the core, 2026-11-26):
+- The control frames that answer the client (SETTINGS and PING
+  acknowledgements, WINDOW_UPDATE, RST_STREAM) are counted from their
+  emission until `Sent` has covered their last octet, and capped at
+  10,000 (`configMaxControlFrames`), beside the 1 MiB cap on all
+  octets not yet written: 10,000 PING acknowledgements are only 170 KB,
+  but each is a separate string in the driver's queue. GOAWAY and the
+  server's own SETTINGS and shutdown PING are not counted (one each,
+  and not provoked by the client).
+- SETTINGS_NO_RFC7540_PRIORITIES = 1 is sent in our first SETTINGS, and
+  a client's value other than 0 or 1 is a connection error
+  PROTOCOL_ERROR (RFC 9218 Section 2.1; the frame layer's
+  `BadNoRFC7540Priorities`). RFC 9218 is not in duvet yet: its quotes
+  are plain comments until RFC 9218 is supported (D8).
+- `configMaxRequests` (0, off): when that many requests have been
+  passed on, the final GOAWAY goes at once, with the last request's
+  stream; streams the client has already opened above it are refused
+  (REFUSED_STREAM, which it may retry), and the connection closes when
+  its streams are done, as in a shutdown.
+- The HPACK bomb is tested at the core: a 4,000-octet field put in the
+  table, then referred to nine times in a 33-octet block (36 KiB
+  decoded), is answered 431 while the table takes that block's own
+  addition, which the next request uses.
+
 **D10. Errors and shutdown (decided, 2026-11-25).** Five cases:
 
 1. Connection errors, as RFC 9113 requires: violations of framing and

@@ -86,6 +86,8 @@ data Config = Config
   , configStreamIdleTimeout    :: !Time    -- ^ C8: a stream the client holds up with no progress, 5 min
   , configMinRate              :: !Word64  -- ^ C8: octets a second such a stream must move, 240
   , configMinRateGrace         :: !Time    -- ^ C8: the minimum rate's grace, 5 s
+  , configMaxControlFrames     :: !Int     -- ^ C5: control frames emitted and not yet written, 10,000
+  , configMaxRequests          :: !Int     -- ^ D9: requests before a GOAWAY, to rotate connections; 0, off
   , configTarget              :: !TargetContext
     -- ^ the connection's scheme and default authority, and whether its
     -- peer is a trusted gateway (D11)
@@ -116,6 +118,8 @@ defaultConfig = Config
   , configStreamIdleTimeout = 300000
   , configMinRate = 240
   , configMinRateGrace = 5000
+  , configMaxControlFrames = 10000
+  , configMaxRequests = 0
   , configTarget = TargetContext HTTP Nothing False
   }
 
@@ -290,6 +294,10 @@ data Conn = Conn
   , cBudget      :: !Word64         -- ^ nuisance budget left, in thousandths (C10)
   , cBudgetAt    :: !Time           -- ^ when it was last refilled
   , cUnsent      :: !Int            -- ^ octets emitted and not yet reported 'Sent' (C5)
+  , cEmitted     :: !Int            -- ^ octets emitted in all
+  , cControlEnds :: !(Seq Int)      -- ^ where each control frame not yet written ends, in
+                                    --   'cEmitted' octets, oldest first (C5)
+  , cRequests    :: !Int            -- ^ requests passed on (D9)
   , cLastStream  :: !Word32         -- ^ the highest client stream opened (C4)
   , cStreams     :: !(M.Map Word32 StreamEntry) -- ^ the streams still served (C4)
   , cBlock       :: !(Maybe Block)  -- ^ a field block being received (C7)
@@ -359,6 +367,9 @@ newConn config now =
         , cBudget = configBudgetBurst config * 1000
         , cBudgetAt = now
         , cUnsent = sum (map B.length out)
+        , cEmitted = sum (map B.length out)
+        , cControlEnds = Seq.empty
+        , cRequests = 0
         , cLastStream = 0
         , cStreams = M.empty
         , cBlock = Nothing
@@ -391,6 +402,10 @@ ourSettings config =
   ++ [ InitialWindowSize (fromIntegral (streamWindow config)) | streamWindow config /= 65535 ]
   ++ [ MaxFrameSize (fromIntegral (configMaxFrameSize config)) | configMaxFrameSize config /= defaultMaxFrameSize ]
   ++ [ MaxHeaderListSize (configMaxHeaderListSize config) ]
+  -- RFC 9218 Section 2.1: "Servers can send SETTINGS_NO_RFC7540_PRIORITIES
+  -- with a value of 1 to indicate that they will ignore HTTP/2 priority
+  -- signals sent by clients." (D8, D9)
+  ++ [ NoRFC7540Priorities True ]
 
 -- | The earliest time at which something expires (C1).
 nextDeadline :: Conn -> Maybe Time
@@ -415,7 +430,7 @@ step time input c0 = afterStep $ case input of
   Received bs -> advance now c { cMore = bs : cMore c, cMoreLength = cMoreLength c + B.length bs } []
   Sent n
     | n > cUnsent c -> misuse SentMoreThanEmitted c
-    | otherwise -> pump c { cUnsent = cUnsent c - n }
+    | otherwise -> pump (dropWritten c { cUnsent = cUnsent c - n })
   PeerClosed -> close c []
   TimedOut -> timedOut now c
   Shutdown -> shutdown now c
@@ -577,7 +592,7 @@ expireStreams now c = case S.minView (cTimers c) of
 streamTimedOut :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
 streamTimedOut sid st c =
   andThen (ended sid st c) $ \c1 ->
-    let (c2, outs) = emit [renderRstStream (StreamId sid) Cancel] c1
+    let (c2, outs) = emitControl [renderRstStream (StreamId sid) Cancel] c1
     in result c2 (RequestAborted (StreamId sid) StreamTimedOut : outs)
 
 -- What has been received and not used.
@@ -772,7 +787,7 @@ frameOutsideBlock now c f acc = case f of
            -- # causes any flow-control window to exceed the maximum size as a
            -- # connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
            if any ((> maxWindow) . sSendWindow) streams then stop acc (goAway c1 FlowControlError)
-           else andThen (emit [renderSettingsAck] c1 { cPeer = peer, cStreams = streams
+           else andThen (emitControl [renderSettingsAck] c1 { cPeer = peer, cStreams = streams
                                                     , cEncoder = foldl tableSize (cEncoder c1) ss })
                         pump >>> next
   SettingsAckFrame -> case cSettingsSent c of
@@ -796,7 +811,7 @@ frameOutsideBlock now c f acc = case f of
   -- what is bounded, by the cap on unsent output (C5). A PING restarts
   -- the idle timer, so that a client keeping a quiet connection alive is
   -- not closed (C8).
-  PingFrame False d -> emit [renderPing True d] (restartIdle now c) >>> next
+  PingFrame False d -> emitControl [renderPing True d] (restartIdle now c) >>> next
   -- the answer to the shutdown PING: the final GOAWAY (D10)
   PingFrame True d
     | Pinging _ <- cEnding c, d == shutdownPing -> next (drain c)
@@ -890,7 +905,7 @@ giveBackStream sid n c = case M.lookup sid (cStreams c) of
         window = streamWindow (cConfig c)
     in if 2 * unreturned >= window
          then let c1 = c { cStreams = M.insert sid st { sUnreturned = 0, sRecvWindow = sRecvWindow st + unreturned } (cStreams c) }
-              in andThen (emit [renderWindowUpdate (StreamId sid) (fromIntegral unreturned)] c1) (giveBack n)
+              in andThen (emitControl [renderWindowUpdate (StreamId sid) (fromIntegral unreturned)] c1) (giveBack n)
          else giveBack n c { cStreams = M.insert sid st { sUnreturned = unreturned } (cStreams c) }
   _ -> giveBack n c
 
@@ -905,7 +920,7 @@ giveBack :: Int -> Conn -> (Conn, [Output])
 giveBack n c
   | n <= 0 = result c []
   | 2 * unreturned >= window =
-      emit [renderWindowUpdate (StreamId 0) (fromIntegral unreturned)]
+      emitControl [renderWindowUpdate (StreamId 0) (fromIntegral unreturned)]
            c { cUnreturned = 0, cRecvWindow = cRecvWindow c + unreturned }
   | otherwise = result c { cUnreturned = unreturned } []
   where
@@ -1000,7 +1015,7 @@ newStream c sid endStream decoded
   --
   -- Above our final GOAWAY's last stream: refused (D10's case 5), not
   -- charged, since the client sent it before it knew
-  | sid > cAcceptLimit c = emit [renderRstStream (StreamId sid) RefusedStream] c
+  | sid > cAcceptLimit c = emitControl [renderRstStream (StreamId sid) RefusedStream] c
   -- after the client's own GOAWAY, no new streams (C11)
   | cPeerGoAway c || active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
       -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1.2
@@ -1008,7 +1023,7 @@ newStream c sid endStream decoded
       -- # that receives a HEADERS frame that causes its advertised concurrent
       -- # stream limit to be exceeded MUST treat this as a stream error
       -- # (Section 5.4.2) of type PROTOCOL_ERROR or REFUSED_STREAM.
-      charge 1 c $ \c1 -> emit [renderRstStream (StreamId sid) RefusedStream] c1
+      charge 1 c $ \c1 -> emitControl [renderRstStream (StreamId sid) RefusedStream] c1
   | otherwise = case decoded of
       ListTooLarge -> refuse tooLarge
       Fields fs
@@ -1026,7 +1041,7 @@ newStream c sid endStream decoded
     -- sending; each costs one (C10)
     refuse status = charge 1 c $ \c1 -> respond status sid endStream c1
     -- D10's case 2: the stream error alone
-    malformed = charge 1 c $ \c1 -> emit [renderRstStream (StreamId sid) ProtocolError] c1
+    malformed = charge 1 c $ \c1 -> emitControl [renderRstStream (StreamId sid) ProtocolError] c1
     accept rc
       | any (/= "100-continue") expectations = refuse ExpectationFailed
       -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.1.1
@@ -1057,8 +1072,16 @@ newStream c sid endStream decoded
                 , sAllowance = configMinRate cfg * configMinRateGrace cfg
                 , sIdleLeft = configStreamIdleTimeout cfg
                 , sTimer = Nothing }
-          in result c { cStreams = M.insert sid st (cStreams c) }
-                    [NewRequest (StreamId sid) (RequestHead rc (not endStream))]
+              requests = cRequests c + 1
+              c1 = c { cStreams = M.insert sid st (cStreams c), cRequests = requests }
+              out = [NewRequest (StreamId sid) (RequestHead rc (not endStream))]
+          -- D9's optional limit (nginx's keepalive_requests): the last
+          -- request accepted, the final GOAWAY at once, so that the
+          -- client opens its next requests on a new connection; those it
+          -- has sent already are refused, which it may retry (Section 8.7)
+          in if configMaxRequests cfg > 0 && requests >= configMaxRequests cfg && cEnding c /= Draining
+               then andThen (result c1 out) drain
+               else result c1 out
       where
         -- C9: Expect stays in the fields; any expectation but
         -- 100-continue is answered with 417, as HTTP/1.1 answers it
@@ -1093,7 +1116,7 @@ streamError c sid st code = streamErrorBecause (ResetByServer code) c sid st cod
 streamErrorBecause :: AbortReason -> Conn -> Word32 -> StreamEntry -> ErrorCode -> (Conn, [Output])
 streamErrorBecause reason c sid st code = charge 1 c $ \c1 ->
   andThen (ended sid st c1) $ \c2 ->
-    let (c3, outs) = emit [renderRstStream (StreamId sid) code] c2
+    let (c3, outs) = emitControl [renderRstStream (StreamId sid) code] c2
     in result c3 (RequestAborted (StreamId sid) reason : outs)
 
 -- | A stream ended early: out of the map, or kept closed while its
@@ -1117,8 +1140,8 @@ respond status sid requestEnded c =
   let fields = [(":status", C.pack (show (statusCode status))), ("content-length", "0")]
       (block, enc) = encodeBlock (cEncoder c) fields
       frames = renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) True block
-               ++ [renderRstStream (StreamId sid) NoError | not requestEnded]
-  in emit frames c { cEncoder = enc }
+  in andThen (emit frames c { cEncoder = enc })
+             (if requestEnded then (`result` []) else emitControl [renderRstStream (StreamId sid) NoError])
 
 -- | A handler returned. Before its response, it failed: the core
 -- answers 500 (C2). While its response is being sent, the stream stays
@@ -1291,7 +1314,7 @@ abort :: Word32 -> Conn -> (Conn, [Output])
 abort sid c = case M.lookup sid (cStreams c) of
   Just st | sState st /= ClosedHeld ->
     andThen (ended sid st c) $ \c1 ->
-      let (c2, outs) = emit [renderRstStream (StreamId sid) InternalError] c1
+      let (c2, outs) = emitControl [renderRstStream (StreamId sid) InternalError] c1
       in result c2 (RequestAborted (StreamId sid) (ResetByServer InternalError) : outs)
   _ -> result c []
 
@@ -1303,7 +1326,7 @@ finished :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
 finished sid st c =
   let stillSending = sState st == Open
       c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
-  in andThen (if stillSending then emit [renderRstStream (StreamId sid) NoError] c1 else result c1 [])
+  in andThen (if stillSending then emitControl [renderRstStream (StreamId sid) NoError] c1 else result c1 [])
              (giveBack (sQueued st))
 
 -- | Put a stream in the round, if it is not there (D8).
@@ -1425,6 +1448,7 @@ settingId s = case s of
   InitialWindowSize _ -> 4
   MaxFrameSize _ -> 5
   MaxHeaderListSize _ -> 6
+  NoRFC7540Priorities _ -> 9
 
 apply :: PeerSettings -> Setting -> PeerSettings
 apply p s = case s of
@@ -1436,6 +1460,9 @@ apply p s = case s of
   InitialWindowSize v -> p { peerInitialWindowSize = v }
   MaxFrameSize v -> p { peerMaxFrameSize = v }
   MaxHeaderListSize v -> p { peerMaxHeaderListSize = Just v }
+  -- the server ignores RFC 7540's priority signals whatever the client
+  -- sends (D8)
+  NoRFC7540Priorities _ -> p
 
 -- | Send frames, counting them as emitted (C5). Over the cap on what
 -- has been emitted and not yet written, the connection is ended
@@ -1447,7 +1474,24 @@ emit frames c
   where size = sum (map B.length frames)
 
 emitUncapped :: [ByteString] -> Conn -> (Conn, [Output])
-emitUncapped frames c = result c { cUnsent = cUnsent c + sum (map B.length frames) } [Send frames]
+emitUncapped frames c =
+  let n = sum (map B.length frames)
+  in result c { cUnsent = cUnsent c + n, cEmitted = cEmitted c + n } [Send frames]
+
+-- | Send control frames that answer the client (acknowledgements,
+-- WINDOW_UPDATE, RST_STREAM), which are not paced: those emitted and not
+-- yet written are capped by number as well as by size, so that a client
+-- that does not read cannot have them pile up (C5, D9; as Go caps them).
+emitControl :: [ByteString] -> Conn -> (Conn, [Output])
+emitControl frames c
+  | Seq.length (cControlEnds c) + length frames > configMaxControlFrames (cConfig c) = goAway c EnhanceYourCalm
+  | otherwise =
+      let ends = Seq.fromList (drop 1 (scanl (+) (cEmitted c) (map B.length frames)))
+      in emit frames c { cControlEnds = cControlEnds c Seq.>< ends }
+
+-- | The control frames the transport has now written leave the count.
+dropWritten :: Conn -> Conn
+dropWritten c = c { cControlEnds = Seq.dropWhileL (<= cEmitted c - cUnsent c) (cControlEnds c) }
 
 -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.4.1
 -- # An endpoint that encounters a connection error SHOULD first send a
