@@ -115,6 +115,11 @@
         nghttp2 = self.devShells.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
           buildInputs = old.buildInputs ++ [ pkgs.nghttp2.dev pkgs.nghttp2.lib ];
         });
+        # the default shell with h2spec, for conformance over h2c:
+        # nix develop .#h2spec -c scripts/h2spec
+        h2spec = self.devShells.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.h2spec ];
+        });
         # benchmarks against warp: nix develop .#bench -c scripts/bench
         bench = pkgs.mkShell { packages = benchTools pkgs; };
         # the same, and ntex (Rust) with io_uring and with epoll:

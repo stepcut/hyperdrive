@@ -1,0 +1,24 @@
+# h2spec 2.6.0's cases that hyperdrive fails on purpose, by section and
+# name, each with the reason (docs/http2-driver-design.md, "h2spec's
+# first run"; docs/http2-core-design.md, C4, C10, C13). scripts/h2spec
+# fails on any other failure, and on any case here that passes.
+
+# D2, V6: on a cleartext listener, octets that are not HTTP/2's preface
+# are an HTTP/1.1 request; this one is answered 400 over HTTP/1.1
+http2/3.5: Sends invalid connection preface
+
+# C4: DATA on a closed stream is discarded and its credit given back
+# (RFC 9113 Section 5.1 makes an error there a MAY; h2spec follows RFC
+# 7540's MUST)
+http2/5.1: closed: Sends a DATA frame after sending RST_STREAM frame
+http2/5.1: closed: Sends a DATA frame
+
+# RFC 9113 removed the rule that a stream may not depend on itself; the
+# parser keeps no dependency (D8)
+http2/5.3.1: Sends HEADERS frame that depends on itself
+http2/5.3.1: Sends PRIORITY frame that depend on itself
+
+# C10: a SETTINGS frame that repeats a setting is refused outright, as Go
+# refuses it (RFC 9113 Section 10.5 names "changing the same setting
+# multiple times in the same frame")
+http2/6.5.3: Sends multiple values of SETTINGS_INITIAL_WINDOW_SIZE

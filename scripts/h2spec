@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Conformance: h2spec against the benchmark application over h2c, its
+# failures compared with scripts/h2spec-expected.txt (each listed with
+# its reason). Fails on a failure not listed, and on a listed case that
+# now passes (the list is to be kept current).
+#
+# Usage (from the repository root):
+#
+#   nix develop .#h2spec -c scripts/h2spec [H2SPEC-OPTIONS]
+#
+# The server is built with bench/local.project into dist-bench/.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+cabal build --offline --project-file=bench/local.project --builddir=dist-bench bench-hyperdrive >&2
+server=$(cabal list-bin --offline --project-file=bench/local.project --builddir=dist-bench bench-hyperdrive)
+port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+work=$(mktemp -d)
+"$server" "$port" > "$work/server.log" 2>&1 &
+pid=$!
+trap 'kill $pid 2>/dev/null || true; rm -rf "$work"' EXIT
+for _ in $(seq 50); do
+  python3 -c "import socket; socket.create_connection(('127.0.0.1', $port)).close()" 2>/dev/null && break
+  sleep 0.1
+done
+h2spec -h 127.0.0.1 -p "$port" -o 3 -j "$work/report.xml" "$@" > "$work/h2spec.txt" 2>&1 || true
+tail -1 "$work/h2spec.txt"
+python3 - "$work/report.xml" scripts/h2spec-expected.txt <<'PY'
+import sys, xml.etree.ElementTree as ET
+report, expected_file = sys.argv[1], sys.argv[2]
+failed, ran = set(), set()
+for tc in ET.parse(report).getroot().iter("testcase"):
+    key = f"{tc.get('package')}: {tc.get('classname')}"
+    ran.add(key)
+    if tc.find("failure") is not None or tc.find("error") is not None:
+        failed.add(key)
+expected = {l.strip() for l in open(expected_file) if l.strip() and not l.startswith("#")}
+unexpected = sorted(failed - expected)
+now_pass = sorted((expected & ran) - failed)
+for k in unexpected: print("UNEXPECTED FAILURE:", k)
+for k in now_pass: print("NOW PASSES (remove it from the list):", k)
+print(f"{len(ran)} cases, {len(failed)} failed, {len(failed & expected)} of them expected")
+sys.exit(1 if unexpected or now_pass else 0)
+PY
