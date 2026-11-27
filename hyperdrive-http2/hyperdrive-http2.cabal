@@ -57,6 +57,7 @@ test-suite hyperdrive-http2-tests
                     HuffmanTests
                     IntegerTests
                     RFC7541
+                    StateTests
                     StreamTests
   default-language: GHC2021
   build-depends:    base

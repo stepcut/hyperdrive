@@ -1072,7 +1072,15 @@ all, and time.
 - An explicit model of Section 5.1: for each stream state and frame
   type, the expected result (accept, discard, stream error or
   connection error, and the code), checked by generated legal and
-  illegal sequences.
+  illegal sequences. As built (2026-11-27, `test/StateTests.hs`, after
+  the even-stream bug the differential test found): nine states (idle
+  above the highest, idle and even, open, half-closed (remote), closed
+  after a normal end, reset by us or by the client, each with its
+  handler running or returned) by seven frame types, every pair
+  checked; and generated sequences of frames and handler actions (a
+  response finished, a handler returned), chosen with the model in hand
+  so that most go twenty acts deep, each act's result compared with the
+  model's. The bug would have failed both.
 - Each D9 attack is a generated session with its budget, and
   legitimate traffic just under it.
 - The races between handler threads and the owner (a `Consumed` or
