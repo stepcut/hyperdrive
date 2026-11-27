@@ -317,12 +317,8 @@ why: the preface must be followed by SETTINGS (Section 3.4)
 + _ -> frame now c' { cPhase = Running, cHeadDeadline = Nothing } f acc
 
 why: a SETTINGS of more than 100 settings is refused (C10)
-- | count > configMaxSettings (cConfig c) || hasRepeats ss -> stop acc (goAway c ProtocolError)
-+ | count > configMaxSettings (cConfig c) + 1 || hasRepeats ss -> stop acc (goAway c ProtocolError)
-
-why: a SETTINGS that repeats a setting is refused (C10, Section 10.5)
-- | count > configMaxSettings (cConfig c) || hasRepeats ss -> stop acc (goAway c ProtocolError)
-+ | count > configMaxSettings (cConfig c) -> stop acc (goAway c ProtocolError)
+- | count > configMaxSettings (cConfig c) -> stop acc (goAway c ProtocolError)
++ | count > configMaxSettings (cConfig c) + 1 -> stop acc (goAway c ProtocolError)
 
 why: each setting after the first six costs budget (C10)
 - | otherwise -> charge (1 + fromIntegral (max 0 (count - 6))) c $ \c1 ->
@@ -761,8 +757,16 @@ why: INITIAL_WINDOW_SIZE adjusts every stream's window (Section 6.9.2)
 + streams = cStreams c1
 
 why: INITIAL_WINDOW_SIZE may not take a window past 2^31-1 (Section 6.9.2)
-- if any ((> maxWindow) . sSendWindow) streams then stop acc (goAway c1 FlowControlError)
+- if overflows then stop acc (goAway c1 FlowControlError)
 + if False then stop acc (goAway c1 FlowControlError)
+
+why: a repeated INITIAL_WINDOW_SIZE is checked at each value, not only the last (Section 6.5.3)
+- highest = maximum (old : [fromIntegral v | InitialWindowSize v <- ss])
++ highest = fromIntegral (peerInitialWindowSize peer)
+
+why: the last of a repeated setting's values stands (Section 6.5)
+- let peer = foldl apply (cPeer c1) ss
++ let peer = foldr (flip apply) (cPeer c1) ss
 
 why: a new stream's window is the client's INITIAL_WINDOW_SIZE
 - , sSendWindow = fromIntegral (peerInitialWindowSize (cPeer c))

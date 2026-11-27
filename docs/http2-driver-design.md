@@ -310,9 +310,9 @@ other HEADERS on a lower identifier is a connection error (C4). While
 building Q2: a stream the client reset whose handler still runs gets
 the same answer as one whose handler has returned (STREAM_CLOSED, RFC
 9113 Section 5.1's MAY), so the answer does not depend on timing.
-h2spec then: 140 of 146. The six left are decided differences: 3.5/2
+h2spec then: 140 of 146, and 141 once repeated settings were taken in order (C10, changed after the differential test against nghttp2). The five left are decided differences: 3.5/2
 (D2), "closed" 8 and 11 (DATA on closed streams discarded, C4), 5.3.1's
-two (a rule RFC 9113 dropped), 6.5.3/1 (C10).
+two (a rule RFC 9113 dropped).
 
 ## Questions in short
 

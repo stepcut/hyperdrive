@@ -3134,6 +3134,11 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    the lifetime of the connection.
     TEXT[!MUST]: Implementations MUST support all of
     TEXT[!MUST]:    the settings defined by this specification.
+    TEXT[implementation,test]: Settings are processed in the order in which they
+    TEXT[implementation,test]:    appear, and a receiver of a SETTINGS frame does not need to maintain
+    TEXT[implementation,test]:    any state other than the current value of each setting.  Therefore,
+    TEXT[implementation,test]:    the value of a SETTINGS parameter is the last value that is seen by a
+    TEXT[implementation,test]:    receiver.
     TEXT[!MUST]:       When this bit is set, the frame payload of the SETTINGS frame MUST
     TEXT[!MUST]:       be empty.
     TEXT[!MUST,implementation,test]: Receipt of a SETTINGS frame with the ACK flag set and a
@@ -3190,8 +3195,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    In order to provide such synchronization timepoints, the recipient of
     TEXT[!MUST]:    a SETTINGS frame in which the ACK flag is not set MUST apply the
     TEXT[!MUST]:    updated settings as soon as possible upon receipt.
-    TEXT[!MUST]:    The values in the SETTINGS frame MUST be processed in the order they
-    TEXT[!MUST]:    appear, with no other frame processing between values.
+    TEXT[!MUST,implementation]:    The values in the SETTINGS frame MUST be processed in the order they
+    TEXT[!MUST,implementation]:    appear, with no other frame processing between values.
     TEXT[!MUST]: Unsupported
     TEXT[!MUST]:    settings MUST be ignored.
     TEXT[!MUST,implementation]: Once all values have been processed, the

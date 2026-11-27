@@ -778,6 +778,10 @@ prop_sendWindows = once $ conjoin
           (c, _) = serve [] (headers 1 True b <> renderWindowUpdate (StreamId 1) 2147418112)
       in seen (from (c, []) [Received (renderSettings [InitialWindowSize 65536])]) === [SeenGoAway FlowControlError]
          .&&. seen (from (c, []) [Received (renderSettings [InitialWindowSize 65535])]) === []
+         -- each value is applied in turn (Section 6.5.3): the first
+         -- overflows, though the last would not
+         .&&. seen (from (c, []) [Received (renderSettings [InitialWindowSize 65536, InitialWindowSize 65535])])
+                === [SeenGoAway FlowControlError]
   -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.1
   -- # A sender MUST NOT allow a flow-control window to exceed 2^31-1
   -- # octets.  If a sender receives a WINDOW_UPDATE that causes a flow-

@@ -23,7 +23,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
-import Data.List (nub, sort, sortOn)
+import Data.List (sort, sortOn, tails)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Word (Word32, Word8)
@@ -122,10 +122,7 @@ records b
 -- frame that breaks one rule.
 genSession :: Gen ByteString
 genSession = do
-  -- a setting repeated in one frame is refused by the core (C10) and
-  -- taken by nghttp2: a known difference that would hide the rest of
-  -- the session, so each setting once
-  settings <- nubOn (\(i, _, _) -> i) <$> listOf (genSetting `suchThat` (\(_, _, s) -> s /= Nothing))
+  settings <- listOf (genSetting `suchThat` (\(_, _, s) -> s /= Nothing))
   n <- choose (0, 8)
   items <- go (newEncoder 4096) 1 n
   miss <- frequency [(2, pure []), (1, (\(_, w, _) -> [w]) <$> genNearMiss)]
@@ -160,13 +157,9 @@ genSession = do
           s <- if wStream w == 0 then pure 0 else elements [1, 3, 5, 7, sid, sid + 2]
           -- HEADERS, CONTINUATION and PUSH_PROMISE with random field
           -- blocks only test HPACK's errors; the requests above cover them
-          if wType w `elem` [0x1, 0x5, 0x9] || repeats w then go enc sid k
+          if wType w `elem` [0x1, 0x5, 0x9] then go enc sid k
           else (encodeWire w { wStream = s } :) <$> go enc sid (k - 1)
     flag b = if b then 0x1 else 0
-    -- a SETTINGS that names a setting twice (see above)
-    repeats w = wType w == 0x4 && let ids = [B.take 2 (B.drop k (wPayload w)) | k <- [0, 6 .. B.length (wPayload w) - 6]]
-                                 in length ids /= length (nubOn id ids)
-    nubOn f = foldr (\x acc -> if any ((== f x) . f) acc then acc else x : acc) []
     be16 x = B.pack [fromIntegral (x `shiftR` 8), fromIntegral x]
     be32 x = B.pack [fromIntegral (x `shiftR` s) | s <- [24, 16, 8, 0 :: Int]]
 
@@ -184,7 +177,8 @@ knownCut input = go (B.length connectionPreface) initial
     go at t
       | B.length rest < 9 || B.length rest < 9 + len = (input, Nothing)
       -- what the frame's header alone tells, whatever its payload
-      | typ == 0x4 && not ack && repeated payload = cut "a setting named twice in one SETTINGS (C10)"
+      | typ == 0x4 && not ack && invalidBeforeLast payload =
+          cut "a setting named twice, an earlier value invalid: an error for us (Section 6.5.2), unchecked by nghttp2, which takes only the last"
       | typ == 0x4 && not ack && 8 `elem` ids payload =
           cut "SETTINGS_ENABLE_CONNECT_PROTOCOL: unknown to us (RFC 8441 unsupported), checked by nghttp2"
       | typ == 0x2 && sid == 0 = cut "PRIORITY on stream 0: PROTOCOL_ERROR (Section 6.3), ignored by nghttp2"
@@ -194,7 +188,7 @@ knownCut input = go (B.length connectionPreface) initial
           , any (\(_, sent) -> w + sent > 0x7FFFFFFF) (M.toList (tUpdates t)) =
           cut "a stream window past 2^31-1: a stream error, which nghttp2 makes a connection error"
       | typ == 0x4 && not ack && isJust' (tFirstSettings t)
-          && maybe False (\v -> Just v /= tNoPriorities t) (lookup 9 (pairs payload)) =
+          && any (\(i, v) -> i == 9 && Just v /= tNoPriorities t) (pairs payload) =
           cut "SETTINGS_NO_RFC7540_PRIORITIES changed: RFC 9218's MAY, taken by nghttp2"
       | typ == 0x0 && B.index rest 4 .&. 0x8 /= 0 && len > 0 && fromIntegral (B.index payload 0) >= len
           && sid /= 0 && sid <= tHighest t && odd sid =
@@ -243,8 +237,12 @@ knownCut input = go (B.length connectionPreface) initial
     pairs p = [ ( fromIntegral (B.index p k) * 256 + fromIntegral (B.index p (k + 1)) :: Int
                 , sum [fromIntegral (B.index p (k + 2 + j)) `shiftL` (8 * (3 - j)) | j <- [0 .. 3]] :: Int )
               | k <- [0, 6 .. B.length p - 6] ]
-    repeated p = length (ids p) /= length (nub (ids p))
-    noPriorities ss = case [b | NoRFC7540Priorities b <- ss] of
+    -- a setting named again later in the frame, with a value here that
+    -- Section 6.5.2 refuses
+    invalidBeforeLast p = or [ any ((== i) . fst) later && invalid i v | ((i, v), later) <- zip (pairs p) (drop 1 (tails (pairs p))) ]
+    invalid i v = (i == 2 && v > 1) || (i == 4 && v > 0x7FFFFFFF) || (i == 5 && (v < 0x4000 || v > 0xFFFFFF)) || (i == 9 && v > 1)
+    -- the value that stands: the last (Section 6.5)
+    noPriorities ss = case reverse [b | NoRFC7540Priorities b <- ss] of
       (b : _) -> Just (if b then 1 else 0 :: Int)
       [] -> Nothing
     isJust' = maybe False (const True)

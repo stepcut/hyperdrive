@@ -39,7 +39,6 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Data.Char (toLower)
 import qualified Data.IntSet as IntSet
-import Data.List (nub)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust, isJust, isNothing, listToMaybe)
 import Data.Sequence (Seq, ViewL(..), viewl, (|>))
@@ -771,17 +770,37 @@ frameOutsideBlock now c f acc = case f of
     -- #    settings, or changing the same setting multiple times in the
     -- #    same frame.
     --
-    -- Refused outright, as Go does (C10).
-    | count > configMaxSettings (cConfig c) || hasRepeats ss -> stop acc (goAway c ProtocolError)
+    -- More than 100 settings are refused outright, as Go refuses them
+    -- (C10); a setting named more than once is taken in order, the last
+    -- value standing (changed 2026-11-27: the first version refused it,
+    -- as Go does, against Section 6.5.3; the cap and the charge below
+    -- already bound the work).
+    | count > configMaxSettings (cConfig c) -> stop acc (goAway c ProtocolError)
     -- one, and one for each setting after the first six (C10)
     | otherwise -> charge (1 + fromIntegral (max 0 (count - 6))) c $ \c1 ->
+        -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.3
+        -- # The values in the SETTINGS frame MUST be processed in the order they
+        -- # appear, with no other frame processing between values.
+        --
+        -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5
+        -- # Settings are processed in the order in which they
+        -- # appear, and a receiver of a SETTINGS frame does not need to maintain
+        -- # any state other than the current value of each setting.  Therefore,
+        -- # the value of a SETTINGS parameter is the last value that is seen by a
+        -- # receiver.
+        --
         -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5.3
         -- # Once all values have been processed, the
         -- # recipient MUST immediately emit a SETTINGS frame with the ACK flag
         -- # set.
         let peer = foldl apply (cPeer c1) ss
-            delta = fromIntegral (peerInitialWindowSize peer) - fromIntegral (peerInitialWindowSize (cPeer c1)) :: Int
+            old = fromIntegral (peerInitialWindowSize (cPeer c1)) :: Int
+            delta = fromIntegral (peerInitialWindowSize peer) - old
             streams = M.map (\st -> st { sSendWindow = sSendWindow st + delta }) (cStreams c1)
+            -- every window moves by the same amount as each value is
+            -- applied in turn: the largest value is the one to check
+            highest = maximum (old : [fromIntegral v | InitialWindowSize v <- ss])
+            overflows = any ((> maxWindow) . (+ (highest - old)) . sSendWindow) (cStreams c1)
         in
            -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9.2
            -- # When the
@@ -793,7 +812,7 @@ frameOutsideBlock now c f acc = case f of
            -- # An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
            -- # causes any flow-control window to exceed the maximum size as a
            -- # connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
-           if any ((> maxWindow) . sSendWindow) streams then stop acc (goAway c1 FlowControlError)
+           if overflows then stop acc (goAway c1 FlowControlError)
            else andThen (emitControl [renderSettingsAck] c1 { cPeer = peer, cStreams = streams
                                                     , cEncoder = foldl tableSize (cEncoder c1) ss })
                         pump >>> next
@@ -841,7 +860,6 @@ frameOutsideBlock now c f acc = case f of
   _ -> stop acc (goAway c InternalError)
   where
     next (c', outs') = advance now c' (outs' : acc)
-    hasRepeats ss = length (nub (map settingId ss)) /= length ss
 
 -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.9
 -- # A receiver that receives a flow-controlled frame MUST always account
@@ -1482,16 +1500,6 @@ charge n c k
 tableSize :: Encoder -> Setting -> Encoder
 tableSize e (HeaderTableSize v) = setPeerTableSize (fromIntegral v) e
 tableSize e _ = e
-
-settingId :: Setting -> Int
-settingId s = case s of
-  HeaderTableSize _ -> 1
-  EnablePush _ -> 2
-  MaxConcurrentStreams _ -> 3
-  InitialWindowSize _ -> 4
-  MaxFrameSize _ -> 5
-  MaxHeaderListSize _ -> 6
-  NoRFC7540Priorities _ -> 9
 
 apply :: PeerSettings -> Setting -> PeerSettings
 apply p s = case s of

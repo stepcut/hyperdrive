@@ -1003,9 +1003,17 @@ early would otherwise use up the budget), other WINDOW_UPDATEs (a
 client with generous windows sends many) and PRIORITY_UPDATE (type
 0x10, RFC 9218, ignored until RFC 9218 is supported, D8). Over budget: GOAWAY ENHANCE_YOUR_CALM.
 Refused outright: a SETTINGS acknowledgement for a SETTINGS we did not
-send (as Go and nghttp2), and a SETTINGS that repeats a setting or has
-more than 100 (as Go; nghttp2 keeps the last value) (connection errors PROTOCOL_ERROR; Section 10.5
-names "changing the same setting multiple times in the same frame").
+send (as Go and nghttp2), and a SETTINGS that has
+more than 100 settings (as Go) (connection errors PROTOCOL_ERROR; Section 10.5
+names "changing the same setting multiple times in the same frame"). (Changed
+2026-11-27, after the differential test against nghttp2: a setting
+repeated in one SETTINGS was refused too, as Go refuses it; Section 6.5.3
+says the values "MUST be processed in the order they appear", and
+Section 6.5 that "the value of a SETTINGS parameter is the last value
+that is seen", so now they are, each checked as it comes, the last one
+standing, and an INITIAL_WINDOW_SIZE checked at each value it takes. The
+cap of 100 and the charge for each setting after six already bound the
+work. h2spec 6.5.3/1 passes.)
 The budget, the slots and the threads are per connection; the server's
 limit on connections is what bounds them together, so its default
 becomes finite: 10,000 (decided 2026-11-25; Envoy's edge guidance is
@@ -1075,10 +1083,10 @@ all, and time.
   as the llhttp differences are: the four "closed" cases of C4, and
   the two self-dependency cases of Section 5.3.1 (RFC 9113 dropped
   that rule, and the parser keeps no dependency). As run (2026-11-27,
-  docs/http2-driver-design.md): 140 of 146 pass; the six left are
-  "closed" 8 and 11 (DATA on closed streams, C4), 5.3.1's two, 3.5/2
-  (an invalid preface goes to HTTP/1.1, D2) and 6.5.3/1 (a repeated
-  setting is refused, C10).
+  docs/http2-driver-design.md): 140 of 146 pass, and 141 since repeated settings are taken in order
+  (C10, 2026-11-27); the five left are "closed" 8 and 11 (DATA on closed
+  streams, C4), 5.3.1's two, and 3.5/2 (an invalid preface goes to
+  HTTP/1.1, D2).
 - Mutants for every check.
 
 ## Other implementations (surveyed 2026-11-25)
@@ -1167,9 +1175,11 @@ none.
 - The client's GOAWAY (C11): we refuse new streams and close when the
   open ones are done, at once with an error code; nghttp2 leaves the
   connection to the application, and refuses an odd last stream.
-- A setting named twice in one SETTINGS: refused (C10); nghttp2 keeps
-  the last value, and so does not check an earlier invalid one (an
-  INITIAL_WINDOW_SIZE above 2^31-1, which Section 6.5.2 makes an error).
+- A setting named twice in one SETTINGS with an earlier value invalid
+  (an INITIAL_WINDOW_SIZE above 2^31-1, say, which Section 6.5.2 makes
+  an error): we check each value as it comes; nghttp2 keeps only the
+  last, and does not check the others. (Until 2026-11-27 we refused any
+  repeated setting, C10; the comparison led to taking them in order.)
 - Stream errors that nghttp2 makes connection errors (Section 5.4.1
   allows it): DATA or HEADERS on a half-closed stream, a stream window
   pushed past 2^31-1.

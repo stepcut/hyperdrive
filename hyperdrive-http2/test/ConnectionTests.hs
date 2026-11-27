@@ -105,9 +105,15 @@ prop_errors = once $ conjoin
       goAwayCode (replies [(0, Received (connectionPreface <> renderPing False (B.replicate 8 0)))]) === Just ProtocolError
   , counterexample "a second acknowledgement" $
       goAwayCode (replies [(0, Received (clientStart <> renderSettingsAck <> renderSettingsAck))]) === Just ProtocolError
-  , counterexample "a repeated setting" $
-      goAwayCode (replies [(0, Received (clientStart <> renderSettings [InitialWindowSize 1, InitialWindowSize 2]))])
-        === Just ProtocolError
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-6.5
+  -- # Settings are processed in the order in which they
+  -- # appear, and a receiver of a SETTINGS frame does not need to maintain
+  -- # any state other than the current value of each setting.  Therefore,
+  -- # the value of a SETTINGS parameter is the last value that is seen by a
+  -- # receiver.
+  , counterexample "a repeated setting: taken in order, the last value stands (h2spec 6.5.3/1)" $
+      let (c, outs) = run [(0, Received (clientStart <> renderSettings [InitialWindowSize 1, InitialWindowSize 2]))]
+      in goAwayCode (frames' outs) === Nothing .&&. peerInitialWindowSize (peerSettings c) === 2
   , counterexample "101 settings" $
       goAwayCode (replies [(0, Received (clientStart <> settingsOf 101))]) === Just ProtocolError
   , counterexample "100 settings are accepted" $
@@ -127,6 +133,7 @@ prop_errors = once $ conjoin
       in isMisuse (snd (step 0 (Sent (emitted + 1)) c)) .&&. not (isMisuse (snd (step 0 (Sent emitted) c)))
   ]
   where
+    frames' outs = let (fs, closed) = frames outs in (drop 2 fs, closed)
     -- settings that are not repeated: unknown ones would be dropped, so
     -- the same known one is not used twice; n of them need distinct ids,
     -- so all but the six known ones are written by hand

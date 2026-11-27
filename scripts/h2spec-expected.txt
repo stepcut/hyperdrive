@@ -17,8 +17,3 @@ http2/5.1: closed: Sends a DATA frame
 # parser keeps no dependency (D8)
 http2/5.3.1: Sends HEADERS frame that depends on itself
 http2/5.3.1: Sends PRIORITY frame that depend on itself
-
-# C10: a SETTINGS frame that repeats a setting is refused outright, as Go
-# refuses it (RFC 9113 Section 10.5 names "changing the same setting
-# multiple times in the same frame")
-http2/6.5.3: Sends multiple values of SETTINGS_INITIAL_WINDOW_SIZE
