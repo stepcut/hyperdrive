@@ -107,8 +107,12 @@ sent k s@(Schedule ps levels) = case M.lookup k ps of
   Just p -> Schedule ps (IM.adjust after (priorityUrgency p) levels)
     where
       after lv
-        | priorityIncremental p = lv { lvTurns = Seq.filter (/= k) (lvTurns lv) |> k, lvIncrementalNext = False }
+        | priorityIncremental p = lv { lvTurns = rotate (lvTurns lv), lvIncrementalNext = False }
         | otherwise = lv { lvIncrementalNext = True }
+      -- to the end of the turns; usually it is first
+      rotate q = case Seq.viewl q of
+        k' Seq.:< rest | k' == k -> rest |> k
+        _ -> Seq.filter (/= k) q |> k
 
 -- = https://www.rfc-editor.org/rfc/rfc9218#section-10
 -- # It is RECOMMENDED that, when possible, servers respect the urgency

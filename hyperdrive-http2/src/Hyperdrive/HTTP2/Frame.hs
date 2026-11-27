@@ -115,6 +115,9 @@ data Frame
     -- ^ the increment, 1 to 2^31 - 1
   | ContinuationFrame !StreamId !Bool !ByteString
     -- ^ END_HEADERS, the field block fragment
+  | PriorityUpdateFrame !StreamId !ByteString
+    -- ^ RFC 9218's PRIORITY_UPDATE: the prioritized stream, and the
+    -- Priority Field Value, unparsed
   | UnknownFrame !Word8 !StreamId !Int
     -- ^ a type this module does not know, its stream, its length (F1)
   deriving (Eq, Show)
@@ -142,6 +145,7 @@ data Reason
   | BadMaxFrameSize      -- ^ SETTINGS_MAX_FRAME_SIZE outside 2^14 to 2^24 - 1
   | BadNoRFC7540Priorities -- ^ SETTINGS_NO_RFC7540_PRIORITIES other than 0 or 1
   | ZeroIncrement        -- ^ a WINDOW_UPDATE of 0
+  | PrioritizesConnection -- ^ a PRIORITY_UPDATE whose prioritized stream is 0
   deriving (Eq, Show)
 
 -- | A refused frame: the error's scope (which the core may widen, F2),
@@ -218,6 +222,7 @@ payloadOf typ flags sid p = case typ of
   0x7 -> goAwayFrame sid p
   0x8 -> windowUpdateFrame sid p
   0x9 -> continuationFrame flags sid p
+  0x10 -> priorityUpdateFrame sid p
   -- = https://www.rfc-editor.org/rfc/rfc9113#section-4.1
   -- # Implementations MUST ignore and
   -- # discard frames of unknown types.
@@ -431,6 +436,24 @@ windowUpdateFrame sid p
   | otherwise = Right (WindowUpdateFrame sid increment)
   where
     increment = word31 p 0
+
+priorityUpdateFrame :: StreamId -> ByteString -> Either FrameError Frame
+priorityUpdateFrame sid p = do
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7.1
+  -- # The Stream Identifier field (see Section 5.1.1 of [HTTP/2]) in the
+  -- # PRIORITY_UPDATE frame header MUST be zero (0x0).  Receiving a
+  -- # PRIORITY_UPDATE frame with a field of any other value MUST be treated
+  -- # as a connection error of type PROTOCOL_ERROR.
+  needsConnection sid -- PRIORITY_UPDATE
+  -- too short for the Prioritized Stream ID: "too small to contain
+  -- mandatory frame data" (Section 4.2 of RFC 9113, cited above)
+  if B.length p < 4 then err FrameSizeError WrongLength
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7.1
+  -- # If a PRIORITY_UPDATE frame is received with a prioritized stream ID
+  -- # of 0x0, the recipient MUST respond with a connection error of type
+  -- # PROTOCOL_ERROR.
+  else if word31 p 0 == 0 then err ProtocolError PrioritizesConnection
+  else Right (PriorityUpdateFrame (StreamId (word31 p 0)) (B.drop 4 p))
 
 continuationFrame :: Word8 -> StreamId -> ByteString -> Either FrameError Frame
 continuationFrame flags sid p = do

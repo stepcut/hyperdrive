@@ -165,8 +165,6 @@ prop_budget = once $ conjoin
       .&&. goAwayCode (replies [(0, Received clientStart), (100000, Received (unknowns 1001))]) === Just EnhanceYourCalm
   , counterexample "PINGs cost nothing: 5,000 at once are answered" $
       goAwayCode (replies [(0, Received (clientStart <> pings 5000))]) === Nothing
-  , counterexample "PRIORITY_UPDATE (type 0x10) costs nothing" $
-      goAwayCode (replies [(0, Received (clientStart <> B.concat (replicate 2000 (frameOfType 0x10))))]) === Nothing
   , counterexample "PRIORITY costs one" $
       goAwayCode (replies [(0, Received (clientStart <> B.concat (replicate 1000 priority)))]) === Just EnhanceYourCalm
   ]

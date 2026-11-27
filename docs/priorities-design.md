@@ -182,6 +182,50 @@ PRIORITY_UPDATE frames still apply (they are the connection's own).
 Recommended, with the response's field (P4) still the application's
 way to set priorities behind a proxy.
 
+## As built in the core (P4, P5, P9, P10; 2026-11-27)
+
+`Hyperdrive.HTTP2.Frame` parses PRIORITY_UPDATE (`PriorityUpdateFrame`,
+the prioritized stream and the value unparsed): not on stream 0, or a
+prioritized stream of 0, PROTOCOL_ERROR; a payload shorter than the
+stream ID, FRAME_SIZE_ERROR (RFC 9113 Section 4.2, "too small to contain
+mandatory frame data"). In the core, `cOrder` gave way to a `Schedule`;
+each stream keeps the client's priority and the response's parameters,
+and is scheduled at the second over the first. `pump` tries the
+schedule's candidates in order, takes the stream's turn before its frame
+(so that a last frame counts), and leaves a stream that has sent all it
+has; `forget` takes a stream out as it closes.
+
+- P9: until the connection carries a `priority` field that parses or a
+  PRIORITY_UPDATE that parses, a new stream is urgency 3, incremental;
+  from then on the defaults. Streams already open keep theirs. With no
+  signals the order is the round robin before (the existing scheduler
+  tests pass unchanged).
+- P10: a request carrying `via`, `forwarded` or `x-forwarded-for` marks
+  the connection; its own `priority` field and those of every later
+  request are ignored, and are not signals. PRIORITY_UPDATE still
+  applies.
+- P5: for an even stream, PROTOCOL_ERROR (a push stream, idle, for a
+  server that never pushes); for a stream not yet opened, kept (the
+  latest), PROTOCOL_ERROR if the streams kept plus the active ones would
+  exceed our MAX_CONCURRENT_STREAMS; applied when the stream opens, over
+  its request's field (Section 7: the latest update "overrides any other
+  signal"), and those for streams passed over dropped then; for an open
+  stream, applied at once, moving it in the schedule; for a closed one,
+  ignored. Its parameters not named are the defaults. One nuisance unit
+  (C10) for a value that does not parse, one for a closed stream, one
+  that changes nothing (the same priority, or the same value kept again);
+  others are free.
+- P4: the response's `priority` field, if it parses, sets the parameters
+  it names over the client's, for as long as the stream sends;
+  PRIORITY_UPDATEs after it change the client's part only. The field is
+  sent as the handler wrote it.
+
+Tests: the order DATA goes out for each case above, PRIORITY_UPDATE's
+errors, bound and charges at their boundaries (StreamTests), the frame's
+parsing (FrameTests), h2spec unchanged (141/146). Left: the nghttp2
+differential extended with `priority` fields and PRIORITY_UPDATE (P7),
+and timings (asked for first).
+
 ## Questions in short
 
 - **P1.** All of RFC 9651 in `hyperdrive-semantics`, tested against the

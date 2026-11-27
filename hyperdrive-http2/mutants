@@ -336,17 +336,13 @@ why: PINGs cost no budget: grpc-go's clients send one a round trip while downloa
 - PingFrame False d -> emitControl [renderPing True d] (restartIdle now c) >>> next
 + PingFrame False d -> charge 1 c $ \c1 -> emitControl [renderPing True d] (restartIdle now c1) >>> next
 
-why: PRIORITY_UPDATE costs no budget until RFC 9218 is supported (C10)
-- UnknownFrame 0x10 _ _ -> next (c, [])
-+ UnknownFrame 0x11 _ _ -> next (c, [])
-
 why: output emitted and not yet written is capped, at exactly its limit (C5)
 - | cUnsent c + size > configMaxUnsent (cConfig c) = goAway c EnhanceYourCalm
 + | cUnsent c + size > configMaxUnsent (cConfig c) + 17 = goAway c EnhanceYourCalm
 
 why: a frame is parsed as soon as all of it has arrived
-- | available c >= n && not (null (cMore c)) -> advance now (joined c) acc
-+ | available c > n && not (null (cMore c)) -> advance now (joined c) acc
+- | available c >= n && not (null (cMore c)) -> advance now (joinedFor n c) acc
++ | available c > n && not (null (cMore c)) -> advance now (joinedFor n c) acc
 
 why: a frame of unknown type costs budget (C10)
 - UnknownFrame _ _ _ -> charge 1 c $ \c1 -> next (c1, [])
@@ -521,12 +517,12 @@ why: a field block that does not decode is a COMPRESSION_ERROR (Section 4.3)
 + Left _ -> stop acc (goAway c ProtocolError)
 
 why: the 101st open stream is refused (Section 5.1.2)
-- | active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
-+ | active > configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
+- | activeStreams c >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
++ | activeStreams c > configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
 
 why: reset streams whose handlers still run are bounded too (C6)
-- | active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
-+ | active >= configMaxConcurrentStreams cfg =
+- | activeStreams c >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
++ | activeStreams c >= configMaxConcurrentStreams cfg =
 
 why: a refused stream costs budget (C10)
 - charge 1 c $ \c1 -> resetStream sid RefusedStream c1
@@ -589,8 +585,8 @@ why: a handler that returns without responding failed: 500 (C2)
 + (\c1 -> result c1 [])
 
 why: a new stream raises the highest identifier, which tells idle from closed (C4)
-- | sid > cLastStream c = newStream c { cLastStream = sid } sid endStream decoded
-+ | sid > cLastStream c = newStream c sid endStream decoded
+- | sid > cLastStream c = newStream c { cLastStream = sid, cUpdates = M.dropWhileAntitone (<= sid) (cUpdates c) }
++ | sid > cLastStream c = newStream c { cUpdates = M.dropWhileAntitone (<= sid) (cUpdates c) }
 
 why: HEADERS on a half-closed (remote) stream is a stream error STREAM_CLOSED (Section 5.1)
 - HalfClosedRemote -> streamError c sid st StreamClosed
@@ -673,20 +669,12 @@ why: the connection's buffer bounds what is accepted before Writable (C5)
 + full st c = sOutLength st >= configStreamBuffer (cConfig c)
 
 why: DATA is paced by what the transport has written (C5)
-- | cUnsent c >= configPacing (cConfig c) = go c acc 0
-+ | False = go c acc 0
+- | cUnsent c >= configPacing (cConfig c) = finish c acc
++ | False = finish c acc
 
-why: streams take turns (D8)
-- Nothing -> go c { cOrder = rest |> sid } acc (k - 1)
-+ Nothing -> go c { cOrder = sid Seq.<| rest } acc (k - 1)
-
-why: a stream with more to send goes to the back of the round (D8)
-- else result (if lastOne && isJust end || not lastOne then schedule sid c2 else c2) outs
-+ else result (if lastOne && isJust end || not lastOne then schedule sid c2 { cOrder = sid Seq.<| cOrder c2 } else c2) outs
-
-why: a stream whose content runs out with trailers to send stays in the round
-- else result (if lastOne && isJust end || not lastOne then schedule sid c2 else c2) outs
-+ else result (if not lastOne then schedule sid c2 else c2) outs
+why: a stream that cannot send does not hold up the others (D8)
+- Nothing -> try c acc rest
++ Nothing -> finish c acc
 
 why: DATA stays within the stream's window (Section 6.9.1)
 - let n = minimum [ sOutLength st, sSendWindow st, cSendWindow c, dataFrameSize c ]
@@ -1025,12 +1013,16 @@ why: a deleted stream is no longer scheduled
 + Just p -> Schedule ps (IM.update remove (priorityUrgency p) levels)
 
 why: an incremental stream that sent waits for the others' turns (RFC 9218 Section 10)
-- | priorityIncremental p = lv { lvTurns = Seq.filter (/= k) (lvTurns lv) |> k, lvIncrementalNext = False }
+- | priorityIncremental p = lv { lvTurns = rotate (lvTurns lv), lvIncrementalNext = False }
 + | priorityIncremental p = lv { lvTurns = lvTurns lv, lvIncrementalNext = False }
 
+why: a stream not first in the turns, because the first could not send, still goes to the end once (P3)
+- _ -> Seq.filter (/= k) q |> k
++ _ -> q |> k
+
 why: after an incremental stream, a non-incremental one (P3's alternation)
-- |> k, lvIncrementalNext = False }
-+ |> k, lvIncrementalNext = True }
+- rotate (lvTurns lv), lvIncrementalNext = False }
++ rotate (lvTurns lv), lvIncrementalNext = True }
 
 why: after a non-incremental stream, an incremental one (P3's alternation)
 - | otherwise = lv { lvIncrementalNext = True }
@@ -1047,3 +1039,109 @@ why: urgency 0 first (RFC 9218 Section 10)
 why: non-incremental streams in ascending order of stream ID (RFC 9218 Section 10)
 - | otherwise = S.toAscList (lvOrdered lv) ++ toList (lvTurns lv)
 + | otherwise = S.toDescList (lvOrdered lv) ++ toList (lvTurns lv)
+
+file: src/Hyperdrive/HTTP2/Connection.hs
+why: a PRIORITY_UPDATE for an even stream, an idle push stream, is a connection error (RFC 9218 Section 7.1)
+- | even target -> stop acc (goAway c ProtocolError)
++ | False -> stop acc (goAway c ProtocolError)
+
+why: a PRIORITY_UPDATE whose value does not parse costs one (P5, C10)
+- Nothing -> charge 1 c $ \c1 -> next (c1, []) -- unparsed
++ Nothing -> next (c, []) -- unparsed
+
+why: a PRIORITY_UPDATE for a stream not yet opened is kept (RFC 9218 Section 7)
+- | idle target c -> priorityUpdateIdle target params c acc
++ | False -> priorityUpdateIdle target params c acc
+
+why: a PRIORITY_UPDATE that changes nothing costs one (P5, C10)
+- in if p == sClientPriority st then charge 1 c1 $ \c2 -> next (c2, [])
++ in if False then charge 1 c1 $ \c2 -> next (c2, [])
+
+why: a PRIORITY_UPDATE on an open stream is a signal (P9)
+- c1 = c { cSignalled = True }
++ c1 = c
+
+why: a PRIORITY_UPDATE for a closed stream costs one (P5, C10)
+- _ -> charge 1 c $ \c1 -> next (c1, []) -- closed
++ _ -> next (c, []) -- closed
+
+why: a PRIORITY_UPDATE repeated for a stream not yet opened costs one (P5, C10)
+- | M.lookup target (cUpdates c) == Just params = charge 1 c $ \c1 -> advance (cNow c1) c1 ([] : acc)
++ | False = charge 1 c $ \c1 -> advance (cNow c1) c1 ([] : acc)
+
+why: prioritized idle streams and active ones at most MAX_CONCURRENT_STREAMS (RFC 9218 Section 7.1)
+- | fromIntegral (M.size updates) + activeStreams c > configMaxConcurrentStreams (cConfig c) =
++ | fromIntegral (M.size updates) + activeStreams c >= configMaxConcurrentStreams (cConfig c) =
+
+why: a stream updated again is counted once (RFC 9218 Section 7.1)
+- | fromIntegral (M.size updates) + activeStreams c > configMaxConcurrentStreams (cConfig c) =
++ | fromIntegral (M.size (cUpdates c) + 1) + activeStreams c > configMaxConcurrentStreams (cConfig c) =
+
+why: a PRIORITY_UPDATE for a stream not yet opened is a signal (P9)
+- | otherwise = advance (cNow c) c { cUpdates = updates, cSignalled = True } ([] : acc)
++ | otherwise = advance (cNow c) c { cUpdates = updates } ([] : acc)
+
+why: the updates of streams passed over are dropped (RFC 9218 Section 7.1's bound)
+- | sid > cLastStream c = newStream c { cLastStream = sid, cUpdates = M.dropWhileAntitone (<= sid) (cUpdates c) }
++ | sid > cLastStream c = newStream c { cLastStream = sid }
+
+why: the update kept for a stream is applied when it opens (RFC 9218 Section 7)
+- (M.lookup sid (cUpdates c)) sid endStream decoded
++ Nothing sid endStream decoded
+
+why: once a request came through a proxy, request priority fields are ignored on the connection (P10)
+- proxied = cProxied c || any (not . null . named) ["via", "forwarded", "x-forwarded-for"]
++ proxied = any (not . null . named) ["via", "forwarded", "x-forwarded-for"]
+
+why: request priority fields through a proxy are ignored (P10)
+- ls | proxied -> Nothing
++ ls | False -> Nothing
+
+why: the latest PRIORITY_UPDATE overrides the request's field (RFC 9218 Section 7)
+- (Just u, _) -> applyParams u defaultPriority
++ (Just u, Nothing) -> applyParams u defaultPriority
+
+why: after a signal, the defaults: not incremental (RFC 9218 Section 4)
+- _ | signalled -> defaultPriority
++ _ | False -> defaultPriority
+
+why: before any signal, incremental (P9)
+- unsignalledPriority = fromJust (mkPriority 3 True)
++ unsignalledPriority = fromJust (mkPriority 3 False)
+
+why: the response's priority field is applied (P4)
+- , sServerParams = server } (cStreams c1) }
++ , sServerParams = noParams } (cStreams c1) }
+
+why: the response's parameters over the client's (P4)
+- streamPriority st = applyParams (sServerParams st) (sClientPriority st)
++ streamPriority st = sClientPriority st
+
+why: a stream reprioritized while it waits to send moves in the schedule
+- , cSchedule = if Sch.member sid (cSchedule c) then Sch.insert sid (streamPriority st) (cSchedule c) else cSchedule c }
++ , cSchedule = cSchedule c }
+
+why: a stream's turn is taken as it sends a frame (RFC 9218 Section 10)
+- taken = Sch.sent sid (cSchedule c)
++ taken = cSchedule c
+
+why: a stream with only its trailers left stays in the schedule
+- Just st | sState st /= ClosedHeld, Sending _ _ end <- sResponse st -> sOutLength st > 0 || isJust end
++ Just st | sState st /= ClosedHeld, Sending _ _ end <- sResponse st -> sOutLength st > 0
+
+file: src/Hyperdrive/HTTP2/Frame.hs
+why: PRIORITY_UPDATE is parsed (RFC 9218 Section 7.1)
+- 0x10 -> priorityUpdateFrame sid p
++ 0x10 -> Right (UnknownFrame 0x10 sid (B.length p))
+
+why: PRIORITY_UPDATE only on stream 0 (RFC 9218 Section 7.1)
+- needsConnection sid -- PRIORITY_UPDATE
++ pure () -- PRIORITY_UPDATE
+
+why: a PRIORITY_UPDATE too short for its stream ID is a frame size error (RFC 9113 Section 4.2)
+- if B.length p < 4 then err FrameSizeError WrongLength
++ if B.length p < 3 then err FrameSizeError WrongLength
+
+why: a prioritized stream of 0, the reserved bit aside, is a connection error (RFC 9218 Section 7.1)
+- else if word31 p 0 == 0 then err ProtocolError PrioritizesConnection
++ else if word32 p 0 == 0 then err ProtocolError PrioritizesConnection

@@ -1158,14 +1158,16 @@ scale, and were closed as follows.
 nghttp2 has no public function that parses one frame, only whole
 sessions (D12 step 6), so the comparison is of sessions:
 `hyperdrive-http2-nghttp2`'s `Sessions` gives the same client octets to
-nghttp2's server session (1.69, with SETTINGS like ours) and to the
+nghttp2's server session (1.70, with SETTINGS like ours, and
+PRIORITY_UPDATE parsed, which nghttp2 does only when asked) and to the
 connection core, and compares what each made of them: whether the
 connection ended and with which GOAWAY code (or closed without one),
 which streams were reset and with which codes (only while both
 connections live: nghttp2 drops the RST_STREAMs it had queued when it
 ends a connection with an error), and which requests reached the
 application. Sessions are a preface and SETTINGS, valid requests (some
-in CONTINUATIONs, some with content), valid frames of every type from
+in CONTINUATIONs, some with content, some with `priority` fields, valid
+or not, or a field that says a proxy sent them), valid frames of every type from
 the frame tests' generator, and sometimes, last, one of their near
 misses. Run with `scripts/differential-nghttp2`; `NGHTTP2_FRAMES_SURVEY=N`
 prints every kind of disagreement in N sessions, with a count and an
@@ -1180,7 +1182,7 @@ connection errors (Section 5.1). Fixed in `idle`.
 The rest of the disagreements were each read and are known differences.
 The test cuts a session before the first frame of one of these and
 requires the verdicts to agree up to it; 200,000 sessions then showed
-none.
+none; after RFC 9218 (2026-11-27), 50,000 showed none.
 
 - The client's GOAWAY (C11): we close once the streams are done (new
   ones still served, since 2026-11-27), at once with an error code;
@@ -1201,11 +1203,17 @@ none.
   different one first.
 - PRIORITY on stream 0: PROTOCOL_ERROR (Section 6.3); nghttp2, with RFC
   7540 priorities off, ignores it.
+- PRIORITY_UPDATE whose prioritized stream is 0: PROTOCOL_ERROR (RFC
+  9218 Section 7.1, a MUST); nghttp2 has no such check and ignores it.
+  (Every other PRIORITY_UPDATE rule agrees: on a stream other than 0,
+  too short, an idle push stream, the bound, a value that does not
+  parse, a closed stream. The order of responses is not compared: the
+  shim sends none, and nghttp2's scheduler differs by design, P3, P9.)
 - SETTINGS_ENABLE_CONNECT_PROTOCOL (RFC 8441): an unknown setting to us,
   ignored as Section 6.5.2 requires; nghttp2 checks it.
 - SETTINGS_NO_RFC7540_PRIORITIES changed after the first SETTINGS: RFC
-  9218's MAY, which nghttp2 takes and we do not (RFC 9218 unsupported
-  yet, D8).
+  9218's MAY, which nghttp2 takes and we do not (P6 of
+  docs/priorities-design.md).
 - A field block unfinished when the session ends: nghttp2 acts on part
   of it; the core waits for all of it (C7).
 - A WINDOW_UPDATE of 0, or DATA whose padding is as long as its payload,

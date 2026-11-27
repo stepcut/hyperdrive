@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns -Wno-x-partial #-}
-module StreamTests (streamTests, responseTests, endingTests) where
+module StreamTests (streamTests, responseTests, endingTests, priorityTests) where
 
+import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
@@ -904,6 +905,164 @@ prop_sendModel =
           sent' = foldl' (\m (s, d, _) -> M.insertWith (+) 0 (B.length d) (M.insertWith (+) s (B.length d) m)) sent (datas outs)
       in [ counterexample ("over the window of " ++ show s) (M.findWithDefault 0 s sent' <= M.findWithDefault (0 :: Int) s credit')
          | s <- [0, 1, 3 :: Word32] ] ++ windows credit' sent' rest
+
+------------------------------------------------------------------------------
+-- priorities (RFC 9218)
+------------------------------------------------------------------------------
+
+priorityTests :: TestTree
+priorityTests = testGroup "The connection core: priorities (RFC 9218, P4, P5, P9, P10)"
+  [ testProperty "the order responses are sent in, by the client's and the server's signals" prop_priorityOrder
+  , testProperty "PRIORITY_UPDATE: errors, the bound on streams not yet open, the budget" prop_priorityUpdates
+  ]
+
+-- a PRIORITY_UPDATE frame
+priorityUpdate :: Word32 -> ByteString -> ByteString
+priorityUpdate target value = rawFrame 0x10 0 0 (B.pack [fromIntegral (target `shiftR` n) | n <- [24, 16, 8, 0]] <> value)
+
+-- GETs on the given streams with these fields added, after the octets
+-- given first; responses of 20,000 octets, with these fields, written
+-- while the client's windows are 0; then the octets given last and the
+-- windows opened: the streams of the DATA frames sent, in order
+sendOrder :: ByteString -> [(Word32, [(ByteString, ByteString)])] -> [(Word32, [(ByteString, ByteString)])]
+          -> ByteString -> [Word32]
+sendOrder first reqs = sendOrderSteps (Raw first : map (uncurry Req) reqs)
+
+-- what the client sends before the windows open: requests, their blocks
+-- encoded in order by one encoder, and other octets between them
+data ClientStep = Req Word32 [(ByteString, ByteString)] | Raw ByteString
+
+sendOrderSteps :: [ClientStep] -> [(Word32, [(ByteString, ByteString)])] -> ByteString -> [Word32]
+sendOrderSteps steps resps lastly =
+  let reqs = [ (sid, fs) | Req sid fs <- steps ]
+      bs = M.fromList (zip (map fst reqs) (blocks [ base ++ fs | (_, fs) <- reqs ]))
+      opened = B.concat [ case st of { Req sid _ -> headers sid True (bs M.! sid); Raw b -> b } | st <- steps ]
+      respondAll = concat [ [respondOn sid (response 200 (M.findWithDefault [] sid (M.fromList resps)) Nothing), write sid (B.replicate 20000 0x61)]
+                          | (sid, _) <- reqs ]
+      (c, _) = feedAll (serve [InitialWindowSize 0] opened) respondAll
+  in [ sid | (sid, _, _) <- datas (from (c, []) [Received (lastly <> renderSettings [InitialWindowSize 65535])]) ]
+
+prop_priorityOrder :: Property
+prop_priorityOrder = once $ conjoin
+  [ counterexample "no signals: urgency 3, incremental, so in turn (P9)" $
+      sendOrder "" [(1, []), (3, [])] [] "" === [1, 3, 1, 3]
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-10
+  -- # It is RECOMMENDED that, when possible, servers respect the urgency
+  -- # parameter (Section 4.1), sending higher-urgency responses before
+  -- # lower-urgency responses.
+  , counterexample "the request's urgency: the lower first" $
+      sendOrder "" [(1, [("priority", "u=5")]), (3, [("priority", "u=1")])] [] "" === [3, 3, 1, 1]
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-10
+  -- # Non-incremental responses of the same urgency SHOULD be served by
+  -- # prioritizing bandwidth allocation in ascending order of the stream
+  -- # ID, which corresponds to the order in which clients make requests.
+  , counterexample "non-incremental at one urgency: one after the other, in stream order" $
+      sendOrder "" [(1, [("priority", "u=3")]), (3, [("priority", "u=3")])] [] "" === [1, 1, 3, 3]
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-4
+  -- # When receiving an HTTP request that does not carry these
+  -- # priority parameters, a server SHOULD act as if their default values
+  -- # were specified.
+  , counterexample "after a signal, a request without one has the defaults: not incremental, so the two kinds alternate" $
+      sendOrder "" [(1, [("priority", "u=3, i")]), (3, [])] [] "" === [3, 1, 3, 1]
+  , counterexample "a field that is not a Dictionary is no signal" $
+      sendOrder "" [(1, [("priority", "u=")]), (3, [])] [] "" === [1, 3, 1, 3]
+  , counterexample "a PRIORITY_UPDATE is a signal: later requests without a field have the defaults" $
+      sendOrder (priorityUpdate 99 "u=1") [(1, []), (3, [])] [] "" === [1, 1, 3, 3]
+      .&&. sendOrderSteps [Req 1 [], Raw (priorityUpdate 1 "u=4"), Req 3 [], Req 5 []] [] "" === [3, 3, 5, 5, 1, 1]
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7
+  -- # Servers SHOULD buffer the most recently received PRIORITY_UPDATE
+  -- # frame and apply it once the referenced stream is opened.
+  , counterexample "a PRIORITY_UPDATE before its stream opens, applied when it does, over the request's field" $
+      sendOrder (priorityUpdate 3 "u=7" <> priorityUpdate 3 "u=0") [(1, [("priority", "u=1")]), (3, [("priority", "u=7")])] [] ""
+        === [3, 3, 1, 1]
+  , counterexample "a PRIORITY_UPDATE on an open stream moves it" $
+      sendOrder "" [(1, [("priority", "u=3")]), (3, [("priority", "u=3")])] [] (priorityUpdate 3 "u=0") === [3, 3, 1, 1]
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7
+  -- # Omitting a priority
+  -- # parameter is a signal to use its default value.
+  , counterexample "a PRIORITY_UPDATE's parameters not named are the defaults: urgency 3 again, beside stream 1" $
+      sendOrder "" [(1, [("priority", "u=3")]), (3, [("priority", "u=0, i")])] [] (priorityUpdate 3 "i") === [1, 3, 1, 3]
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-8
+  -- # The absence of a priority parameter in an HTTP response indicates the
+  -- # server's disinterest in changing the client-provided value.
+  , counterexample "the response's field over the client's, for the parameters it names (P4)" $
+      sendOrder "" [(1, [("priority", "u=1, i")]), (3, [("priority", "u=1, i")]), (5, [("priority", "u=2")])]
+                   [(1, [("priority", "u=2")])] ""
+        === [3, 3, 5, 1, 5, 1]
+  , counterexample "the response's field is sent as it is" $
+      let [b] = blocks [base]
+          outs = from (serve [] (headers 1 True b)) [respondOn 1 (response 200 [("priority", "u=6")] Nothing)]
+      in take 1 (seen outs) === [SeenHeaders 1 [(":status", "200"), ("priority", "u=6")] False]
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-13.2
+  -- # Backend
+  -- # servers SHOULD only schedule based on client priority information
+  -- # where that information can be scoped to individual end clients.
+  , counterexample "after a request through a proxy, request priority fields are ignored (P10)" $
+      sendOrder "" [(1, [("via", "1.1 proxy"), ("priority", "u=6")]), (3, [("priority", "u=0")])] [] "" === [1, 3, 1, 3]
+      .&&. sendOrder "" [(1, [("forwarded", "for=192.0.2.1")]), (3, [("priority", "u=0")])] [] "" === [1, 3, 1, 3]
+      .&&. sendOrder "" [(1, []), (3, [("x-forwarded-for", "192.0.2.1"), ("priority", "u=0")])] [] "" === [1, 3, 1, 3]
+  , counterexample "but PRIORITY_UPDATE still applies" $
+      sendOrder "" [(1, [("via", "1.1 proxy")]), (3, [])] [] (priorityUpdate 3 "u=0") === [3, 3, 1, 1]
+  ]
+
+prop_priorityUpdates :: Property
+prop_priorityUpdates = once $ conjoin
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7.1
+  -- # Servers that
+  -- # receive a PRIORITY_UPDATE for a push stream in the "idle" state MUST
+  -- # respond with a connection error of type PROTOCOL_ERROR.
+  [ counterexample "an even stream: a push stream, idle" $
+      seen (snd (serve [] (priorityUpdate 2 "u=1"))) === [SeenGoAway ProtocolError]
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7.1
+  -- # The number of streams that have been prioritized but remain in the
+  -- # "idle" state plus the number of active streams (those in the "open"
+  -- # state or in either of the "half-closed" states; see Section 5.1.2 of
+  -- # [HTTP/2]) MUST NOT exceed the value of the
+  -- # SETTINGS_MAX_CONCURRENT_STREAMS parameter.  Servers that receive such
+  -- # a PRIORITY_UPDATE MUST respond with a connection error of type
+  -- # PROTOCOL_ERROR.
+  , counterexample "streams not yet open: 100 kept, the 101st an error" $
+      seen (snd (serve [] (idleUpdates 3 100))) === []
+      .&&. seen (snd (serve [] (idleUpdates 3 101))) === [SeenGoAway ProtocolError]
+  , counterexample "an active stream counts" $
+      seen (snd (serve [] (open1 <> idleUpdates 3 99))) === []
+      .&&. seen (snd (serve [] (open1 <> idleUpdates 3 100))) === [SeenGoAway ProtocolError]
+  , counterexample "a stream updated again counts once" $
+      seen (snd (serve [] (idleUpdates 3 100 <> priorityUpdate 3 "u=2"))) === []
+  , counterexample "the updates of streams passed over are dropped as a later stream opens" $
+      let [b] = blocks [base]
+      in seen (snd (serve [] (idleUpdates 3 100 <> headers 301 True b <> idleUpdates 303 99))) === []
+  , counterexample "one for a stream already closed is ignored" $
+      let [b] = blocks [base]
+      in seen (snd (serve [] (headers 3 True b <> priorityUpdate 1 "u=0"))) === []
+  -- the budget (P5, C10): the SETTINGS costs one; 999 more are allowed
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7
+  -- # Failure to parse the
+  -- # Priority Field Value MAY be treated as a connection error.
+  --
+  -- Not taken (P5)
+  , counterexample "a value that does not parse: ignored, and costs one" $
+      closed (snd (serve [] (times 999 (priorityUpdate 1 "u=")))) === False
+      .&&. closed (snd (serve [] (times 1000 (priorityUpdate 1 "u=")))) === True
+  , counterexample "one for a closed stream costs one" $
+      let [b] = blocks [base]
+      in closed (snd (serve [] (headers 3 True b <> times 999 (priorityUpdate 1 "u=1")))) === False
+         .&&. closed (snd (serve [] (headers 3 True b <> times 1000 (priorityUpdate 1 "u=1")))) === True
+  , counterexample "one that changes nothing costs one: open stream" $
+      closed (snd (serve [] (open1 <> times 1000 (priorityUpdate 1 "u=1")))) === False
+      .&&. closed (snd (serve [] (open1 <> times 1001 (priorityUpdate 1 "u=1")))) === True
+  , counterexample "one that changes nothing costs one: a stream not yet open" $
+      closed (snd (serve [] (times 1000 (priorityUpdate 5 "u=1")))) === False
+      .&&. closed (snd (serve [] (times 1001 (priorityUpdate 5 "u=1")))) === True
+  , counterexample "ones that change something cost nothing" $
+      closed (snd (serve [] (open1 <> times 2000 (priorityUpdate 1 "u=1" <> priorityUpdate 1 "u=2")))) === False
+      .&&. closed (snd (serve [] (times 2000 (priorityUpdate 5 "u=1" <> priorityUpdate 5 "u=2")))) === False
+  ]
+  where
+    times n = B.concat . replicate n
+    open1 = let [b] = blocks [base] in headers 1 True b
+    idleUpdates :: Word32 -> Word32 -> ByteString
+    idleUpdates from' n = B.concat [ priorityUpdate (from' + 2 * i) "u=1" | i <- [0 .. n - 1] ]
 
 ------------------------------------------------------------------------------
 -- errors, timers and shutdown

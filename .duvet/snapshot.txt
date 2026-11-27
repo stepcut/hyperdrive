@@ -3843,9 +3843,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9218
     TEXT[!MAY]:    directly connected to.
 
   SECTION: [Priority Parameters](#section-4)
-    TEXT[!SHOULD,implementation]: When receiving an HTTP request that does not carry these
-    TEXT[!SHOULD,implementation]:    priority parameters, a server SHOULD act as if their default values
-    TEXT[!SHOULD,implementation]:    were specified.
+    TEXT[!SHOULD,implementation,test]: When receiving an HTTP request that does not carry these
+    TEXT[!SHOULD,implementation,test]:    priority parameters, a server SHOULD act as if their default values
+    TEXT[!SHOULD,implementation,test]:    were specified.
     TEXT[implementation,test]:    Receivers parse the Dictionary as described in Section 4.2 of
     TEXT[implementation,test]:    [STRUCTURED-FIELDS].
     TEXT[!MUST,implementation,test]: Where the Dictionary is successfully parsed,
@@ -3868,44 +3868,51 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9218
 
   SECTION: [The PRIORITY_UPDATE Frame](#section-7)
     TEXT[implementation]:    A PRIORITY_UPDATE frame communicates a complete set of all priority
-    TEXT[implementation]:    parameters in the Priority Field Value field.  Omitting a priority
-    TEXT[implementation]:    parameter is a signal to use its default value.
-    TEXT[!MAY]: Failure to parse the
-    TEXT[!MAY]:    Priority Field Value MAY be treated as a connection error.
+    TEXT[implementation]:    parameters in the Priority Field Value field.
+    TEXT[implementation,test]: Omitting a priority
+    TEXT[implementation,test]:    parameter is a signal to use its default value.
+    TEXT[!MAY,implementation,test]: Failure to parse the
+    TEXT[!MAY,implementation,test]:    Priority Field Value MAY be treated as a connection error.
     TEXT[!MAY]:    A client MAY send a PRIORITY_UPDATE frame before the stream that it
     TEXT[!MAY]:    references is open (except for HTTP/2 push streams; see Section 7.1).
-    TEXT[!SHOULD]:    Servers SHOULD buffer the most recently received PRIORITY_UPDATE
-    TEXT[!SHOULD]:    frame and apply it once the referenced stream is opened.
+    TEXT[implementation]: To solve this condition, for the purposes of scheduling,
+    TEXT[implementation]:    the most recently received PRIORITY_UPDATE frame can be considered as
+    TEXT[implementation]:    the most up-to-date information that overrides any other signal.
+    TEXT[!SHOULD,implementation,test]:    Servers SHOULD buffer the most recently received PRIORITY_UPDATE
+    TEXT[!SHOULD,implementation,test]:    frame and apply it once the referenced stream is opened.
 
   SECTION: [HTTP/2 PRIORITY_UPDATE Frame](#section-7.1)
-    TEXT[!MUST]:    The Stream Identifier field (see Section 5.1.1 of [HTTP/2]) in the
-    TEXT[!MUST]:    PRIORITY_UPDATE frame header MUST be zero (0x0).
-    TEXT[!MUST]: Receiving a
-    TEXT[!MUST]:    PRIORITY_UPDATE frame with a field of any other value MUST be treated
-    TEXT[!MUST]:    as a connection error of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    The Stream Identifier field (see Section 5.1.1 of [HTTP/2]) in the
+    TEXT[!MUST,implementation,test]:    PRIORITY_UPDATE frame header MUST be zero (0x0).
+    TEXT[!MUST,implementation,test]: Receiving a
+    TEXT[!MUST,implementation,test]:    PRIORITY_UPDATE frame with a field of any other value MUST be treated
+    TEXT[!MUST,implementation,test]:    as a connection error of type PROTOCOL_ERROR.
     TEXT[!SHOULD]:    When the PRIORITY_UPDATE frame applies to a request stream, clients
     TEXT[!SHOULD]:    SHOULD provide a prioritized stream ID that refers to a stream in the
     TEXT[!SHOULD]:    "open", "half-closed (local)", or "idle" state (i.e., streams where
     TEXT[!SHOULD]:    data might still be received).
-    TEXT[!MUST]:    The number of streams that have been prioritized but remain in the
-    TEXT[!MUST]:    "idle" state plus the number of active streams (those in the "open"
-    TEXT[!MUST]:    state or in either of the "half-closed" states; see Section 5.1.2 of
-    TEXT[!MUST]:    [HTTP/2]) MUST NOT exceed the value of the
-    TEXT[!MUST]:    SETTINGS_MAX_CONCURRENT_STREAMS parameter.
-    TEXT[!MUST]: Servers that receive such
-    TEXT[!MUST]:    a PRIORITY_UPDATE MUST respond with a connection error of type
-    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[implementation]: Servers can discard frames where the
+    TEXT[implementation]:    prioritized stream ID refers to a stream in the "half-closed (local)"
+    TEXT[implementation]:    or "closed" state (i.e., streams where no further data will be sent).
+    TEXT[!MUST,implementation,test]:    The number of streams that have been prioritized but remain in the
+    TEXT[!MUST,implementation,test]:    "idle" state plus the number of active streams (those in the "open"
+    TEXT[!MUST,implementation,test]:    state or in either of the "half-closed" states; see Section 5.1.2 of
+    TEXT[!MUST,implementation,test]:    [HTTP/2]) MUST NOT exceed the value of the
+    TEXT[!MUST,implementation,test]:    SETTINGS_MAX_CONCURRENT_STREAMS parameter.
+    TEXT[!MUST,implementation,test]: Servers that receive such
+    TEXT[!MUST,implementation,test]:    a PRIORITY_UPDATE MUST respond with a connection error of type
+    TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
     TEXT[!SHOULD]:    When the PRIORITY_UPDATE frame applies to a push stream, clients
     TEXT[!SHOULD]:    SHOULD provide a prioritized stream ID that refers to a stream in the
     TEXT[!SHOULD]:    "reserved (remote)" or "half-closed (local)" state.
     TEXT[!MUST]: Clients MUST NOT provide a prioritized stream ID
     TEXT[!MUST]:    that refers to a push stream in the "idle" state.
-    TEXT[!MUST]: Servers that
-    TEXT[!MUST]:    receive a PRIORITY_UPDATE for a push stream in the "idle" state MUST
-    TEXT[!MUST]:    respond with a connection error of type PROTOCOL_ERROR.
-    TEXT[!MUST]:    If a PRIORITY_UPDATE frame is received with a prioritized stream ID
-    TEXT[!MUST]:    of 0x0, the recipient MUST respond with a connection error of type
-    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]: Servers that
+    TEXT[!MUST,implementation,test]:    receive a PRIORITY_UPDATE for a push stream in the "idle" state MUST
+    TEXT[!MUST,implementation,test]:    respond with a connection error of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]:    If a PRIORITY_UPDATE frame is received with a prioritized stream ID
+    TEXT[!MUST,implementation,test]:    of 0x0, the recipient MUST respond with a connection error of type
+    TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.
     TEXT[!MUST]:    Servers MUST NOT send PRIORITY_UPDATE frames.
     TEXT[!MUST]: If a client receives a
     TEXT[!MUST]:    PRIORITY_UPDATE frame, it MUST respond with a connection error of
@@ -3940,8 +3947,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9218
     TEXT[!MUST]:    connection error of type H3_FRAME_UNEXPECTED.
 
   SECTION: [Merging Client- and Server-Driven Priority Parameters](#section-8)
-    TEXT[implementation]:    The absence of a priority parameter in an HTTP response indicates the
-    TEXT[implementation]:    server's disinterest in changing the client-provided value.
+    TEXT[implementation]:    An origin can use the Priority response header field to indicate its
+    TEXT[implementation]:    view on how an HTTP response should be prioritized.
+    TEXT[implementation,test]:    The absence of a priority parameter in an HTTP response indicates the
+    TEXT[implementation,test]:    server's disinterest in changing the client-provided value.
     TEXT[test]:    the intermediary might alter its understanding of the urgency from 5
     TEXT[test]:    to 1, because it prefers the server-provided value over the client's.
     TEXT[test]:    The incremental value continues to be true, i.e., the value specified
@@ -3977,9 +3986,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9218
   SECTION: [HTTP/1.x Back Ends](#section-13.2)
     TEXT[!MAY]: However, backend servers MAY still use
     TEXT[!MAY]:    client headers for request scheduling.
-    TEXT[!SHOULD]: Backend servers SHOULD only
-    TEXT[!SHOULD]:    schedule based on client priority information where that information
-    TEXT[!SHOULD]:    can be scoped to individual end clients.
+    TEXT[!SHOULD,implementation,test]: Backend servers SHOULD only
+    TEXT[!SHOULD,implementation,test]:    schedule based on client priority information where that information
+    TEXT[!SHOULD,implementation,test]:    can be scoped to individual end clients.
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9651
   SECTION: [Notational Conventions](#section-1.2)

@@ -128,8 +128,13 @@ genValid = oneof
       sid <- streamId; endH <- arbitrary; frag <- someBytes
       fl <- withUnused 0x04 (if endH then 0x4 else 0); r <- arbitrary
       pure (Wire 0x9 fl r sid frag, ContinuationFrame (StreamId sid) endH frag)
+  , do -- PRIORITY_UPDATE (RFC 9218)
+      target <- streamId; reservedTarget <- arbitrary; value <- someBytes
+      fl <- arbitrary; r <- arbitrary
+      pure ( Wire 0x10 fl r 0 (be32 ((if reservedTarget then 0x80000000 else 0) .|. target) <> value)
+           , PriorityUpdateFrame (StreamId target) value )
   , do -- a type this module does not know
-      t <- choose (0xA, 0xFF); sid <- choose (0, 0x7FFFFFFF); p <- someBytes; fl <- arbitrary; r <- arbitrary
+      t <- choose (0xA, 0xFF) `suchThat` (/= 0x10); sid <- choose (0, 0x7FFFFFFF); p <- someBytes; fl <- arbitrary; r <- arbitrary
       pure (Wire t fl r sid p, UnknownFrame t (StreamId sid) (B.length p))
   ]
 
@@ -195,6 +200,23 @@ genNearMiss = oneof
   , do t <- elements [0x4, 0x6, 0x7]; sid <- streamId
        let p = case t of { 0x6 -> B.replicate 8 0; 0x7 -> B.replicate 8 0; _ -> "" }
        pure ("not stream 0", encodeWire (Wire t 0 False sid p), conn ProtocolError NeedsConnection)
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7.1
+  -- # The Stream Identifier field (see Section 5.1.1 of [HTTP/2]) in the
+  -- # PRIORITY_UPDATE frame header MUST be zero (0x0).  Receiving a
+  -- # PRIORITY_UPDATE frame with a field of any other value MUST be treated
+  -- # as a connection error of type PROTOCOL_ERROR.
+  , do sid <- streamId; target <- streamId
+       pure ("PRIORITY_UPDATE not on stream 0", encodeWire (Wire 0x10 0 False sid (be32 target <> "u=1")),
+             conn ProtocolError NeedsConnection)
+  , do n <- choose (0, 3)
+       pure ("PRIORITY_UPDATE too short", encodeWire (Wire 0x10 0 False 0 (B.replicate n 0)), conn FrameSizeError WrongLength)
+  -- = https://www.rfc-editor.org/rfc/rfc9218#section-7.1
+  -- # If a PRIORITY_UPDATE frame is received with a prioritized stream ID
+  -- # of 0x0, the recipient MUST respond with a connection error of type
+  -- # PROTOCOL_ERROR.
+  , do reserved <- elements [0, 0x80000000]; value <- someBytes
+       pure ("PRIORITY_UPDATE of stream 0", encodeWire (Wire 0x10 0 False 0 (be32 reserved <> value)),
+             conn ProtocolError PrioritizesConnection)
   , do sid <- streamId; n <- lengthOtherThan 5
        pure ("PRIORITY length", encodeWire (Wire 0x2 0 False sid (B.replicate n 0)),
              Refused (FrameError (Stream (StreamId sid)) FrameSizeError WrongLength))
@@ -407,6 +429,12 @@ prop_boundaries = once $ conjoin
       , n <- [good - 1, good + 1]
       , let expected = if t == 0x2 then Refused (FrameError (Stream (StreamId 1)) FrameSizeError WrongLength)
                        else conn FrameSizeError WrongLength ]
+  , counterexample "PRIORITY_UPDATE of 0 to 3 octets, and of 4 (RFC 9218 Section 7.1)" $
+      conjoin [ counterexample (show n) $
+                  parseFrame ourMax (encodeWire (Wire 0x10 0 False 0 (B.replicate n 1))) === conn FrameSizeError WrongLength
+              | n <- [0 .. 3] ]
+      .&&. parseFrame ourMax (encodeWire (Wire 0x10 0 False 0 (B.replicate 4 1)))
+             === Parsed (PriorityUpdateFrame (StreamId 0x01010101) "") 13
   , counterexample "GOAWAY of 7 and 8 octets" $
       parseFrame ourMax (encodeWire (Wire 0x7 0 False 0 (B.replicate 7 0))) === conn FrameSizeError WrongLength
       .&&. parseFrame ourMax (encodeWire (Wire 0x7 0 False 0 (B.replicate 8 0)))

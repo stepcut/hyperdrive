@@ -135,7 +135,8 @@ genSession = do
       case choice of
         'r' -> do
           method <- elements ["GET", "POST"]
-          extra <- elements [[], [("x-a", "1")], [("content-length", "3")], [("te", "trailers")]]
+          extra <- elements [ [], [("x-a", "1")], [("content-length", "3")], [("te", "trailers")]
+                            , [("priority", "u=1, i")], [("priority", "u=")], [("via", "1.1 p"), ("priority", "u=0")] ]
           let fields = [(":method", method), (":scheme", "http"), (":authority", "example.com"), (":path", "/")] ++ extra
               (block, enc') = encodeBlock enc fields
           endStream <- arbitrary
@@ -182,6 +183,8 @@ knownCut input = go (B.length connectionPreface) initial
       | typ == 0x4 && not ack && 8 `elem` ids payload =
           cut "SETTINGS_ENABLE_CONNECT_PROTOCOL: unknown to us (RFC 8441 unsupported), checked by nghttp2"
       | typ == 0x2 && sid == 0 = cut "PRIORITY on stream 0: PROTOCOL_ERROR (Section 6.3), ignored by nghttp2"
+      | typ == 0x10 && sid == 0 && len >= 4 && B.index payload 0 .&. 0x7F == 0 && B.all (== 0) (B.take 3 (B.drop 1 payload)) =
+          cut "PRIORITY_UPDATE of stream 0: PROTOCOL_ERROR (RFC 9218 Section 7.1), ignored by nghttp2"
       | typ `elem` [0x0, 0x1] && S.member sid (tEnded t) =
           cut "DATA or HEADERS on a half-closed stream: a stream error, which nghttp2 makes a connection error"
       | typ == 0x4 && not ack, Just w <- lookup 4 (pairs payload)

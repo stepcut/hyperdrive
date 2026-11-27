@@ -120,7 +120,8 @@ done:
 
 /* A whole server session: the client's octets (preface first) given to
  * nghttp2 at once, after a SETTINGS like the core's own (D9) and its
- * connection window raised to 1 MiB, as the core's preface does.
+ * connection window raised to 1 MiB, as the core's preface does, with
+ * PRIORITY_UPDATE parsed, as the core parses it.
  * Records:
  *
  *   R  a request was received: its stream (4 octets, little-endian)
@@ -148,7 +149,12 @@ long h2_nghttp2_session(const uint8_t *in, size_t len, uint8_t *out, size_t capa
   nghttp2_session *s;
   if (nghttp2_session_callbacks_new(&cb) != 0) return -2;
   nghttp2_session_callbacks_set_on_frame_recv_callback(cb, on_frame);
-  if (nghttp2_session_server_new(&s, cb, &o) != 0) return -2;
+  /* PRIORITY_UPDATE (RFC 9218) is parsed only when asked for */
+  nghttp2_option *opt;
+  if (nghttp2_option_new(&opt) != 0) return -2;
+  nghttp2_option_set_builtin_recv_extension_type(opt, NGHTTP2_PRIORITY_UPDATE);
+  if (nghttp2_session_server_new2(&s, cb, &o, opt) != 0) return -2;
+  nghttp2_option_del(opt);
   nghttp2_session_callbacks_del(cb);
   nghttp2_settings_entry iv[] = {
     { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100 },

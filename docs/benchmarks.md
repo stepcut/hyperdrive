@@ -1649,6 +1649,30 @@ the skipped receives (without them the same), and the counts of system
 calls are as before; perhaps the TCP stack, with the owner acting at
 other moments. Open, for a profile of the kernel.
 
+## 2026-11-27 (evening): RFC 9218's scheduler in the HTTP/2 core, allocation only
+
+The core's round robin (`cOrder`) became `Hyperdrive.HTTP2.Schedule`
+(docs/priorities-design.md). No timings yet (they wait for a quiet
+machine); allocation, exact, in process, through `step` alone with the
+transport writing everything (throwaway programs, not in the tree):
+
+| | before (408f103) | after |
+|---|---|---|
+| a small request (GET, 13 octets of content, one after another) | 2,316 B | 1,775 B |
+| a 16 KiB DATA frame, 1 stream writing | 6,099 B | 7,531 B |
+| the same, 10 streams | 7,535 B | 8,967 B |
+| the same, 64 streams | 14,761 B | 16,193 B |
+
+The first version cost 2.2 KB more a DATA frame: the schedule was
+updated before and after each frame (two copies of the connection's
+record, about 330 bytes each) and the incremental turns filtered on
+every frame. Taking the turn and leaving the schedule in one update
+after the frame, and rotating the turns when the stream is first in
+them (the usual case), brought it to 1.4 KB. What is left is the
+schedule's own work for a stream whose buffer empties on each frame:
+in on the write, its turn, out after the frame. Small requests allocate
+less than before (the old round's `elem` and `Seq` work per write).
+
 ## Experiments for later: what a large gain would take
 
 Not planned for soon (the user, 2026-11-24); set down so that they are
