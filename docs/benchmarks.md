@@ -1519,10 +1519,22 @@ a second's warm-up; µs of the server's CPU a request. No request failed.
 | 1 MiB responses, 32 connections | 7.8k (7.8k to 7.9k) | 6.9k (6.8k to 7.0k) | 60 / 753 | 144 / 563 |
 | 1 MiB uploads, 32 connections | 3.6k (3.5k to 3.6k) | 4.9k (4.8k to 5.0k) | 793 / 470 | 487 / 385 |
 
-Not yet to be relied on for the small requests: warp serves 739k
-requests a second over HTTP/1.1 on this machine, so its 37k to 57k
-over HTTP/2 is to be checked (warp over HTTP/2 against warp over
-HTTP/1.1, and a profile) before the lead is believed. The settings
+Checked for the small requests, since warp serves 739k a second over
+HTTP/1.1 on this machine: system calls counted with strace over 20,000
+requests, a stream at a time on 100 connections, a request costing
+
+| | futex | epoll_wait | sendto | recvfrom (finding nothing) | epoll_ctl |
+|---|---|---|---|---|---|
+| hyperdrive | 0.7 | 0.14 | 1.0 | 3.1 (2.1) | 2.9 |
+| warp | 35 | 2.8 | 1.9 | 2.0 (1.0) | 1.1 |
+
+warp's HTTP/2 hands each request between its receiver, sender and
+stream threads, which wake each other through STM: 35 `futex` calls a
+request. Its numbers are its own, not the setup's. Ours show the owner
+receiving twice for nothing and calling `epoll_ctl` three times a
+request with one stream at a time: the HTTP/1.1 driver's yield before
+receiving after a write (2026-11-20, 0.015 receives for nothing a
+request) is not in the HTTP/2 owner yet. The settings
 differ as each ships them: warp allows 64 streams at once (so the
 many-streams run uses 64) and gives 256 KiB stream windows, ours 1
 MiB, which may favour us on the large responses and uploads.
