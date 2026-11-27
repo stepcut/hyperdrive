@@ -38,6 +38,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Data.Char (toLower)
+import qualified Data.IntSet as IntSet
 import Data.List (nub)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust, isJust, isNothing, listToMaybe)
@@ -88,6 +89,7 @@ data Config = Config
   , configMinRateGrace         :: !Time    -- ^ C8: the minimum rate's grace, 5 s
   , configMaxControlFrames     :: !Int     -- ^ C5: control frames emitted and not yet written, 10,000
   , configMaxRequests          :: !Int     -- ^ D9: requests before a GOAWAY, to rotate connections; 0, off
+  , configResetsKept           :: !Int     -- ^ C4: streams we reset that are remembered, 1,000
   , configTarget              :: !TargetContext
     -- ^ the connection's scheme and default authority, and whether its
     -- peer is a trusted gateway (D11)
@@ -120,6 +122,7 @@ defaultConfig = Config
   , configMinRateGrace = 5000
   , configMaxControlFrames = 10000
   , configMaxRequests = 0
+  , configResetsKept = 1000
   , configTarget = TargetContext HTTP Nothing False
   }
 
@@ -298,6 +301,8 @@ data Conn = Conn
   , cControlEnds :: !(Seq Int)      -- ^ where each control frame not yet written ends, in
                                     --   'cEmitted' octets, oldest first (C5)
   , cRequests    :: !Int            -- ^ requests passed on (D9)
+  , cResetByUs   :: !IntSet.IntSet  -- ^ streams we reset, the latest 'configResetsKept' (C4)
+  , cResetCount  :: !Int            -- ^ how many that is
   , cLastStream  :: !Word32         -- ^ the highest client stream opened (C4)
   , cStreams     :: !(M.Map Word32 StreamEntry) -- ^ the streams still served (C4)
   , cBlock       :: !(Maybe Block)  -- ^ a field block being received (C7)
@@ -370,6 +375,8 @@ newConn config now =
         , cEmitted = sum (map B.length out)
         , cControlEnds = Seq.empty
         , cRequests = 0
+        , cResetByUs = IntSet.empty
+        , cResetCount = 0
         , cLastStream = 0
         , cStreams = M.empty
         , cBlock = Nothing
@@ -592,7 +599,7 @@ expireStreams now c = case S.minView (cTimers c) of
 streamTimedOut :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
 streamTimedOut sid st c =
   andThen (ended sid st c) $ \c1 ->
-    let (c2, outs) = emitControl [renderRstStream (StreamId sid) Cancel] c1
+    let (c2, outs) = resetStream sid Cancel c1
     in result c2 (RequestAborted (StreamId sid) StreamTimedOut : outs)
 
 -- What has been received and not used.
@@ -1002,9 +1009,31 @@ forStream c sid endStream decoded
         -- #    this state, it MUST respond with a stream error (Section 5.4.2) of
         -- #    type STREAM_CLOSED.
         HalfClosedRemote -> streamError c sid st StreamClosed
-        ClosedHeld -> result c []
-      -- closed: minimally processed (decoded above) and discarded (C4)
-      Nothing -> result c []
+        -- reset by us while its handler runs: discarded, as below
+        ClosedHeld
+          | IntSet.member (fromIntegral sid) (cResetByUs c) -> result c [] -- held
+          -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1
+          -- # An endpoint MAY treat receipt of any other type of frame
+          -- #    on a closed stream as a connection error (Section 5.4.1) of type
+          -- #    STREAM_CLOSED, except as noted below.
+          --
+          -- Reset by the client, which sends nothing more on it: the same
+          -- answer whether or not its handler has returned
+          | otherwise -> goAway c StreamClosed
+      -- closed by our reset: minimally processed (decoded above) and
+      -- discarded, since the client may have sent it, trailers say,
+      -- before it saw the reset (C4)
+      Nothing
+        | IntSet.member (fromIntegral sid) (cResetByUs c) -> result c [] -- gone
+        -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1.1
+        -- # An endpoint that
+        -- # receives an unexpected stream identifier MUST respond with a
+        -- # connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+        --
+        -- A stream never opened, or one whose request had ended (the
+        -- client sends nothing more on it), or that the client reset:
+        -- as nine of the ten implementations surveyed (C4)
+        | otherwise -> goAway c ProtocolError
 
 newStream :: Conn -> Word32 -> Bool -> Decoded -> (Conn, [Output])
 newStream c sid endStream decoded
@@ -1015,7 +1044,7 @@ newStream c sid endStream decoded
   --
   -- Above our final GOAWAY's last stream: refused (D10's case 5), not
   -- charged, since the client sent it before it knew
-  | sid > cAcceptLimit c = emitControl [renderRstStream (StreamId sid) RefusedStream] c
+  | sid > cAcceptLimit c = resetStream sid RefusedStream c
   -- after the client's own GOAWAY, no new streams (C11)
   | cPeerGoAway c || active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
       -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1.2
@@ -1023,7 +1052,7 @@ newStream c sid endStream decoded
       -- # that receives a HEADERS frame that causes its advertised concurrent
       -- # stream limit to be exceeded MUST treat this as a stream error
       -- # (Section 5.4.2) of type PROTOCOL_ERROR or REFUSED_STREAM.
-      charge 1 c $ \c1 -> emitControl [renderRstStream (StreamId sid) RefusedStream] c1
+      charge 1 c $ \c1 -> resetStream sid RefusedStream c1
   | otherwise = case decoded of
       ListTooLarge -> refuse tooLarge
       Fields fs
@@ -1041,7 +1070,7 @@ newStream c sid endStream decoded
     -- sending; each costs one (C10)
     refuse status = charge 1 c $ \c1 -> respond status sid endStream c1
     -- D10's case 2: the stream error alone
-    malformed = charge 1 c $ \c1 -> emitControl [renderRstStream (StreamId sid) ProtocolError] c1
+    malformed = charge 1 c $ \c1 -> resetStream sid ProtocolError c1
     accept rc
       | any (/= "100-continue") expectations = refuse ExpectationFailed
       -- = https://www.rfc-editor.org/rfc/rfc9113#section-8.1.1
@@ -1116,7 +1145,7 @@ streamError c sid st code = streamErrorBecause (ResetByServer code) c sid st cod
 streamErrorBecause :: AbortReason -> Conn -> Word32 -> StreamEntry -> ErrorCode -> (Conn, [Output])
 streamErrorBecause reason c sid st code = charge 1 c $ \c1 ->
   andThen (ended sid st c1) $ \c2 ->
-    let (c3, outs) = emitControl [renderRstStream (StreamId sid) code] c2
+    let (c3, outs) = resetStream sid code c2
     in result c3 (RequestAborted (StreamId sid) reason : outs)
 
 -- | A stream ended early: out of the map, or kept closed while its
@@ -1141,7 +1170,7 @@ respond status sid requestEnded c =
       (block, enc) = encodeBlock (cEncoder c) fields
       frames = renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c))) (StreamId sid) True block
   in andThen (emit frames c { cEncoder = enc })
-             (if requestEnded then (`result` []) else emitControl [renderRstStream (StreamId sid) NoError])
+             (if requestEnded then (`result` []) else resetStream sid NoError)
 
 -- | A handler returned. Before its response, it failed: the core
 -- answers 500 (C2). While its response is being sent, the stream stays
@@ -1247,8 +1276,12 @@ maxWindow = 2147483647
 -- # Providing tiny increments to flow control in WINDOW_UPDATE frames can
 -- #    cause a sender to generate a large number of DATA frames.
 --
--- So a DATA frame is at least this long unless it carries the last of
--- what is queued (C5).
+-- So a WINDOW_UPDATE that leaves a window under this costs nuisance
+-- budget (C10), which bounds the tiny DATA frames a client can draw.
+-- DATA is sent within whatever window there is, however small, as all
+-- ten implementations surveyed do (decided 2026-11-27, after h2spec's
+-- first run: a floor held a one-octet window's DATA back for ever,
+-- docs/http2-driver-design.md).
 dataFloor :: Int
 dataFloor = 1024
 
@@ -1314,7 +1347,7 @@ abort :: Word32 -> Conn -> (Conn, [Output])
 abort sid c = case M.lookup sid (cStreams c) of
   Just st | sState st /= ClosedHeld ->
     andThen (ended sid st c) $ \c1 ->
-      let (c2, outs) = emitControl [renderRstStream (StreamId sid) InternalError] c1
+      let (c2, outs) = resetStream sid InternalError c1
       in result c2 (RequestAborted (StreamId sid) (ResetByServer InternalError) : outs)
   _ -> result c []
 
@@ -1326,7 +1359,7 @@ finished :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
 finished sid st c =
   let stillSending = sState st == Open
       c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
-  in andThen (if stillSending then emitControl [renderRstStream (StreamId sid) NoError] c1 else result c1 [])
+  in andThen (if stillSending then resetStream sid NoError c1 else result c1 [])
              (giveBack (sQueued st))
 
 -- | Put a stream in the round, if it is not there (D8).
@@ -1374,7 +1407,7 @@ sendOne sid st c = case sResponse st of
         -- # track the negative flow-control window and MUST NOT send new flow-
         -- # controlled frames until it receives WINDOW_UPDATE frames that cause
         -- # the flow-control window to become positive.
-        in if n <= 0 || n < sOutLength st && n < dataFloor then Nothing
+        in if n <= 0 then Nothing
            else
              let (pieces, rest) = takeOut n (sOut st)
                  lastOne = n == sOutLength st
@@ -1488,6 +1521,21 @@ emitControl frames c
   | otherwise =
       let ends = Seq.fromList (drop 1 (scanl (+) (cEmitted c) (map B.length frames)))
       in emit frames c { cControlEnds = cControlEnds c Seq.>< ends }
+
+-- | RST_STREAM for a stream, and the stream remembered (the latest
+-- 'configResetsKept', the oldest forgotten first), so that a field block
+-- the client sent before it saw the reset is told from an identifier
+-- that was never opened (C4; decided 2026-11-27, as Rust's h2 and Kazu
+-- Yamamoto's http2 remember their resets).
+resetStream :: Word32 -> ErrorCode -> Conn -> (Conn, [Output])
+resetStream sid code c = emitControl [renderRstStream (StreamId sid) code] (remember c)
+  where
+    k = fromIntegral sid
+    limit = configResetsKept (cConfig c)
+    remember c0
+      | limit <= 0 || IntSet.member k (cResetByUs c0) = c0
+      | cResetCount c0 >= limit = c0 { cResetByUs = IntSet.insert k (IntSet.deleteMin (cResetByUs c0)) }
+      | otherwise = c0 { cResetByUs = IntSet.insert k (cResetByUs c0), cResetCount = cResetCount c0 + 1 }
 
 -- | The control frames the transport has now written leave the count.
 dropWritten :: Conn -> Conn

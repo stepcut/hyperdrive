@@ -371,12 +371,39 @@ prop_streams = once $ conjoin
       let [b, t] = blocks [base, [("x-sum", "abc")]]
           outs = snd (run (received (headers 1 True b <> headers 1 True t)))
       in seen outs === [SeenReset 1 StreamClosed] .&&. aborted outs === [(1, ResetByServer StreamClosed)]
-  , counterexample "a field block on a closed stream is decoded and discarded; the table stays in step" $
-      let [b1, b2, b3] = blocks [base, base ++ [("x-new", "1")], base ++ [("x-new", "1")]]
+  , counterexample "trailers on a stream we reset are decoded and discarded; the table stays in step" $
+      -- content beyond its declared length: we reset stream 1; trailers
+      -- the client sent before it saw that come after
+      let [b1, t, b3] = blocks [post ++ [("content-length", "1")], [("x-new", "1")], base ++ [("x-new", "1")]]
+          (c, _) = run (received (headers 1 False b1 <> dataFrames 1 False "12"))
+          (c', _) = step 0 (HandlerDone (StreamId 1)) c
+          (_, outs) = step 0 (Received (headers 1 True t <> headers 3 True b3)) c'
+          -- the same while the handler still runs
+          (_, held) = step 0 (Received (headers 1 True t <> headers 3 True b3)) c
+      in map (\(s, _, _, _) -> s) (requests outs) === [3] .&&. seen outs === [] .&&. not (closed outs)
+         .&&. map (\(s, _, _, _) -> s) (requests held) === [3] .&&. not (closed held)
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1.1
+  -- # An endpoint that
+  -- # receives an unexpected stream identifier MUST respond with a
+  -- # connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+  , counterexample "HEADERS on a lower identifier never opened: PROTOCOL_ERROR (h2spec 5.1.1/2)" $
+      let [b5, b3] = blocks [base, base]
+      in last (seen (snd (run (received (headers 5 True b5 <> headers 3 True b3))))) === SeenGoAway ProtocolError
+  , counterexample "HEADERS on a stream whose request had ended: PROTOCOL_ERROR" $
+      let [b1, b1'] = blocks [base, base]
           (c, _) = run (received (headers 1 True b1))
           (c', _) = step 0 (HandlerDone (StreamId 1)) c
-          (_, outs) = step 0 (Received (headers 1 True b2 <> headers 3 True b3)) c'
-      in map (\(s, _, _, _) -> s) (requests outs) === [3] .&&. seen outs === []
+      in seen (snd (step 0 (Received (headers 1 True b1')) c')) === [SeenGoAway ProtocolError]
+  , counterexample "HEADERS after the client's own reset, its handler still running: STREAM_CLOSED (h2spec 5.1 closed/9)" $
+      let [b1, t1] = blocks [post, [("x-sum", "1")]]
+      in last (seen (snd (run (received (headers 1 False b1 <> rst 1 Cancel <> headers 1 True t1))))) === SeenGoAway StreamClosed
+  , counterexample "only the latest resets are kept: with two kept, the third reset forgets the first" $
+      let config = defaultConfig { configResetsKept = 2 }
+          malformed = base ++ [("X-Upper", "1")]
+          [m1, m3, m5, t1, t5] = blocks [malformed, malformed, malformed, base, base]
+          (c, _) = runWith config (received (headers 1 True m1 <> headers 3 True m3 <> headers 5 True m5))
+      in seen (snd (step 0 (Received (headers 5 True t5)) c)) === []
+         .&&. seen (snd (step 0 (Received (headers 1 True t1)) c)) === [SeenGoAway ProtocolError]
   ]
 
 -- splitting a request into CONTINUATIONs, and its octets into pieces,
@@ -529,7 +556,7 @@ responseTests :: TestTree
 responseTests = testGroup "The connection core: responses and the scheduler (C5, C12, D8)"
   [ testProperty "responses, by example" prop_responses
   , testProperty "content not as declared, Abort, misuse" prop_responseErrors
-  , testProperty "the client's windows: WINDOW_UPDATE, INITIAL_WINDOW_SIZE, the 1 KiB floor" prop_sendWindows
+  , testProperty "the client's windows: WINDOW_UPDATE, INITIAL_WINDOW_SIZE, tiny windows" prop_sendWindows
   , testProperty "round robin, buffers and Writable, pacing" prop_scheduler
   , testProperty "any writes and window updates: the content arrives whole, in order, within the windows" prop_sendModel
   ]
@@ -700,13 +727,12 @@ prop_sendWindows = once $ conjoin
   -- = https://www.rfc-editor.org/rfc/rfc9113#section-10.5
   -- # Providing tiny increments to flow control in WINDOW_UPDATE frames can
   -- #    cause a sender to generate a large number of DATA frames.
-  , counterexample "under 1 KiB of window and more queued: nothing sent; the last octets go whatever their size" $
+  , counterexample "a window however small: what it allows is sent (h2spec 6.9.1/1)" $
       let [b] = blocks [base]
           (c, o) = feedAll (serve [InitialWindowSize 1023] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 1500 0x61)]
           o1 = from (c, []) [windowUpdate 1 1]
-          (c2, _) = feedAll (serve [InitialWindowSize 1023] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 1000 0x61)]
-      in datas o === [] .&&. map (\(_, d, _) -> B.length d) (datas o1) === [1024]
-         .&&. map (\(_, d, _) -> B.length d) (datas (from (c2, []) [endOn 1])) === [0] .&&. writables o === [1]
+      in map (\(_, d, _) -> B.length d) (datas o) === [1023] .&&. map (\(_, d, _) -> B.length d) (datas o1) === [1]
+         .&&. writables o === [1]
   , counterexample "an empty DATA with END_STREAM needs no window" $
       let [b] = blocks [base]
       in datas (from (serve [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok (Just 0)), endOn 1]) === [(1, "", True)]
@@ -794,9 +820,8 @@ prop_scheduler = once $ conjoin
       let [b] = blocks [base]
           (c, o) = feedAll (serve [InitialWindowSize 0] (headers 1 True b)) [respondOn 1 (ok Nothing), write 1 (B.replicate 16383 0x61)]
           (c1, o1) = feedAll (c, []) [write 1 "x"]
-          o2 = from (c1, []) [windowUpdate 1 1023]
-          o3 = from (c1, []) [windowUpdate 1 1024]
-      in writables o === [1] .&&. writables o1 === [] .&&. writables o2 === [] .&&. writables o3 === [1]
+          o2 = from (c1, []) [windowUpdate 1 1]
+      in writables o === [1] .&&. writables o1 === [] .&&. writables o2 === [1]
   , counterexample "the connection's 256 KiB: a stream with room waits too, until any is sent" $
       let bs = blocks (replicate 17 base)
           opened = B.concat [headers (2 * i + 1) True b | (i, b) <- zip [0 ..] bs]

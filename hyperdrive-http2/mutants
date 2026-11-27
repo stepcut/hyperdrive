@@ -533,8 +533,8 @@ why: reset streams whose handlers still run are bounded too (C6)
 + | active >= configMaxConcurrentStreams cfg =
 
 why: a refused stream costs budget (C10)
-- charge 1 c $ \c1 -> emitControl [renderRstStream (StreamId sid) RefusedStream] c1
-+ emitControl [renderRstStream (StreamId sid) RefusedStream] c
+- charge 1 c $ \c1 -> resetStream sid RefusedStream c1
++ resetStream sid RefusedStream c
 
 why: more than 100 fields is a 431 (D9)
 - | length fs > configMaxFields cfg -> refuse tooLarge
@@ -545,12 +545,12 @@ why: a response the core makes itself costs budget (C10)
 + refuse status = respond status sid endStream c
 
 why: a malformed request costs budget (C10)
-- malformed = charge 1 c $ \c1 -> emitControl [renderRstStream (StreamId sid) ProtocolError] c1
-+ malformed = emitControl [renderRstStream (StreamId sid) ProtocolError] c
+- malformed = charge 1 c $ \c1 -> resetStream sid ProtocolError c1
++ malformed = resetStream sid ProtocolError c
 
 why: after a response to a request still sending, RST_STREAM NO_ERROR (D10 case 3)
-- (if requestEnded then (`result` []) else emitControl [renderRstStream (StreamId sid) NoError])
-+ (if True then (`result` []) else emitControl [renderRstStream (StreamId sid) NoError])
+- (if requestEnded then (`result` []) else resetStream sid NoError)
++ (if True then (`result` []) else resetStream sid NoError)
 
 why: an expectation other than 100-continue gets 417 (C9)
 - | any (/= "100-continue") expectations = refuse ExpectationFailed
@@ -653,7 +653,7 @@ why: a write to a stream no longer sending is still answered (C5)
 + _ -> result c []
 
 why: Abort resets the stream with INTERNAL_ERROR (D10)
-- let (c2, outs) = emitControl [renderRstStream (StreamId sid) InternalError] c1
+- let (c2, outs) = resetStream sid InternalError c1
 + let (c2, outs) = result c1 []
 
 why: a response complete before the request is asks the client to stop (Section 8.1)
@@ -703,10 +703,6 @@ why: DATA stays within the connection's window (Section 6.9.1)
 why: DATA frames are at most 16 KiB (D8)
 - let n = minimum [ sOutLength st, sSendWindow st, cSendWindow c, dataFrameSize c ]
 + let n = minimum [ sOutLength st, sSendWindow st, cSendWindow c ]
-
-why: no DATA under 1 KiB unless it is the last of what is queued (Section 10.5)
-- in if n <= 0 || n < sOutLength st && n < dataFloor then Nothing
-+ in if n <= 0 then Nothing
 
 why: the frame is cut to what may be sent, the rest kept in order
 - | otherwise -> (reverse (B.take n b : acc), B.drop n b Seq.<| rest)
@@ -799,8 +795,8 @@ why: the client's GOAWAY with an error closes the connection (Section 5.4.1)
 + | otherwise -> next (c { cPeerGoAway = True }, [])
 
 why: streams above our final GOAWAY's last stream are refused (D10 case 5)
-- | sid > cAcceptLimit c = emitControl [renderRstStream (StreamId sid) RefusedStream] c
-+ | False = emitControl [renderRstStream (StreamId sid) RefusedStream] c
+- | sid > cAcceptLimit c = resetStream sid RefusedStream c
++ | False = resetStream sid RefusedStream c
 
 why: no new streams after the client's GOAWAY (C11)
 - | cPeerGoAway c || active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
@@ -867,8 +863,8 @@ why: an early timer entry is renewed, not acted on (C8)
 + if True
 
 why: a stream timed out is reset with CANCEL (C8)
-- let (c2, outs) = emitControl [renderRstStream (StreamId sid) Cancel] c1
-+ let (c2, outs) = emitControl [renderRstStream (StreamId sid) NoError] c1
+- let (c2, outs) = resetStream sid Cancel c1
++ let (c2, outs) = resetStream sid NoError c1
 
 why: a stream's clock runs only while the client holds it up (C8)
 - | sBlocked st =
@@ -963,6 +959,36 @@ why: the optional request limit is off by default (D9)
 why: the request limit allows exactly that many requests (D9)
 - in if configMaxRequests cfg > 0 && requests >= configMaxRequests cfg && cEnding c /= Draining
 + in if configMaxRequests cfg > 0 && requests > configMaxRequests cfg && cEnding c /= Draining
+
+# after h2spec's first run (2026-11-27): resets remembered, lower identifiers, no DATA floor
+
+why: a field block on a stream we reset is discarded: trailers may cross our reset (C4)
+- | IntSet.member (fromIntegral sid) (cResetByUs c) -> result c [] -- gone
++ | False -> result c [] -- gone
+
+why: HEADERS on a lower identifier we did not reset is a connection error (Section 5.1.1)
+- | otherwise -> goAway c ProtocolError
++ | otherwise -> result c []
+
+why: every stream we reset is remembered (C4)
+- | limit <= 0 || IntSet.member k (cResetByUs c0) = c0
++ | True = c0
+
+why: at the limit, the oldest reset is forgotten (C4)
+- | cResetCount c0 >= limit = c0 { cResetByUs = IntSet.insert k (IntSet.deleteMin (cResetByUs c0)) }
++ | cResetCount c0 >= limit = c0 { cResetByUs = IntSet.insert k (cResetByUs c0) }
+
+why: the resets remembered are counted, so that the limit is reached (C4)
+- | otherwise = c0 { cResetByUs = IntSet.insert k (cResetByUs c0), cResetCount = cResetCount c0 + 1 }
++ | otherwise = c0 { cResetByUs = IntSet.insert k (cResetByUs c0), cResetCount = cResetCount c0 }
+
+why: HEADERS on a stream we reset, its handler still running, is discarded (C4)
+- | IntSet.member (fromIntegral sid) (cResetByUs c) -> result c [] -- held
++ | False -> result c [] -- held
+
+why: nothing is sent with no window (Section 6.9.2)
+- in if n <= 0 then Nothing
++ in if n < 0 then Nothing
 
 file: src/Hyperdrive/HTTP2/Frame.hs
 why: SETTINGS_NO_RFC7540_PRIORITIES other than 0 or 1 is a connection error (RFC 9218 Section 2.1)

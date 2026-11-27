@@ -803,6 +803,20 @@ C6) and the highest identifier opened.
   charged (C10): they cost only the client's bandwidth. h2spec, written to RFC
   7540, expects errors in four "closed" cases; those are listed as
   known differences, with this reason, when h2spec runs (D12 step 6).
+- Changed 2026-11-27, after h2spec's first run and a survey of ten
+  implementations (docs/http2-driver-design.md): the core remembers the
+  streams it reset (the latest 1,000, `configResetsKept`, as Kazu
+  Yamamoto's http2 does; Rust's h2 keeps 5 s of them). A field block on
+  one of those is decoded and discarded, as above. A HEADERS on any
+  other identifier at or below the highest is a connection error: one
+  never opened, or whose request had ended, PROTOCOL_ERROR (Section
+  5.1.1: "An endpoint that receives an unexpected stream identifier MUST
+  respond with a connection error"; nine of the ten do so); one the
+  client reset and whose handler still runs, STREAM_CLOSED (Section 5.1's
+  MAY), so that the answer does not depend on whether the handler has
+  returned. DATA on any closed stream is still discarded and its credit
+  given back. h2spec's "closed" cases 9 and 12 pass with this; 8 and 11
+  (DATA) remain known differences.
 
 **C5. Response content is buffered per stream, the scheduler sends it,
 and the transport paces it.** `WriteBody` is accepted, whatever its
@@ -850,12 +864,14 @@ the end is already known, else an empty DATA carries it.)
   flow-controlled, and HPACK's encoder must see blocks in the order
   sent; a HEADERS and its CONTINUATIONs are one contiguous `Send`).
 - DATA goes within the peer's windows and SETTINGS_MAX_FRAME_SIZE, one
-  frame at a time from each stream that can send, in turn (D8). A
-  DATA frame is at least 1 KiB unless it ends the content, so a window
-  opened by a few octets at a time does not draw a frame for each
-  (Section 10.5: "Providing tiny increments to flow control in
-  WINDOW_UPDATE frames can cause a sender to generate a large number of
-  DATA frames").
+  frame at a time from each stream that can send, in turn (D8). (Changed
+  2026-11-27: the first version sent no DATA frame under 1 KiB unless it
+  ended the content, against Section 10.5's tiny WINDOW_UPDATEs; it held
+  a one-octet window's DATA back for ever, failing five h2spec cases,
+  and none of ten implementations surveyed has such a floor. A window
+  opened by a few octets at a time is answered with frames that small,
+  and each WINDOW_UPDATE that leaves a window under 1 KiB costs nuisance
+  budget, C10, which bounds how many such frames a client can draw.)
 - The peer's windows may go negative (Section 6.9.2). A WINDOW_UPDATE
   that takes a window above 2^31-1 is RST_STREAM FLOW_CONTROL_ERROR
   for a stream and GOAWAY FLOW_CONTROL_ERROR for the connection
@@ -970,7 +986,7 @@ acknowledgements), each setting in a SETTINGS after its first six,
 PRIORITY, empty DATA without END_STREAM, an empty CONTINUATION, a
 frame of unknown type, a refused stream, a request the core answers
 itself (D10's cases 2 and 3: the 400, 421, 431, 417), a WINDOW_UPDATE
-that leaves the window under the 1 KiB DATA floor (C5), each
+that leaves the window under 1 KiB (C5), each
 RST_STREAM we send for a stream error (FLOW_CONTROL_ERROR,
 STREAM_CLOSED, PROTOCOL_ERROR, FRAME_SIZE_ERROR; not NO_ERROR, the
 timers' CANCEL, or REFUSED_STREAM, charged as a refused stream), and a
@@ -1058,7 +1074,11 @@ all, and time.
 - h2spec's expected failures are listed by name from its first run,
   as the llhttp differences are: the four "closed" cases of C4, and
   the two self-dependency cases of Section 5.3.1 (RFC 9113 dropped
-  that rule, and the parser keeps no dependency).
+  that rule, and the parser keeps no dependency). As run (2026-11-27,
+  docs/http2-driver-design.md): 140 of 146 pass; the six left are
+  "closed" 8 and 11 (DATA on closed streams, C4), 5.3.1's two, 3.5/2
+  (an invalid preface goes to HTTP/1.1, D2) and 6.5.3/1 (a repeated
+  setting is refused, C10).
 - Mutants for every check.
 
 ## Other implementations (surveyed 2026-11-25)
