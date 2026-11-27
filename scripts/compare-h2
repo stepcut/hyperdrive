@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Time HTTP/2 servers over h2c (prior knowledge) against each other with
+# h2load (nghttp2), in rotation, and summarize: for each, requests a
+# second (mean and range), failures, and the CPU a request costs, user
+# and kernel, from /proc.
+#
+#   nix develop .#bench -c scripts/compare-h2 [-r ROUNDS] [-k "KINDS"] SERVER ...
+#   nix develop .#bench -c scripts/compare-h2 hyperdrive warp
+#
+# A SERVER is NAME, NAME:RTSFLAGS or NAME=PATH, as for compare-servers
+# (bench-hyperdrive and bench-warp serve the same application, h2c on
+# by default in both). Their defaults differ: warp's stream windows are
+# 256 KiB, ours 1 MiB, which matters for large and upload. KINDS (default all):
+#
+#   m1      100 connections, one stream at a time each (the nearest to HTTP/1.1)
+#   m10     100 connections, 10 streams at a time each
+#   m64     10 connections, 64 streams at a time each (warp's limit on
+#           concurrent streams; ours is 100)
+#   large   GET /large (1 MiB), 32 connections, one stream each
+#   upload  POST /upload of 1 MiB, 32 connections, one stream each
+#
+# Timings: ask for a quiet machine first. The server is pinned to CPUs
+# 0-7 (-N8) and h2load (8 threads) to 8-15; each run takes DURATION
+# seconds (default 5) after a second's warm-up. SMOKE=1 runs each once
+# for a second, to check that everything works (not a measurement).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+ROUNDS=4
+KINDS="m1 m10 m64 large upload"
+while getopts "r:k:" opt; do
+  case $opt in
+    r) ROUNDS=$OPTARG ;;
+    k) KINDS=$OPTARG ;;
+    *) exit 2 ;;
+  esac
+done
+shift $((OPTIND - 1))
+[ $# -gt 0 ] || { sed -n '2,24p' "$0"; exit 2; }
+DURATION=${DURATION:-5}
+WARMUP=1
+if [ "${SMOKE:-}" = 1 ]; then ROUNDS=1; DURATION=1; WARMUP=0; fi
+PORT=${PORT:-18096}
+results=$(mktemp)
+upload=$(mktemp)
+head -c 1048576 /dev/zero > "$upload"
+trap 'rm -f "$results" "$upload"' EXIT
+
+for kind in $KINDS; do
+  case $kind in
+    m1)     args=(-c100 -m1 "/") ;;
+    m10)    args=(-c100 -m10 "/") ;;
+    m64)    args=(-c10 -m64 "/") ;;
+    large)  args=(-c32 -m1 "/large") ;;
+    upload) args=(-c32 -m1 -d "$upload" "/upload") ;;
+    *) echo "unknown kind: $kind" >&2; exit 2 ;;
+  esac
+  path=${args[-1]}; unset 'args[-1]'
+  for _ in $(seq "$ROUNDS"); do
+    for spec in "$@"; do
+      server=${spec%%:*}; flags=""; [ "$spec" != "$server" ] && flags=${spec#*:}
+      name=${server%%=*}; bin="bench-$name"; [ "$server" != "$name" ] && bin=${server#*=}
+      # shellcheck disable=SC2086
+      taskset -c 0-7 "$bin" "$PORT" +RTS -N8 $flags -RTS &
+      pid=$!
+      for _ in $(seq 50); do (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && break; sleep 0.1; done
+      read -r u0 s0 < <(awk '{print $14, $15}' "/proc/$pid/stat")
+      out=$(taskset -c 8-15 h2load -t8 -D"$DURATION" --warm-up-time="$WARMUP" "${args[@]}" "http://127.0.0.1:$PORT$path" 2>&1)
+      read -r u1 s1 < <(awk '{print $14, $15}' "/proc/$pid/stat")
+      rps=$(awk '/^finished in/ {gsub(",", "", $4); print $4}' <<<"$out")
+      bad=$(awk '/^requests:/ {gsub(",", ""); print $10 + $12 + $14}' <<<"$out")
+      [ -n "$rps" ] || { echo "h2load gave no result for $spec, $kind:" >&2; echo "$out" >&2; rps=0; bad=-1; }
+      # clock ticks are 10 ms: microseconds a request (the CPU counted
+      # covers the warm-up as well, at about the same rate), and cores
+      awk -v k="$kind" -v n="$spec" -v r="$rps" -v b="$bad" -v d="$((DURATION + WARMUP))" -v u=$((u1 - u0)) -v s=$((s1 - s0)) \
+        'BEGIN { rr = (r > 0 ? r : 1); printf "%s|%s|%.0f|%.3f|%.3f|%.2f|%s\n", k, n, r, u * 10000 / (rr * d), s * 10000 / (rr * d), (u + s) / (100 * d), b }' \
+        | tee -a "$results" | awk -F'|' '{ printf "%-7s %-28s %9.0f req/s: user %.3f us, kernel %.3f us, cores %.2f, failed %s\n", $1, $2, $3, $4, $5, $6, $7 }'
+      kill "$pid"; wait "$pid" 2>/dev/null || true
+      sleep 1
+    done
+  done
+done
+
+echo
+awk -F'|' '
+  { k = $1 "|" $2; n[k]++; r[k] += $3; u[k] += $4; s[k] += $5; c[k] += $6; f[k] += $7
+    if (!(k in lo) || $3 < lo[k]) lo[k] = $3
+    if ($3 > hi[k]) hi[k] = $3
+    if (!(k in seen)) { seen[k] = 1; order[++m] = k } }
+  END { for (i = 1; i <= m; i++) { k = order[i]; split(k, p, "|")
+          printf "%-7s %-28s %6.1fk (%6.1fk to %6.1fk) user %.3f kernel %.3f cores %.2f failed %d\n",
+                 p[1], p[2], r[k] / n[k] / 1000, lo[k] / 1000, hi[k] / 1000, u[k] / n[k], s[k] / n[k], c[k] / n[k], f[k] } }' "$results"

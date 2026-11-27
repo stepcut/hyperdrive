@@ -40,6 +40,7 @@
       benchTools = pkgs: [
         (haskellPackages pkgs).hyperdrive-bench
         pkgs.wrk
+        pkgs.nghttp2 # h2load: scripts/compare-h2
         pkgs.util-linux # taskset
         pkgs.python3
       ];

@@ -1503,6 +1503,55 @@ requests a second; for wrk's the rate is the same and the server uses
 less of the machine (4.58 cores from 4.73). ntex is 20% ahead for
 wrk's request and 11% for the browser's.
 
+## 2026-11-27: HTTP/2 over h2c, against warp, and HTTP/1.1 after the HTTP/2 driver
+
+The first timings of the HTTP/2 driver (docs/http2-driver-design.md),
+with h2load (nghttp2 1.70) and `scripts/compare-h2`: the bench
+application on each server, `-N8 -A1m`, the server on cores 0-7 and
+h2load (8 threads) on 8-15, four alternating runs of five seconds after
+a second's warm-up; µs of the server's CPU a request. No request failed.
+
+| kind | hyperdrive req/s | warp req/s | hyperdrive user / kernel | warp user / kernel |
+|---|---|---|---|---|
+| 100 connections, a stream each | 343k (341k to 345k) | 57k (56k to 58k) | 8.5 / 8.7 | 46.9 / 30.8 |
+| 100 connections, 10 streams each | 478k (471k to 482k) | 37k (37k to 37k) | 9.2 / 2.1 | 69.2 / 28.5 |
+| 10 connections, 64 streams each | 753k (724k to 771k) | 46k (45k to 46k) | 7.4 / 0.9 | 55.0 / 27.5 |
+| 1 MiB responses, 32 connections | 7.8k (7.8k to 7.9k) | 6.9k (6.8k to 7.0k) | 60 / 753 | 144 / 563 |
+| 1 MiB uploads, 32 connections | 3.6k (3.5k to 3.6k) | 4.9k (4.8k to 5.0k) | 793 / 470 | 487 / 385 |
+
+Not yet to be relied on for the small requests: warp serves 739k
+requests a second over HTTP/1.1 on this machine, so its 37k to 57k
+over HTTP/2 is to be checked (warp over HTTP/2 against warp over
+HTTP/1.1, and a profile) before the lead is believed. The settings
+differ as each ships them: warp allows 64 streams at once (so the
+many-streams run uses 64) and gives 256 KiB stream windows, ours 1
+MiB, which may favour us on the large responses and uploads.
+
+What stands so far: uploads are slower than warp's, by 26%, at 1.6
+times the user time per MiB (copies on the way in, and a `Consumed`
+from the handler, waking the owner, for each chunk read, are the first
+suspects); large responses are faster, at less user time but 34% more
+kernel time a response (more and smaller writes: DATA of 16 KiB, and
+at most 64 KiB in flight before `Sent`); and with 64 streams on a
+connection, small requests go about as fast as HTTP/1.1's, at 0.9 µs of
+kernel time each, the system calls shared among the streams.
+
+HTTP/1.1 before and after the driver (192c808 and 43db935; only
+`hyperdrive-server` changed: the protocol chosen from the first octets,
+the shared types moved to `Hyperdrive.Server.Settings`, a larger
+`Transport` and `Wake`), `scripts/compare-servers`, four alternating
+runs:
+
+| | wrk's request | user | kernel | browser's request | user | kernel |
+|---|---|---|---|---|---|---|
+| before | 751k (735k to 767k) | 1.304 | 4.772 | 748k (741k to 754k) | 1.778 | 4.755 |
+| after | 748k (716k to 764k) | 1.323 | 4.782 | 739k (728k to 748k) | 1.862 | 4.758 |
+
+wrk's request is within the noise (after won three runs of four). The
+browser's costs 0.08 µs more user time, in every run (after won one of
+four): not the choice of protocol, which is once a connection, so
+something per request in the restructured driver, to be found.
+
 ## Experiments for later: what a large gain would take
 
 Not planned for soon (the user, 2026-11-24); set down so that they are
