@@ -1135,6 +1135,63 @@ scale, and were closed as follows.
 - To enforce when building: D9's limit of 100 fields; PRIORITY_UPDATE
   free until RFC 9218.
 
+## Frames against nghttp2 (2026-11-27)
+
+nghttp2 has no public function that parses one frame, only whole
+sessions (D12 step 6), so the comparison is of sessions:
+`hyperdrive-http2-nghttp2`'s `Sessions` gives the same client octets to
+nghttp2's server session (1.69, with SETTINGS like ours) and to the
+connection core, and compares what each made of them: whether the
+connection ended and with which GOAWAY code (or closed without one),
+which streams were reset and with which codes (only while both
+connections live: nghttp2 drops the RST_STREAMs it had queued when it
+ends a connection with an error), and which requests reached the
+application. Sessions are a preface and SETTINGS, valid requests (some
+in CONTINUATIONs, some with content), valid frames of every type from
+the frame tests' generator, and sometimes, last, one of their near
+misses. Run with `scripts/differential-nghttp2`; `NGHTTP2_FRAMES_SURVEY=N`
+prints every kind of disagreement in N sessions, with a count and an
+example.
+
+It found one bug: an even stream below the highest the client had
+opened was taken for closed, so DATA, WINDOW_UPDATE and RST_STREAM on it
+were discarded; even streams are the server's (Section 5.1.1), and a
+server that never pushes opens none, so they are idle, and those frames
+connection errors (Section 5.1). Fixed in `idle`.
+
+The rest of the disagreements were each read and are known differences.
+The test cuts a session before the first frame of one of these and
+requires the verdicts to agree up to it; 200,000 sessions then showed
+none.
+
+- The client's GOAWAY (C11): we refuse new streams and close when the
+  open ones are done, at once with an error code; nghttp2 leaves the
+  connection to the application, and refuses an odd last stream.
+- A setting named twice in one SETTINGS: refused (C10); nghttp2 keeps
+  the last value, and so does not check an earlier invalid one (an
+  INITIAL_WINDOW_SIZE above 2^31-1, which Section 6.5.2 makes an error).
+- Stream errors that nghttp2 makes connection errors (Section 5.4.1
+  allows it): DATA or HEADERS on a half-closed stream, a stream window
+  pushed past 2^31-1.
+- DATA or HEADERS too short for its padding or priority fields, and a
+  WINDOW_UPDATE of the wrong length on an idle stream: FRAME_SIZE_ERROR
+  (Sections 4.2, 6.9); nghttp2 looks at the stream first and answers
+  PROTOCOL_ERROR. And a SETTINGS with two errors: each reports a
+  different one first.
+- PRIORITY on stream 0: PROTOCOL_ERROR (Section 6.3); nghttp2, with RFC
+  7540 priorities off, ignores it.
+- SETTINGS_ENABLE_CONNECT_PROTOCOL (RFC 8441): an unknown setting to us,
+  ignored as Section 6.5.2 requires; nghttp2 checks it.
+- SETTINGS_NO_RFC7540_PRIORITIES changed after the first SETTINGS: RFC
+  9218's MAY, which nghttp2 takes and we do not (RFC 9218 unsupported
+  yet, D8).
+- A field block unfinished when the session ends: nghttp2 acts on part
+  of it; the core waits for all of it (C7).
+- A WINDOW_UPDATE of 0, or DATA whose padding is as long as its payload,
+  on a stream already closed: we answer the frame's error (Sections
+  6.9, 6.1; frame errors are connection errors, F2); nghttp2 discards
+  frames on closed streams unchecked.
+
 ## Testing
 
 - HPACK: RFC 7541 Appendix C's examples verbatim; the hpack-test-case

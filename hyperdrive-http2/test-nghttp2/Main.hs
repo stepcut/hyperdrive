@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
--- | Differential tests of HPACK against nghttp2's (github.com/nghttp2):
--- the two decoders on the same blocks, and each side's encoder read by
--- the other's decoder. Run with scripts/differential-nghttp2;
--- NGHTTP2_SURVEY=N in front prints every kind of disagreement of the
--- decoders in N sessions, with a count and an example.
+-- | Differential tests against nghttp2 (github.com/nghttp2): HPACK (the
+-- two decoders on the same blocks, and each side's encoder read by the
+-- other's decoder), and frames within whole sessions ("Sessions"). Run
+-- with scripts/differential-nghttp2; NGHTTP2_SURVEY=N in front prints
+-- every kind of disagreement of the decoders in N sessions, and
+-- NGHTTP2_FRAMES_SURVEY=N every kind of disagreement of the sessions,
+-- each with a count and an example.
 module Main (main) where
 
 import Control.Monad (forM_, replicateM)
@@ -25,6 +27,7 @@ import Foreign.Ptr (Ptr, castPtr)
 import Hyperdrive.HPACK.Decode
 import Hyperdrive.HPACK.Encode
 import Hyperdrive.HPACK.Table (tableEntries, tableMaxSize)
+import Sessions (frameSurvey, prop_sessions)
 import System.Environment (lookupEnv)
 import System.Exit (exitSuccess)
 import System.IO.Unsafe (unsafePerformIO)
@@ -216,8 +219,13 @@ main = do
   case n of
     Just k -> survey (read k) >> exitSuccess
     Nothing -> pure ()
-  defaultMain $ testGroup "HPACK against nghttp2"
+  f <- lookupEnv "NGHTTP2_FRAMES_SURVEY"
+  case f of
+    Just k -> frameSurvey (read k) >> exitSuccess
+    Nothing -> pure ()
+  defaultMain $ testGroup "against nghttp2"
     [ testProperty "the decoders agree on the same blocks" prop_decoders
     , testProperty "nghttp2 decodes what we encode" prop_oursToTheirs
     , testProperty "we decode what nghttp2 encodes" prop_theirsToOurs
+    , testProperty "frames: whole sessions get the same verdicts, up to the first known difference" prop_sessions
     ]

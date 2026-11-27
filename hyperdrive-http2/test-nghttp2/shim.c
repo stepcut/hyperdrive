@@ -117,3 +117,57 @@ done:
   nghttp2_hd_deflate_del(def);
   return finish(&o, out);
 }
+
+/* A whole server session: the client's octets (preface first) given to
+ * nghttp2 at once, after a SETTINGS like the core's own (D9) and its
+ * connection window raised to 1 MiB, as the core's preface does.
+ * Records:
+ *
+ *   R  a request was received: its stream (4 octets, little-endian)
+ *   F  a frame was received: type, flags, stream (4 octets) -- for the
+ *      survey's examples
+ *   O  everything nghttp2 then wrote, its frames for the Haskell side
+ *      to read
+ *   X  nghttp2_session_mem_recv2 failed: its name for the error
+ */
+static int on_frame(nghttp2_session *s, const nghttp2_frame *f, void *user) {
+  (void)s;
+  struct out *o = user;
+  uint8_t b[6] = { f->hd.type, f->hd.flags,
+                   f->hd.stream_id & 0xff, (f->hd.stream_id >> 8) & 0xff,
+                   (f->hd.stream_id >> 16) & 0xff, (f->hd.stream_id >> 24) & 0xff };
+  put(o, 'F', b, 6);
+  if (f->hd.type == NGHTTP2_HEADERS && f->headers.cat == NGHTTP2_HCAT_REQUEST)
+    put(o, 'R', b + 2, 4);
+  return 0;
+}
+
+long h2_nghttp2_session(const uint8_t *in, size_t len, uint8_t *out, size_t capacity) {
+  struct out o = { out, out + capacity, 0 };
+  nghttp2_session_callbacks *cb;
+  nghttp2_session *s;
+  if (nghttp2_session_callbacks_new(&cb) != 0) return -2;
+  nghttp2_session_callbacks_set_on_frame_recv_callback(cb, on_frame);
+  if (nghttp2_session_server_new(&s, cb, &o) != 0) return -2;
+  nghttp2_session_callbacks_del(cb);
+  nghttp2_settings_entry iv[] = {
+    { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100 },
+    { NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE, 1048576 },
+    { NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE, 32768 },
+    { NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES, 1 } };
+  nghttp2_submit_settings(s, NGHTTP2_FLAG_NONE, iv, 4);
+  nghttp2_session_set_local_window_size(s, NGHTTP2_FLAG_NONE, 0, 1048576);
+  nghttp2_ssize rv = nghttp2_session_mem_recv2(s, in, len);
+  if (rv < 0) {
+    const char *e = nghttp2_strerror((int)rv);
+    put(&o, 'X', (const uint8_t *)e, strlen(e));
+  }
+  for (;;) {
+    const uint8_t *data;
+    nghttp2_ssize n = nghttp2_session_mem_send2(s, &data);
+    if (n <= 0) break;
+    put(&o, 'O', data, (size_t)n);
+  }
+  nghttp2_session_del(s);
+  return finish(&o, out);
+}

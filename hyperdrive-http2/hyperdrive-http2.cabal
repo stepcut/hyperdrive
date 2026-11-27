@@ -80,7 +80,9 @@ test-suite hyperdrive-http2-nghttp2
   main-is:          Main.hs
   other-modules:    DecodeTests
                     EncodeTests
+                    FrameTests
                     RFC7541
+                    Sessions
   default-language: GHC2021
   if flag(nghttp2)
     c-sources:       test-nghttp2/shim.c

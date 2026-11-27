@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# Differential tests of HPACK against nghttp2's. They need nghttp2's C
-# library, so they are behind a flag and have a shell of their own:
+# Differential tests against nghttp2: HPACK, and frames within whole
+# sessions (docs/http2-core-design.md, "Frames against nghttp2"). They
+# need nghttp2's C library, so they are behind a flag and have a shell of
+# their own:
 #
 #   scripts/differential-nghttp2                        the tests
 #   NGHTTP2_SURVEY=100000 scripts/differential-nghttp2  every kind of disagreement of
-#                                                       the decoders in that many
+#                                                       the HPACK decoders in that many
 #                                                       sessions, with an example
+#   NGHTTP2_FRAMES_SURVEY=100000 scripts/differential-nghttp2
+#                                                       every kind of disagreement of
+#                                                       whole sessions, each up to its
+#                                                       first known difference, and how
+#                                                       often each known difference came
 #
 # Arguments are passed to the tests (tasty's).
 set -euo pipefail

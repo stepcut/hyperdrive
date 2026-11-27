@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module FrameTests (frameTests) where
+module FrameTests (frameTests, Wire(..), encodeWire, genValid, genNearMiss, genSetting) where
 
 import Data.Bits (shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
