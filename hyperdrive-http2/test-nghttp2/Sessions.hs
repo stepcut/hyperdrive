@@ -202,7 +202,7 @@ knownCut input = go (B.length connectionPreface) initial
             | typ == 0x8 && sid /= 0 && (even sid || sid > tHighest t) ->
                 cut "a WINDOW_UPDATE of the wrong length on an idle stream: FRAME_SIZE_ERROR (Section 6.9), nghttp2's PROTOCOL_ERROR"
           Parsed f _ -> case f of
-            GoAwayFrame {} -> cut "the client's GOAWAY (C11)"
+            GoAwayFrame {} -> cut "the client's GOAWAY: we close once the streams are done, at once with an error (C11); nghttp2 leaves it to the application"
             SettingsFrame _ ss
               | Just v <- noPriorities ss, Just v /= tNoPriorities t, isJust' (tFirstSettings t) ->
                   cut "SETTINGS_NO_RFC7540_PRIORITIES changed: RFC 9218's MAY, taken by nghttp2"

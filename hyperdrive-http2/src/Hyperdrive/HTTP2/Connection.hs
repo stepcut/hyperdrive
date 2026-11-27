@@ -847,9 +847,12 @@ frameOutsideBlock now c f acc = case f of
   -- # PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
   -- # PROTOCOL_ERROR.
   PushPromiseFrame _ -> stop acc (goAway c ProtocolError)
-  -- the client's GOAWAY (C11): with NO_ERROR, no new streams, and the
-  -- close once those open are done ('afterStep'); with an error, the
-  -- client is closing the connection (Section 5.4.1), and so do we
+  -- the client's GOAWAY (C11): with NO_ERROR, the close once the
+  -- streams are done ('afterStep'), new ones still served (Section 6.8
+  -- binds only the GOAWAY's receiver, which opens none; changed
+  -- 2026-11-27: the first version refused them, as none of eleven
+  -- implementations surveyed does); with an error, the client is
+  -- closing the connection (Section 5.4.1), and so do we
   GoAwayFrame _ code _
     | code == NoError -> next (c { cPeerGoAway = True }, [])
     | otherwise -> stop acc (close c [])
@@ -1073,8 +1076,7 @@ newStream c sid endStream decoded
   -- Above our final GOAWAY's last stream: refused (D10's case 5), not
   -- charged, since the client sent it before it knew
   | sid > cAcceptLimit c = resetStream sid RefusedStream c
-  -- after the client's own GOAWAY, no new streams (C11)
-  | cPeerGoAway c || active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
+  | active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
       -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1.2
       -- # An endpoint
       -- # that receives a HEADERS frame that causes its advertised concurrent

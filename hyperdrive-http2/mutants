@@ -802,10 +802,6 @@ why: streams above our final GOAWAY's last stream are refused (D10 case 5)
 - | sid > cAcceptLimit c = resetStream sid RefusedStream c
 + | False = resetStream sid RefusedStream c
 
-why: no new streams after the client's GOAWAY (C11)
-- | cPeerGoAway c || active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
-+ | active >= configMaxConcurrentStreams cfg || held >= configMaxHeldStreams cfg =
-
 why: a GOAWAY's last stream never rises (Section 6.8)
 - lastProcessed c = min (cLastStream c) (cAcceptLimit c)
 + lastProcessed c = cLastStream c

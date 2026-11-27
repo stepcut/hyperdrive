@@ -1116,10 +1116,13 @@ prop_peerGoAway = once $ conjoin
   , counterexample "with none: our GOAWAY and the close at once" $
       let o = snd (serveWith defaultConfig [] (renderGoAway (StreamId 0) NoError ""))
       in goAways o === [(0, NoError)] .&&. closed o
-  , counterexample "a new stream after it: refused" $
+  , counterexample "a new stream after it: served, and the close once it is done too" $
       let [b1, b3] = blocks [base, base]
-          o = snd (serveWith defaultConfig [] (headers 1 True b1 <> renderGoAway (StreamId 0) NoError "" <> headers 3 True b3))
-      in map (\(s, _, _, _) -> s) (requests o) === [1] .&&. seen o === [SeenReset 3 RefusedStream]
+          (c, o) = serveWith defaultConfig [] (headers 1 True b1 <> renderGoAway (StreamId 0) NoError "" <> headers 3 True b3)
+          o1 = from (c, []) [respondOn 1 (ok (Just 0)), endOn 1]
+          o3 = from (fst (feedAll (c, []) [respondOn 1 (ok (Just 0)), endOn 1]), []) [respondOn 3 (ok (Just 0)), endOn 3]
+      in map (\(s, _, _, _) -> s) (requests o) === [1, 3] .&&. seen o === []
+         .&&. not (closed o1) .&&. goAways o3 === [(3, NoError)] .&&. closed o3
   , counterexample "with an error: the close at once, the handlers told" $
       let [b] = blocks [base]
           o = snd (serveWith defaultConfig [] (headers 1 True b <> renderGoAway (StreamId 0) InternalError ""))

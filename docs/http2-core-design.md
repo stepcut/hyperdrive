@@ -417,8 +417,10 @@ reset whose handler still runs: those need nothing from the client
 and were told. Before the client's preface, `Shutdown` closes without
 a GOAWAY; between the preface and its SETTINGS, GOAWAY and close. A
 `configPingTimeout` of 0 sends the final GOAWAY at once. The client's
-GOAWAY with NO_ERROR: new streams refused (charged as refused streams),
-the open ones finished, then our GOAWAY and the close; with an error
+GOAWAY with NO_ERROR: the open streams finished, then our GOAWAY and the
+close (changed 2026-11-27: new streams after it were refused, charged as
+refused streams; Section 6.8 binds only the GOAWAY's receiver, and nine
+of eleven implementations surveyed serve them, so they are served); with an error
 code, the close at once (Section 5.4.1: the client is closing). A
 PUSH_PROMISE from the client is a connection error PROTOCOL_ERROR
 (Section 8.4; it reached the catch-all INTERNAL_ERROR before).
@@ -1180,9 +1182,10 @@ The test cuts a session before the first frame of one of these and
 requires the verdicts to agree up to it; 200,000 sessions then showed
 none.
 
-- The client's GOAWAY (C11): we refuse new streams and close when the
-  open ones are done, at once with an error code; nghttp2 leaves the
-  connection to the application, and refuses an odd last stream.
+- The client's GOAWAY (C11): we close once the streams are done (new
+  ones still served, since 2026-11-27), at once with an error code;
+  nghttp2 leaves the connection to the application, and refuses an odd
+  last stream.
 - A setting named twice in one SETTINGS with an earlier value invalid
   (an INITIAL_WINDOW_SIZE above 2^31-1, say, which Section 6.5.2 makes
   an error): we check each value as it comes; nghttp2 keeps only the
