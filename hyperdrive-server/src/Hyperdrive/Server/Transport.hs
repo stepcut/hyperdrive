@@ -9,16 +9,16 @@ import Control.Exception (IOException, catch)
 import Control.Monad (foldM_, when, zipWithM_)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
-import Foreign.C.Error (throwErrno)
-import Foreign.Storable (pokeByteOff)
 import Data.Word (Word8)
-import Foreign.C.Error (eAGAIN, eINTR, eWOULDBLOCK, getErrno)
-import Foreign.C.Types (CInt(..), CSize(..))
+import Foreign.C.Error (eAGAIN, eINTR, eWOULDBLOCK, getErrno, throwErrno)
+import Foreign.C.Types (CInt(..), CSize(..), CULong(..))
 import Foreign.ForeignPtr (ForeignPtr, mallocForeignPtrBytes, withForeignPtr)
-import Foreign.Marshal.Alloc (allocaBytes)
+import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Marshal.Utils (copyBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
+import Foreign.Storable (peek, pokeByteOff)
 import GHC.Conc (threadWaitRead)
 import GHC.Event (Event, Lifetime(OneShot), evtRead, evtWrite, getSystemEventManager, registerFd, unregisterFd)
 import System.Posix.Types (CSsize(..), Fd(..))
@@ -41,6 +41,13 @@ data Transport = Transport
     -- something (input or the end of it); gives an action that cancels
     -- this. The action runs on the event manager's thread, so it must
     -- be quick and must not block.
+  , transportTryRecvLarge  :: Int -> IO (Maybe ByteString)
+    -- ^ as 'transportTryRecv', but what is waiting, up to the given
+    -- size, into a fresh buffer of exactly its size, kept without a copy
+    -- (a short receive is copied out). For a connection moving a lot of
+    -- data (HTTP/2's uploads): no copy out, and fewer frames split
+    -- between receives. A string kept is its whole allocation, as the
+    -- HTTP/2 core's bound on pinned memory (C3) assumes.
   , transportTrySend       :: [ByteString] -> IO Int
     -- ^ write as much of these as the connection takes now, in order,
     -- without waiting: the number of octets taken, 0 if none; throws if
@@ -67,6 +74,7 @@ socketTransport s = do
   pure Transport
     { transportRecv          = maybe B.empty id <$> recvInto s buffer True
     , transportTryRecv       = recvInto s buffer False
+    , transportTryRecvLarge  = recvFresh s buffer
     , transportSendMany      = sendPieces s
     , transportOnReadable    = onReady evtRead s
     , transportTrySend       = trySendPieces s
@@ -99,6 +107,39 @@ recvInto s buffer wait = S.withFdSocket s $ \fd -> loop fd
         else if errno == eAGAIN || errno == eWOULDBLOCK then
           if wait then threadWaitRead (Fd fd) >> loop fd else pure Nothing
         else pure (Just B.empty)
+
+foreign import ccall unsafe "ioctl"
+  c_ioctl :: CInt -> CULong -> Ptr CInt -> IO CInt
+
+-- | Linux's FIONREAD: how many octets are waiting to be received.
+fionread :: CULong
+fionread = 0x541B
+
+-- | Receive what is waiting, up to the cap, into a fresh buffer of
+-- exactly that size, without waiting: kept whole if the receive fills
+-- it (it nearly always does), else copied out. With nothing waiting (or
+-- the end of input, which the count does not tell apart), the ordinary
+-- receive into the connection's buffer.
+recvFresh :: S.Socket -> ForeignPtr Word8 -> Int -> IO (Maybe ByteString)
+recvFresh s buffer cap = do
+  waiting <- S.withFdSocket s $ \fd -> alloca $ \p -> do
+    rc <- c_ioctl fd fionread p
+    if rc < 0 then pure 0 else fromIntegral <$> peek p
+  if waiting <= 0 then recvInto s buffer False else S.withFdSocket s $ \fd -> do
+    let size = min cap waiting
+    fp <- BI.mallocByteString size
+    let loop = do
+          n <- withForeignPtr fp $ \p -> c_recv fd p (fromIntegral size) 0
+          if n > 0 then
+            if fromIntegral n == size then pure (Just (BI.BS fp size))
+            else Just <$> withForeignPtr fp (\p -> B.packCStringLen (castPtr p, fromIntegral n))
+          else if n == 0 then pure (Just B.empty)
+          else do
+            errno <- getErrno
+            if errno == eINTR then loop
+            else if errno == eAGAIN || errno == eWOULDBLOCK then pure Nothing
+            else pure (Just B.empty)
+    loop
 
 foreign import ccall unsafe "send"
   c_send :: CInt -> Ptr Word8 -> CSize -> CInt -> IO CSsize

@@ -59,6 +59,7 @@ data Env = Env
   , envClosed    :: !(IORef Bool)             -- ^ the core said Close
   , envBroken    :: !(IORef Bool)             -- ^ the transport failed, or a write timed out
   , envShutdowns :: !(IORef Int)              -- ^ 'Shutdown' inputs fed: the second is the forced stage
+  , envFull      :: !(IORef Bool)             -- ^ the last receive filled its buffer
   }
 
 -- | What the owner and a stream's handler share (V3).
@@ -90,7 +91,7 @@ serveHTTP2 settings config timer wake transport context app first = do
       (conn, outs) = H2.newConn config' now
   env <- Env settings timer wake transport context app
     <$> newIORef conn <*> newIORef [] <*> newIORef Seq.empty <*> newIORef Nothing
-    <*> newIORef IntMap.empty <*> newIORef False <*> newIORef False <*> newIORef 0
+    <*> newIORef IntMap.empty <*> newIORef False <*> newIORef False <*> newIORef 0 <*> newIORef False
   (do r <- try (act env outs >> feed env (Received first) >> loop env)
       case r of
         Right () -> pure ()
@@ -175,11 +176,26 @@ takeInbox env = do
   pure (not (null msgs))
 
 -- | Receive what has arrived, if anything: the end of input is
--- 'PeerClosed'.
+-- 'PeerClosed'. After a receive that filled the transport's buffer
+-- (16 KiB), more is likely waiting, an upload, say: the next takes all
+-- that is waiting, up to 64 KiB, into a buffer of its size, kept without
+-- a copy, so that fewer DATA frames are split between receives
+-- (docs/benchmarks.md, 2026-11-27). Not more than 64 KiB: a DATA frame
+-- of 16 KiB is then at least a quarter of its buffer, which the core
+-- passes on without copying (C3); from 256 KiB each would be copied.
 receive :: Env -> IO Bool
-receive env = transportTryRecv (envTransport env) >>= \case
-  Nothing -> pure False
-  Just bs -> feed env (if B.null bs then PeerClosed else Received bs) >> pure True
+receive env = do
+  full <- readIORef (envFull env)
+  r <- if full then transportTryRecvLarge (envTransport env) largeReceive else transportTryRecv (envTransport env)
+  case r of
+    Nothing -> writeIORef (envFull env) False >> pure False
+    Just bs -> do
+      writeIORef (envFull env) $! B.length bs >= 16384
+      feed env (if B.null bs then PeerClosed else Received bs)
+      pure True
+
+largeReceive :: Int
+largeReceive = 65536
 
 -- | Shutdown, once when it begins and once when its grace period ends
 -- (V5); each is fed once.

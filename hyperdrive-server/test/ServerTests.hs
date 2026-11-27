@@ -488,7 +488,7 @@ prop_noLeak = once $ monadicIO $ do
     let request = "GET / HTTP/1.1\r\nHost: a\r\n\r\n"
         next = atomicModifyIORef' left (\k -> if k == 0 then (0, B.empty) else (k - 1, B.copy request))
         t = Transport
-          { transportRecv = next, transportTryRecv = Just <$> next
+          { transportRecv = next, transportTryRecv = Just <$> next, transportTryRecvLarge = \_ -> Just <$> next
           , transportSendMany = \_ -> pure (), transportOnReadable = \_ -> pure (pure ())
           , transportTrySend = pure . sum . map B.length, transportOnWritable = \_ -> pure (pure ())
           , transportShutdownWrite = pure (), transportAbort = pure (), transportClose = pure () }

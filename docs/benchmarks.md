@@ -1564,6 +1564,52 @@ browser's costs 0.08 µs more user time, in every run (after won one of
 four): not the choice of protocol, which is once a connection, so
 something per request in the restructured driver, to be found.
 
+## 2026-11-27 (afternoon): HTTP/2 uploads copied once, not three times
+
+Allocation for a 1 MiB upload over HTTP/2 (`+RTS -s` over 2,000 with
+h2load) was 3.56 MB, warp's 1.32: each octet copied about three times,
+out of the transport's receive buffer, then again when the core joined
+everything it held to read a frame that spanned two receives (a DATA
+frame of 16 KiB and its header nearly always do, with receives of 16
+KiB). Changed, each checked by allocation first:
+
+| | MB a 1 MiB upload |
+|---|---|
+| before | 3.56 |
+| the core joins only what the frame being read needs | 2.65 |
+| and a receive into a fresh 64 KiB after a full one | 2.77 (worse: most were short, copied anyway) |
+| or what is waiting (`FIONREAD`), up to 256 KiB, into a buffer of its size | 2.29 |
+| the same up to 64 KiB | 1.78 |
+| warp | 1.32 |
+
+Above 64 KiB, a DATA frame of 16 KiB is under a quarter of its buffer,
+and the core copies it (C3's bound on pinned memory); at 64 KiB it is a
+quarter, and passed on as it is. So: `joinedFor` in the core, and the
+transport's `transportTryRecvLarge`, which the HTTP/2 owner uses after
+a receive that filled the usual 16 KiB buffer (small requests and idle
+connections keep the one reused buffer, which HTTP/1.1's measurements
+favoured).
+
+`scripts/compare-h2`, four alternating runs, before (the driver as
+first built), after, and warp:
+
+| | uploads req/s | user / kernel µs | large responses req/s | 100 connections, a stream each |
+|---|---|---|---|---|
+| before | 3.7k (3.7k to 3.8k) | 761 / 450 | 7.9k | 354k |
+| after | 6.9k (6.8k to 7.0k) | 308 / 376 | 7.9k | 352k |
+| warp | 4.9k (4.9k to 5.0k) | 489 / 373 | 6.7k | 58k |
+
+Uploads 86% faster, 41% ahead of warp; the rest as it was.
+
+The HTTP/1.1 browser's request, 0.08 µs more user time after the
+HTTP/2 driver in the first runs: perf profiles of the two builds under
+wrk are alike (the HTTP/1.1 core, unchanged between them, moved by a
+quarter of a point from one profile to the other, as much as anything
+did), and eight alternating runs give 751k requests a second for both,
+user 1.790 and 1.834 µs (after higher in six runs of eight), kernel
+4.723 and 4.712: perhaps 0.04 µs of user time, half a percent of a
+request's CPU, and no difference in requests a second. Left there.
+
 ## Experiments for later: what a large gain would take
 
 Not planned for soon (the user, 2026-11-24); set down so that they are

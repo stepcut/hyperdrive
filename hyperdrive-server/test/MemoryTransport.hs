@@ -56,6 +56,13 @@ memoryTransport = do
         , transportOnReadable = \callback -> do
             t' <- forkIO (atomically readable >> callback)
             pure (killThread t')
+        , transportTryRecvLarge = \_ -> atomically $ do
+            q <- readTVar (pipeIn p)
+            eof <- readTVar (pipeEOF p)
+            case q of
+              (x : xs) -> writeTVar (pipeIn p) xs >> pure (Just x)
+              [] | eof -> pure (Just B.empty)
+                 | otherwise -> pure Nothing
         , transportTrySend = \bs -> do
             r <- atomically $ do
               shut <- (||) <$> readTVar (pipeShutWrite p) <*> readTVar (pipeClosed p)
