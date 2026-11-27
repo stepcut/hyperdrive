@@ -57,10 +57,6 @@ why: the handler time limit gets 503 and a close
 - | otherwise -> feed env Shutdown >> respondWithStatus env ServiceUnavailable
 + | otherwise -> respondWithStatus env InternalServerError
 
-why: responses carry Date (RFC 9110 Section 6.6.1)
-- | null (lookupAll hDate fs) = appendField hDate date fs
-+ | False = appendField hDate date fs
-
 why: a stream that writes other than its declared length is an error
 - Just declared | declared /= n -> throwIO (StreamLengthMismatch declared n)
 + Just declared | False -> throwIO (StreamLengthMismatch declared n)
@@ -95,11 +91,15 @@ why: each accepted connection is counted, for the next one's capability
 - writeIORef accepted (n + 1)
 + writeIORef accepted n
 
-file: src/Hyperdrive/Server/Connection.hs
+file: src/Hyperdrive/Server/Settings.hs
 
 why: connections are not pinned unless asked
 - , settingsPinConnections = False
 + , settingsPinConnections = True
+
+why: responses carry Date (RFC 9110 Section 6.6.1)
+- | null (lookupAll hDate fs) = appendField hDate date fs
++ | False = appendField hDate date fs
 
 file: src/Hyperdrive/Server/Transport.hs
 
@@ -146,14 +146,20 @@ why: a connection that starts after shutdown began is told too
 + pure ()
 
 why: shutdown wakes every connection
-- timerWake t WakeShutdown
-+ pure ()
+- timerWake t WakeShutdown -- begun
++ pure () -- begun
 
 file: src/Hyperdrive/Server/Connection.hs
 
-why: a connection that waits after shutdown began is told at once
-- if forShutdown && stopping then disarm (envTimer env) >> pure WakeShutdown else do
-+ if False then disarm (envTimer env) >> pure WakeShutdown else do
+# Not run since the protocol choice (2026-11-27): the check below guards a
+# race (a shutdown begun just before the wait, whose wake-up the wait's
+# clearing of stale wakings drops). Every case a test can set up is now
+# also covered by chooseProtocol (a connection with nothing read yet) and
+# noticeShutdown (one with a request), so the mutant survives; the check
+# is kept for the race.
+# why: a connection that waits after shutdown began is told at once
+# - if forShutdown && stopping then disarm (envTimer env) >> pure WakeShutdown else do
+# + if False then disarm (envTimer env) >> pure WakeShutdown else do
 
 # Not a mutant: wakeOn ignoring a WakeTimer of an earlier generation.
 # One only arrives if the ticker fires an arming just as the connection
@@ -165,3 +171,65 @@ file: src/Hyperdrive/Server/Timer.hs
 why: the ticker keeps the Date value current
 - refreshDate (timersDate timers)
 + pure ()
+
+# the HTTP/2 driver (docs/http2-driver-design.md)
+
+file: src/Hyperdrive/Server/HTTP2.hs
+
+why: content read gives its credit back (D6): uploads beyond the window go on
+- Chunk d -> post env [Consumed sid (B.length d)] >> pure d
++ Chunk d -> pure d
+
+why: a read on a stream the client reset throws ConnectionClosed (D5)
+- Failed _ -> throwIO ConnectionClosed
++ Failed _ -> throwIO IncompleteBody
+
+why: the transport's progress is reported, so paced DATA goes on (C5)
+- feed env (Sent n)
++ pure ()
+
+why: queued output that makes no progress ends the connection (V1)
+- if maybe False (<= now) writeBy then gone env >> pure True
++ if False then gone env >> pure True
+
+why: the core's deadlines are acted on (C1)
+- else if maybe False (<= now) (H2.nextDeadline conn) then feed env TimedOut >> pure True
++ else if False then feed env TimedOut >> pure True
+
+why: the grace period's end is the second Shutdown (V5)
+- if n == 0 && stopping || n == 1 && over
++ if n == 0 && stopping
+
+why: handlers still running when the connection is done are killed (C2, V4)
+- forM_ streams $ \(_, tid) -> forkIO (killThread tid)
++ forM_ streams $ \(_, _) -> pure ()
+
+why: a handler is woken when the owner has something for it (V3)
+- void (tryPutMVar (streamWake st) ())
++ pure ()
+
+why: the owner is woken when a handler has something for it (V2)
+- void (tryPutMVar (envWake env) WakeHandler)
++ pure ()
+
+why: bytes content is written, then ended
+- post env [r, WriteBody sid b, EndBody sid emptyFields]
++ post env [r, EndBody sid emptyFields]
+
+file: src/Hyperdrive/Server/Connection.hs
+
+why: a prefix of the preface waits for more before the protocol is chosen (V6)
+- | h2, B.length buf < B.length H2.connectionPreface, buf `B.isPrefixOf` H2.connectionPreface = go buf
++ | False = go buf
+
+file: src/Hyperdrive/Server.hs
+
+why: the grace period's end is told to the connections before they are killed (V5)
+- endShutdownGrace timers
++ pure ()
+
+file: src/Hyperdrive/Server/Timer.hs
+
+why: the grace period's end is seen by connections not woken by it (V5)
+- atomicWriteIORef (timerGraceOver t) True -- told
++ pure () -- told

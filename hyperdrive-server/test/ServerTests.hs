@@ -295,6 +295,14 @@ prop_shutdown = once $ monadicIO $ do
       threadDelay 50000
       _ <- forkIO (serverShutdown srv)
       timeout 1000000 (recvAll s)
+    -- one idle after a response (waiting in the HTTP/1.1 driver, not
+    -- yet in the choice of protocol) closes at once too
+    idleAfter <- withServer settings { settingsShutdownGrace = 3000000 } ok $ \srv -> withClient (serverPort srv) $ \s -> do
+      SB.sendAll s "GET / HTTP/1.1\r\nHost: a\r\n\r\n"
+      first <- SB.recv s 4096
+      _ <- forkIO (serverShutdown srv)
+      rest <- timeout 1000000 (recvAll s)
+      pure (statusOf first, rest)
     -- a busy one gets its response, with Connection: close
     busy <- withServer settings { settingsShutdownGrace = 3000000 } slow $ \srv -> withClient (serverPort srv) $ \s -> do
       SB.sendAll s "GET / HTTP/1.1\r\nHost: a\r\n\r\n"
@@ -317,12 +325,13 @@ prop_shutdown = once $ monadicIO $ do
         beginShutdown timers
         timeout 1000000 (serveConnection settings { settingsTimeouts = defaultTimeouts { timeoutLinger = 100000 } } timers t
                            (Context (SockAddrInet 0 0) (SockAddrInet 0 0) False) ok)
-    pure (idle, busy, killed, end - start, late)
-  let (idle, busy, killed, took, late) = results
+    pure (idle, busy, killed, end - start, late, idleAfter)
+  let (idle, busy, killed, took, late, idleAfter) = results
   monitor (counterexample (show results))
   assert (idle == Just "")
   assert (statusOf busy == "200" && "connection: close" `B.isInfixOf` busy)
   assert (late == Just ())
+  assert (idleAfter == ("200", Just ""))
   assert (killed == "")
   assert (took < 2)
 
@@ -481,6 +490,7 @@ prop_noLeak = once $ monadicIO $ do
         t = Transport
           { transportRecv = next, transportTryRecv = Just <$> next
           , transportSendMany = \_ -> pure (), transportOnReadable = \_ -> pure (pure ())
+          , transportTrySend = pure . sum . map B.length, transportOnWritable = \_ -> pure (pure ())
           , transportShutdownWrite = pure (), transportAbort = pure (), transportClose = pure () }
         sample _ req = do
           k <- readIORef left

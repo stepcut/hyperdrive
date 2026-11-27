@@ -38,6 +38,9 @@ module Hyperdrive.Server.Timer
   , dateNow
   , beginShutdown
   , isShuttingDown
+  , endShutdownGrace
+  , isGraceOver
+  , clockMillis
   ) where
 
 import Control.Concurrent (forkIOWithUnmask, killThread, threadDelay)
@@ -54,6 +57,7 @@ data Timers = Timers
   { timersRegistry :: !(IORef (IntMap.IntMap Timer))
   , timersNext     :: !(IORef Int)
   , timersStopping :: !(IORef Bool)
+  , timersGraceOver :: !(IORef Bool)
   , timersClock    :: !(IORef Word64)  -- ^ monotonic nanoseconds at the last tick
   , timersTick     :: !Word64          -- ^ nanoseconds between ticks
   , timersDate     :: !DateCache
@@ -63,7 +67,9 @@ data Timers = Timers
 data Wake
   = WakeReadable      -- ^ its socket has input (or the end of it)
   | WakeTimer !Int    -- ^ the read arming with this generation expired
-  | WakeShutdown      -- ^ the server is shutting down
+  | WakeShutdown      -- ^ the server is shutting down, or its grace period has ended
+  | WakeWritable      -- ^ its socket would take output (HTTP/2's owner, V1)
+  | WakeHandler       -- ^ a handler has something for it (HTTP/2's owner, V2)
   deriving (Eq, Show)
 
 -- | A connection's timer: what it is armed for, and until when
@@ -74,6 +80,7 @@ data Timer = Timer
   , timerWake     :: Wake -> IO ()  -- ^ wakes the connection
   , timerAbort    :: IO ()          -- ^ what to do when a write expires
   , timerStopping :: !(IORef Bool)  -- ^ the server is shutting down
+  , timerGraceOver :: !(IORef Bool) -- ^ and its grace period has ended
   , timerClock    :: !(IORef Word64) -- ^ the server's 'timersClock'
   , timerTick     :: !Word64
   , timerDate     :: !DateCache
@@ -89,7 +96,7 @@ data Armed
 -- microseconds, stopping it afterwards.
 withTimers :: Int -> (Timers -> IO a) -> IO a
 withTimers resolution act = do
-  timers <- Timers <$> newIORef IntMap.empty <*> newIORef 0 <*> newIORef False
+  timers <- Timers <$> newIORef IntMap.empty <*> newIORef 0 <*> newIORef False <*> newIORef False
                    <*> (newIORef =<< getMonotonicTimeNSec) <*> pure (fromIntegral resolution * 1000)
                    <*> newDateCache
   let tick = do
@@ -114,7 +121,7 @@ withTimers resolution act = do
 -- make the blocked write fail, by shutting the socket down.
 withTimer :: Timers -> (Wake -> IO ()) -> IO () -> (Timer -> IO a) -> IO a
 withTimer timers wake abort act = do
-  t <- Timer <$> newIORef Disarmed <*> newIORef 0 <*> pure wake <*> pure abort <*> newIORef False
+  t <- Timer <$> newIORef Disarmed <*> newIORef 0 <*> pure wake <*> pure abort <*> newIORef False <*> newIORef False
              <*> pure (timersClock timers) <*> pure (timersTick timers) <*> pure (timersDate timers)
   bracket (mask_ (register t)) unregister (const (act t))
   where
@@ -124,6 +131,8 @@ withTimer timers wake abort act = do
       -- either 'beginShutdown' sees this timer, or this sees its flag
       stopping <- atomicModifyIORef' (timersStopping timers) (\b -> (b, b))
       when stopping (atomicWriteIORef (timerStopping t) True)
+      over <- atomicModifyIORef' (timersGraceOver timers) (\b -> (b, b))
+      when over (atomicWriteIORef (timerGraceOver t) True)
       pure k
     unregister k = atomicModifyIORef' (timersRegistry timers) (\m -> (IntMap.delete k m, ()))
 
@@ -164,10 +173,30 @@ beginShutdown timers = do
   registry <- readIORef (timersRegistry timers)
   forM_ registry $ \t -> do
     atomicWriteIORef (timerStopping t) True
-    timerWake t WakeShutdown
+    timerWake t WakeShutdown -- begun
 
 -- | Whether the server is shutting down. A connection checks this
 -- before it waits, so that it does not miss a shutdown that began
 -- before it registered its wake action.
 isShuttingDown :: Timer -> IO Bool
 isShuttingDown t = readIORef (timerStopping t)
+
+-- | Tell every connection that the shutdown's grace period has ended,
+-- and wake each: the HTTP/2 driver then resets its streams left and
+-- closes (D10's forced stage, V5) before the server kills what is still
+-- running. The HTTP/1.1 driver has nothing more to do.
+endShutdownGrace :: Timers -> IO ()
+endShutdownGrace timers = do
+  atomicModifyIORef' (timersGraceOver timers) (const (True, ()))
+  registry <- readIORef (timersRegistry timers)
+  forM_ registry $ \t -> do
+    atomicWriteIORef (timerGraceOver t) True -- told
+    timerWake t WakeShutdown -- grace
+
+isGraceOver :: Timer -> IO Bool
+isGraceOver t = readIORef (timerGraceOver t)
+
+-- | The timers' clock as of the last tick, in milliseconds: the time
+-- the HTTP/2 core is given (its C1).
+clockMillis :: Timer -> IO Word64
+clockMillis t = (`div` 1000000) <$> readIORef (timerClock t)

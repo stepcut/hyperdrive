@@ -6,10 +6,12 @@ module Hyperdrive.Server.Transport
   ) where
 
 import Control.Exception (IOException, catch)
-import Control.Monad (foldM_, when)
+import Control.Monad (foldM_, when, zipWithM_)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Unsafe as BU
+import Foreign.C.Error (throwErrno)
+import Foreign.Storable (pokeByteOff)
 import Data.Word (Word8)
 import Foreign.C.Error (eAGAIN, eINTR, eWOULDBLOCK, getErrno)
 import Foreign.C.Types (CInt(..), CSize(..))
@@ -18,7 +20,7 @@ import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Marshal.Utils (copyBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import GHC.Conc (threadWaitRead)
-import GHC.Event (Lifetime(OneShot), evtRead, getSystemEventManager, registerFd, unregisterFd)
+import GHC.Event (Event, Lifetime(OneShot), evtRead, evtWrite, getSystemEventManager, registerFd, unregisterFd)
 import System.Posix.Types (CSsize(..), Fd(..))
 import qualified Network.Socket as S
 import qualified Network.Socket.ByteString as SB
@@ -39,6 +41,14 @@ data Transport = Transport
     -- something (input or the end of it); gives an action that cancels
     -- this. The action runs on the event manager's thread, so it must
     -- be quick and must not block.
+  , transportTrySend       :: [ByteString] -> IO Int
+    -- ^ write as much of these as the connection takes now, in order,
+    -- without waiting: the number of octets taken, 0 if none; throws if
+    -- the connection is gone. The HTTP/2 driver's owner thread never
+    -- blocks on a write (docs/http2-driver-design.md, V1).
+  , transportOnWritable    :: IO () -> IO (IO ())
+    -- ^ call the action, once, when 'transportTrySend' would take
+    -- something; as 'transportOnReadable'
   , transportShutdownWrite :: IO ()
   , transportAbort         :: IO ()
     -- ^ make a write blocked in another thread fail (shut the socket
@@ -58,7 +68,9 @@ socketTransport s = do
     { transportRecv          = maybe B.empty id <$> recvInto s buffer True
     , transportTryRecv       = recvInto s buffer False
     , transportSendMany      = sendPieces s
-    , transportOnReadable    = onReadable s
+    , transportOnReadable    = onReady evtRead s
+    , transportTrySend       = trySendPieces s
+    , transportOnWritable    = onReady evtWrite s
     , transportShutdownWrite = S.shutdown s S.ShutdownSend `catch` \e -> const (pure ()) (e :: IOException)
     , transportAbort         = S.shutdown s S.ShutdownBoth `catch` \e -> const (pure ()) (e :: IOException)
     , transportClose         = S.close s
@@ -114,11 +126,52 @@ sendPieces s pieces
   | otherwise = SB.sendMany s pieces
   where total = sum (map B.length pieces)
 
--- | Register a one-shot callback with the event manager of the current
--- capability (as 'threadWaitRead' does).
-onReadable :: S.Socket -> IO () -> IO (IO ())
-onReadable s callback = S.withFdSocket s $ \fd -> do
+-- | Register a one-shot callback for the event with the event manager
+-- of the current capability (as 'threadWaitRead' does).
+onReady :: Event -> S.Socket -> IO () -> IO (IO ())
+onReady event s callback = S.withFdSocket s $ \fd -> do
   manager <- maybe (ioError (userError "no event manager: the server needs the threaded RTS")) pure
                =<< getSystemEventManager
-  key <- registerFd manager (\_ _ -> callback) (Fd fd) evtRead OneShot
+  key <- registerFd manager (\_ _ -> callback) (Fd fd) event OneShot
   pure (unregisterFd manager key)
+
+foreign import ccall unsafe "writev"
+  c_writev :: CInt -> Ptr () -> CInt -> IO CSsize
+
+-- | At most this many pieces go in one vectored write (IOV_MAX is 1024
+-- on Linux); the rest wait for the next.
+maxPieces :: Int
+maxPieces = 64
+
+-- | One non-blocking write of as many of the pieces as fit in one
+-- vector: what the socket took, 0 if it would block. Small output is
+-- copied together and sent once, as 'sendPieces' does.
+trySendPieces :: S.Socket -> [ByteString] -> IO Int
+trySendPieces s pieces0 = S.withFdSocket s $ \fd -> retry fd
+  where
+    pieces = filter (not . B.null) (take maxPieces pieces0)
+    total = sum (map B.length pieces)
+    retry fd = do
+      n <- if total <= smallSend
+             then allocaBytes total $ \buffer -> do
+               foldM_ (\at piece -> BU.unsafeUseAsCStringLen piece $ \(p, len) ->
+                         copyBytes (buffer `plusPtr` at) (castPtr p) len >> pure (at + len)) 0 pieces
+               c_send fd buffer (fromIntegral total) 0
+             else withVector pieces $ \iov count -> c_writev fd iov count
+      if n >= 0 then pure (fromIntegral n) else do
+        errno <- getErrno
+        if errno == eINTR then retry fd
+        else if errno == eAGAIN || errno == eWOULDBLOCK then pure 0
+        else throwErrno "trySend"
+
+-- | The pieces as a struct iovec array, valid inside the action.
+withVector :: [ByteString] -> (Ptr () -> CInt -> IO a) -> IO a
+withVector pieces act = allocaBytes (16 * length pieces) $ \iov -> go iov pieces []
+  where
+    go iov [] acc = do
+      zipWithM_ (\i (p, len) -> do
+                   pokeByteOff iov (16 * i) p
+                   pokeByteOff iov (16 * i + 8) (fromIntegral len :: CSize))
+                [0 ..] (reverse acc)
+      act iov (fromIntegral (length acc))
+    go iov (b : bs) acc = BU.unsafeUseAsCStringLen b $ \(p, len) -> go iov bs ((p, len) : acc)

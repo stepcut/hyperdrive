@@ -115,6 +115,13 @@ startServer settings timers app = do
           beginShutdown timers
           grace <- registerDelay (settingsShutdownGrace settings)
           atomically $ (readTVar live >>= check . (== 0)) `orElse` (readTVar grace >>= check)
+          -- the grace period's end: HTTP/2 connections reset their
+          -- streams left and send their GOAWAY (D10, V5), briefly
+          busy <- (> 0) <$> readTVarIO live
+          when busy $ do
+            endShutdownGrace timers
+            brief <- registerDelay 1000000
+            atomically $ (readTVar live >>= check . (== 0)) `orElse` (readTVar brief >>= check)
           -- forced: kill what is left, without waiting on any one thread
           remaining <- Map.keys <$> readTVarIO threads
           mapM_ (\t -> forkIO (killThread t)) remaining

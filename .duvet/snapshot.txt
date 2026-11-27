@@ -2833,6 +2833,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    send a connection preface (Section 3.4).
 
   SECTION: [Starting HTTP/2 with Prior Knowledge](#section-3.3)
+    TEXT[implementation]:    A client that knows that a server supports HTTP/2 can establish a TCP
+    TEXT[implementation]:    connection and send the connection preface (Section 3.4) followed by
+    TEXT[implementation]:    HTTP/2 frames.
     TEXT[!MUST]: This only affects the
     TEXT[!MUST]:    establishment of HTTP/2 connections over cleartext TCP; HTTP/2
     TEXT[!MUST]:    connections over TLS MUST use protocol negotiation in TLS [TLS-ALPN].
@@ -2938,9 +2941,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST,implementation,test]:       type STREAM_CLOSED.
     TEXT[!MUST]:       An endpoint MUST NOT send frames other than PRIORITY on a closed
     TEXT[!MUST]:       stream.
-    TEXT[!MAY]: An endpoint MAY treat receipt of any other type of frame
-    TEXT[!MAY]:       on a closed stream as a connection error (Section 5.4.1) of type
-    TEXT[!MAY]:       STREAM_CLOSED, except as noted below.
+    TEXT[!MAY,implementation]: An endpoint MAY treat receipt of any other type of frame
+    TEXT[!MAY,implementation]:       on a closed stream as a connection error (Section 5.4.1) of type
+    TEXT[!MAY,implementation]:       STREAM_CLOSED, except as noted below.
     TEXT[!MUST]: An endpoint MUST
     TEXT[!MUST]:       minimally process and then discard any frames it receives in this
     TEXT[!MUST]:       state.
@@ -2964,9 +2967,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MUST]:    The identifier of a newly established stream MUST be numerically
     TEXT[!MUST]:    greater than all streams that the initiating endpoint has opened or
     TEXT[!MUST]:    reserved.
-    TEXT[!MUST]: An endpoint that
-    TEXT[!MUST]:    receives an unexpected stream identifier MUST respond with a
-    TEXT[!MUST]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+    TEXT[!MUST,implementation,test]: An endpoint that
+    TEXT[!MUST,implementation,test]:    receives an unexpected stream identifier MUST respond with a
+    TEXT[!MUST,implementation,test]:    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
 
   SECTION: [Stream Concurrency](#section-5.1.2)
     TEXT[!MUST]:    Endpoints MUST NOT exceed the limit set by their peer.
@@ -3278,10 +3281,10 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!SHOULD]:    Endpoints SHOULD always send a GOAWAY frame before closing a
     TEXT[!SHOULD]:    connection so that the remote peer can know whether a stream has been
     TEXT[!SHOULD]:    partially processed or not.
-    TEXT[!SHOULD]:    A GOAWAY frame might not immediately precede closing of the
-    TEXT[!SHOULD]:    connection; a receiver of a GOAWAY that has no more use for the
-    TEXT[!SHOULD]:    connection SHOULD still send a GOAWAY frame before terminating the
-    TEXT[!SHOULD]:    connection.
+    TEXT[!SHOULD,implementation]:    A GOAWAY frame might not immediately precede closing of the
+    TEXT[!SHOULD,implementation]:    connection; a receiver of a GOAWAY that has no more use for the
+    TEXT[!SHOULD,implementation]:    connection SHOULD still send a GOAWAY frame before terminating the
+    TEXT[!SHOULD,implementation]:    connection.
     TEXT[!MUST,implementation,test]:    An endpoint MUST treat a GOAWAY frame with a stream identifier other
     TEXT[!MUST,implementation,test]:    than 0x00 as a connection error (Section 5.4.1) of type
     TEXT[!MUST,implementation,test]:    PROTOCOL_ERROR.

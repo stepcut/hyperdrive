@@ -1,10 +1,12 @@
 {-# LANGUAGE OverloadedStrings, PatternSynonyms, LambdaCase, BangPatterns #-}
--- | Serving one HTTP/1.1 connection: the IO around
--- 'Hyperdrive.HTTP1.Connection.step' (docs/server-design.md).
+-- | Serving one connection: the protocol chosen from its first octets
+-- (docs/http2-driver-design.md, V6), and the HTTP/1.1 driver, the IO
+-- around 'Hyperdrive.HTTP1.Connection.step' (docs/server-design.md).
 --
--- Everything for a connection happens in one thread, the application's
--- handler included, so the connection's state is an 'IORef' that only
--- that thread touches.
+-- Everything for an HTTP/1.1 connection happens in one thread, the
+-- application's handler included, so the connection's state is an
+-- 'IORef' that only that thread touches. HTTP/2 connections are served
+-- by "Hyperdrive.Server.HTTP2".
 module Hyperdrive.Server.Connection
   ( -- * Applications
     Application
@@ -27,114 +29,23 @@ import Control.Monad (unless, void, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.IORef
-import Data.Maybe (fromJust)
+import Data.Maybe (isJust)
 import Data.Word (Word64)
 import Hyperdrive.HTTP1.Connection
+import qualified Hyperdrive.HTTP2.Connection as H2
 import Hyperdrive.HTTP1.Target (TargetContext(..))
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.Message
 import Hyperdrive.Semantics.Method (pattern HEAD)
 import Hyperdrive.Semantics.Status (Status, pattern InternalServerError, pattern ServiceUnavailable)
 import Hyperdrive.Semantics.URI (pattern HTTP, pattern HTTPS)
+import Hyperdrive.Server.HTTP2 (serveHTTP2)
+import Hyperdrive.Server.Settings
 import Hyperdrive.Server.Timer
 import Hyperdrive.Server.Transport
-import Network.Socket (HostName, PortNumber, SockAddr)
+import qualified Hyperdrive.Server.Wait as Wait
 import System.IO (IOMode(..), SeekMode(..), hFileSize, hSeek, withBinaryFile)
 import System.Timeout (timeout)
-
-------------------------------------------------------------------------------
--- Applications and settings
-------------------------------------------------------------------------------
-
--- | An application answers each request with a response (S2).
-type Application = Context -> Request -> IO Response
-
--- | What the server knows about the connection a request came on
--- (design note M8).
-data Context = Context
-  { contextPeer   :: !SockAddr
-  , contextLocal  :: !SockAddr
-  , contextSecure :: !Bool
-  } deriving (Show)
-
--- | Timeouts by phase, in microseconds (D8, S7).
-data Timeouts = Timeouts
-  { timeoutIdle    :: !Int  -- ^ between requests, until the first byte of the next
-  , timeoutHead    :: !Int  -- ^ from the first byte of a head to its end, in total
-  , timeoutBody    :: !Int  -- ^ while reading a body, since bytes last arrived
-  , timeoutDiscard :: !Int  -- ^ discarding an unread body, in total
-  , timeoutWrite   :: !Int  -- ^ each write, while the client does not read
-  , timeoutLinger  :: !Int  -- ^ after half-closing, before closing
-  } deriving (Eq, Show)
-
-defaultTimeouts :: Timeouts
-defaultTimeouts = Timeouts
-  { timeoutIdle = 60 * second, timeoutHead = 30 * second, timeoutBody = 30 * second
-  , timeoutDiscard = 5 * second, timeoutWrite = 30 * second, timeoutLinger = 2 * second }
-  where second = 1000000
-
-data Settings = Settings
-  { settingsHost             :: !(Maybe HostName)  -- ^ 'Nothing': every interface
-  , settingsPort             :: !PortNumber        -- ^ 0: any free port
-  , settingsConfig           :: !Config            -- ^ the protocol core's limits (D4, D6)
-  , settingsTimeouts         :: !Timeouts
-  , settingsShutdownGrace    :: !Int               -- ^ microseconds before remaining connections are killed
-  , settingsHandlerTimeLimit :: !(Maybe Int)       -- ^ microseconds a handler may run; 'Nothing': no limit
-  , settingsMaxConnections   :: !(Maybe Int)
-    -- ^ connections served at once; at the limit, accepting waits. 10,000 by
-    -- default (docs/http2-core-design.md, C10: what bounds the per-connection
-    -- budgets and slots together); 'Nothing': no limit
-  , settingsPinConnections   :: !Bool
-    -- ^ give each connection a capability in turn when it is accepted,
-    -- and keep its thread there. For small, even requests this saves
-    -- waking threads across capabilities (7% more of the smallest
-    -- requests a second, docs/benchmarks.md). But the scheduler can no
-    -- longer move a connection's thread to an idle capability, so a
-    -- handler that computes for long delays the others on its
-    -- capability: off unless handlers are short and alike.
-  , settingsTimerResolution  :: !Int
-    -- ^ microseconds between checks of the connections' timers: a
-    -- timeout fires up to twice this late, not early, and the @Date@
-    -- field is up to this much behind (see "Hyperdrive.Server.Timer")
-  , settingsOnException      :: SomeException -> IO ()
-    -- ^ told of exceptions from applications, and of bugs; not of
-    -- clients going away
-  }
-
-defaultSettings :: Settings
-defaultSettings = Settings
-  { settingsHost = Nothing
-  , settingsPort = 8080
-  , settingsConfig = defaultConfig
-  , settingsTimeouts = defaultTimeouts
-  , settingsShutdownGrace = 30000000
-  , settingsHandlerTimeLimit = Nothing
-  , settingsMaxConnections = Just 10000
-  , settingsPinConnections = False
-  , settingsTimerResolution = 100000
-  , settingsOnException = \e -> putStrLn ("hyperdrive: " ++ displayException e)
-  }
-
--- | Thrown by a 'ContentStream''s write and flush, and by writes in
--- general, once the connection is closed or the client has gone.
-data ConnectionClosed = ConnectionClosed
-  deriving (Eq, Show)
-
-instance Exception ConnectionClosed
-
--- | What the driver reports to 'settingsOnException' besides the
--- application's own exceptions.
-data ServerError
-  = DriverBug !Misuse                     -- ^ the driver fed the core an input out of order
-  | InvalidRequestFromCore !RequestError  -- ^ the core handed over a head 'mkRequest' rejects
-  | InvalidResponse !ResponseError        -- ^ the response is not allowed for the request
-  | InvalidTrailers !TrailerError         -- ^ a stream returned trailers it may not send
-  | StreamLengthMismatch !Word64 !Word64  -- ^ a stream wrote other than the length it declared
-  | FileRangeOutside                      -- ^ a file range beyond the end of the file
-  | FileShrank                            -- ^ a file ended before its announced length
-  deriving (Show)
-
-instance Exception ServerError
 
 ------------------------------------------------------------------------------
 -- State
@@ -183,7 +94,44 @@ data BodyState = BodyOpen | BodyEnded !Fields | BodyFailed
 serveConnection :: Settings -> Timers -> Transport -> Context -> Application -> IO ()
 serveConnection settings timers transport context app = do
   wake <- newEmptyMVar
-  withTimer timers (void . tryPutMVar wake) (transportAbort transport) $ \timer -> do
+  withTimer timers (void . tryPutMVar wake) (transportAbort transport) $ \timer ->
+    (chooseProtocol settings timer wake transport >>= \case
+       Nothing -> pure ()
+       Just (True, first) | Just config <- settingsHTTP2 settings ->
+         serveHTTP2 settings config timer wake transport context app first
+       Just (_, first) -> serveHTTP1 settings timer wake transport context app first)
+      `finally` transportClose transport
+
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-3.3
+-- # A client that knows that a server supports HTTP/2 can establish a TCP
+-- # connection and send the connection preface (Section 3.4) followed by
+-- # HTTP/2 frames.
+
+-- | Read the connection's first octets and choose its protocol (D2, V6):
+-- HTTP/2 if they are its client preface, HTTP/1.1 otherwise, with what
+-- was read. While what has arrived is a prefix of the preface (and
+-- HTTP/2 is on), wait for more: an HTTP/1.1 request differs at its first
+-- octet, or its second for @POST@ and @PUT@. 'Nothing' if the connection
+-- ends, times out (the idle timeout) or the server shuts down before
+-- there is anything to serve.
+chooseProtocol :: Settings -> Timer -> MVar Wake -> Transport -> IO (Maybe (Bool, ByteString))
+chooseProtocol settings timer wake transport = do
+  deadline <- deadlineIn timer (timeoutIdle (settingsTimeouts settings))
+  let h2 = isJust (settingsHTTP2 settings)
+      decide buf
+        | h2, B.length buf < B.length H2.connectionPreface, buf `B.isPrefixOf` H2.connectionPreface = go buf
+        | otherwise = pure (Just (h2 && H2.connectionPreface `B.isPrefixOf` buf, buf))
+      go buf = transportTryRecv transport >>= \case
+        Just bs | B.null bs -> pure (if B.null buf then Nothing else Just (False, buf))
+                | otherwise -> decide (buf <> bs)
+        Nothing -> Wait.waitFor timer wake transport True False deadline True (pure False) >>= \case
+          WakeReadable -> go buf
+          _ -> pure Nothing
+  go B.empty
+
+-- | Serve an HTTP/1.1 connection whose first octets have been read.
+serveHTTP1 :: Settings -> Timer -> MVar Wake -> Transport -> Context -> Application -> ByteString -> IO ()
+serveHTTP1 settings timer wake transport context app first = do
     let config = settingsConfig settings
         target = configTarget config
         config' = config { configTarget = target { contextScheme = if contextSecure context then HTTPS else HTTP } }
@@ -191,15 +139,14 @@ serveConnection settings timers transport context app = do
       <$> newIORef (newConn config') <*> newIORef [] <*> newIORef [] <*> newIORef 0
       <*> newIORef False <*> newIORef False <*> newIORef False <*> newIORef False
       <*> newIORef (TimerFor Closed 0)
-    (do r <- try (mainLoop env)
-        case r of
-          -- what the core had to say before closing (a 400, say) is still sent
-          Left e | Just ConnectionClosed <- fromException e -> linger env
-                 | Just (_ :: IOException) <- fromException e -> pure ()
-                 | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
-                 | otherwise -> settingsOnException settings e
-          Right () -> linger env)
-      `finally` transportClose transport
+    r <- try (received env first >> mainLoop env)
+    case r of
+      -- what the core had to say before closing (a 400, say) is still sent
+      Left e | Just ConnectionClosed <- fromException e -> linger env
+             | Just (_ :: IOException) <- fromException e -> pure ()
+             | Just (_ :: SomeAsyncException) <- fromException e -> throwIO e
+             | otherwise -> settingsOnException settings e
+      Right () -> linger env
 
 mainLoop :: Env -> IO ()
 mainLoop env = do
@@ -318,6 +265,8 @@ waitFor env shutdownSeen deadline = do
     WakeShutdown -> do
       writeIORef (envShutdownSeen env) True
       feed env Shutdown
+    -- HTTP/2's wakings; nothing here asks for them
+    _ -> waitFor env shutdownSeen deadline
 
 -- | Block until the socket is readable, the timer set for the deadline
 -- expires, or (if asked) the server shuts down. Wakings left over from
@@ -456,14 +405,6 @@ respondWithStatus env status = do
   feed env (Respond (ResponseHead status (withDate date emptyFields) True (Just 0) []))
   feed env (EndBody emptyFields)
   flush env
-
-withDate :: FieldValue -> Fields -> Fields
-withDate date fs
-  | null (lookupAll hDate fs) = appendField hDate date fs
-  | otherwise = fs
-
-hDate :: FieldName
-hDate = fromJust (mkFieldName "date")
 
 sendResponse :: Env -> Request -> IORef Bool -> Response -> IO ()
 sendResponse env req started resp0 = do
