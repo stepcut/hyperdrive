@@ -1610,6 +1610,45 @@ user 1.790 and 1.834 µs (after higher in six runs of eight), kernel
 4.723 and 4.712: perhaps 0.04 µs of user time, half a percent of a
 request's CPU, and no difference in requests a second. Left there.
 
+## 2026-11-27 (afternoon): the HTTP/2 owner yields before waiting
+
+With a stream at a time on each connection, the owner received twice
+for nothing and called `epoll_ctl` 2.2 times a request: it waited (and
+registered with the event manager) for each handler's response and for
+the client's next request. Two changes:
+
+- Before waiting, the owner yields once if a handler has started or
+  returned since it last yielded or waited: a handler just started on
+  the same capability then usually has its response in the inbox
+  without a wait, and after one returns the client's next request has
+  time to arrive (the HTTP/1.1 driver's yield, 2026-11-20). A first
+  version yielded whenever there was nothing to do.
+- A receive that found nothing is not tried again until after a yield
+  or a wait (registering for input fires at once if some came).
+
+System calls a request, a stream at a time on 100 connections: epoll_ctl
+2.24 to 0.025, epoll_wait 0.20 to 0.02, futex 0.82 to 0.42; recvfrom
+2.9 as before. `scripts/compare-h2`, four alternating runs:
+
+| | a stream each | 10 streams each | 64 streams | uploads | uploads, kernel µs |
+|---|---|---|---|---|---|
+| before | 339k (331k to 343k) | 483k (477k to 488k) | 767k (747k to 782k) | 6.8k (6.6k to 6.8k) | 395 |
+| yielding whenever idle | 418k (403k to 429k) | 546k (528k to 567k) | 753k (742k to 763k) | 6.1k to 6.4k | 461 to 474 |
+| yielding after a handler | 426k (419k to 430k) | 540k (519k to 559k) | 757k (749k to 764k) | 6.3k to 6.4k | 461 to 471 |
+| the same without the receive skipped | 419k (406k to 427k) | 516k (505k to 526k) | | 6.4k (6.4k to 6.5k) | 465 |
+
+(Rows from three sessions; "before" in each is that session's.) Kept:
+yielding after a handler, with the skip. Small requests 24% faster at a
+stream a connection and 11% at ten; 64 streams within the noise.
+
+Uploads: an A/A run (the same binary twice in the rotation) gave 6.4k
+and 6.6k, kernel 411 and 399 µs, and the yielding build 6.3k, kernel
+465: requests a second within the noise, but about 60 µs more kernel
+time an upload, in three sessions. Not the yields (two an upload) nor
+the skipped receives (without them the same), and the counts of system
+calls are as before; perhaps the TCP stack, with the owner acting at
+other moments. Open, for a profile of the kernel.
+
 ## Experiments for later: what a large gain would take
 
 Not planned for soon (the user, 2026-11-24); set down so that they are

@@ -60,6 +60,9 @@ data Env = Env
   , envBroken    :: !(IORef Bool)             -- ^ the transport failed, or a write timed out
   , envShutdowns :: !(IORef Int)              -- ^ 'Shutdown' inputs fed: the second is the forced stage
   , envFull      :: !(IORef Bool)             -- ^ the last receive filled its buffer
+  , envMayRead   :: !(IORef Bool)             -- ^ input may have come since a receive found none
+  , envYielded   :: !(IORef Bool)             -- ^ yielded since the last progress
+  , envPromising :: !(IORef Bool)             -- ^ a handler started or returned since the last yield or wait
   }
 
 -- | What the owner and a stream's handler share (V3).
@@ -92,6 +95,7 @@ serveHTTP2 settings config timer wake transport context app first = do
   env <- Env settings timer wake transport context app
     <$> newIORef conn <*> newIORef [] <*> newIORef Seq.empty <*> newIORef Nothing
     <*> newIORef IntMap.empty <*> newIORef False <*> newIORef False <*> newIORef 0 <*> newIORef False
+    <*> newIORef True <*> newIORef False <*> newIORef False
   (do r <- try (act env outs >> feed env (Received first) >> loop env)
       case r of
         Right () -> pure ()
@@ -122,7 +126,20 @@ loop env = do
     e <- send env
     closed' <- readIORef (envClosed env)
     unless closed' $ do
-      unless (a || b || c || d || e) (wait env)
+      if a || b || c || d || e then writeIORef (envYielded env) False else do
+        -- Nothing to do. If a handler has started or returned since the
+        -- last yield or wait, let this capability's other threads run
+        -- once before waiting: a handler just started is usually among
+        -- them, and its response is then in the inbox with no wait; after
+        -- one returns, the client's next request has had time to arrive
+        -- (the HTTP/1.1 driver's yield, docs/benchmarks.md, 2026-11-20).
+        -- Otherwise, the wait, which registers with the event manager:
+        -- yielding during an upload, say, cost it 4.5% (2026-11-27).
+        yielded <- readIORef (envYielded env)
+        promising <- readIORef (envPromising env)
+        writeIORef (envPromising env) False
+        if yielded || not promising then wait env else yield >> writeIORef (envYielded env) True
+        writeIORef (envMayRead env) True
       loop env
 
 -- | Feed the core an input, and act on what it says.
@@ -143,7 +160,7 @@ act env = mapM_ $ \case
       now <- clockMillis (envTimer env)
       writeIORef (envWriteBy env) $! Just (now + writeTimeout env)
     writeIORef (envOut env) $! foldl (|>) out (filter (not . B.null) bs)
-  NewRequest (StreamId sid) h -> startHandler env sid h
+  NewRequest (StreamId sid) h -> writeIORef (envPromising env) True >> startHandler env sid h
   RequestData (StreamId sid) d -> deliver env sid (\b -> b { boxContent = boxContent b |> d })
   RequestEnd (StreamId sid) t -> deliver env sid (\b -> b { boxEnd = Just t })
   RequestAborted (StreamId sid) r -> deliver env sid (\b -> b { boxAborted = Just r })
@@ -170,7 +187,9 @@ takeInbox env = do
   msgs <- atomicModifyIORef' (envInbox env) (\m -> ([], m))
   forM_ (reverse msgs) $ \m -> do
     case m of
-      HandlerDone (StreamId sid) -> modifyIORef' (envStreams env) (IntMap.delete (fromIntegral sid))
+      HandlerDone (StreamId sid) -> do
+        writeIORef (envPromising env) True
+        modifyIORef' (envStreams env) (IntMap.delete (fromIntegral sid))
       _ -> pure ()
     feed env m
   pure (not (null msgs))
@@ -183,12 +202,16 @@ takeInbox env = do
 -- (docs/benchmarks.md, 2026-11-27). Not more than 64 KiB: a DATA frame
 -- of 16 KiB is then at least a quarter of its buffer, which the core
 -- passes on without copying (C3); from 256 KiB each would be copied.
+--
+-- A receive that found nothing is not tried again until something may
+-- have come: after a wait or a yield. Waiting registers for input at
+-- once if there is some, so nothing is missed.
 receive :: Env -> IO Bool
-receive env = do
+receive env = readIORef (envMayRead env) >>= \may -> if not may then pure False else do
   full <- readIORef (envFull env)
   r <- if full then transportTryRecvLarge (envTransport env) largeReceive else transportTryRecv (envTransport env)
   case r of
-    Nothing -> writeIORef (envFull env) False >> pure False
+    Nothing -> writeIORef (envFull env) False >> writeIORef (envMayRead env) False >> pure False
     Just bs -> do
       writeIORef (envFull env) $! B.length bs >= 16384
       feed env (if B.null bs then PeerClosed else Received bs)
