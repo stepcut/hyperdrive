@@ -998,3 +998,52 @@ file: src/Hyperdrive/HTTP2/Frame.hs
 why: SETTINGS_NO_RFC7540_PRIORITIES other than 0 or 1 is a connection error (RFC 9218 Section 2.1)
 - 0x9 | v > 1 -> err ProtocolError BadNoRFC7540Priorities
 + 0x9 | False -> err ProtocolError BadNoRFC7540Priorities
+
+file: src/Hyperdrive/HTTP2/Schedule.hs
+why: a stream inserted again at the same priority keeps its place (P3)
+- | p0 == p -> s
++ | False -> s
+
+why: moved within one urgency, the level keeps which kind is next (P3)
+- | priorityUrgency p0 == u -> Schedule ps' (IM.adjust (put . takeOut k p0) u levels)
++ | False -> Schedule ps' (IM.adjust (put . takeOut k p0) u levels)
+
+why: an incremental stream joins the end of the turns (RFC 9218 Section 10)
+- | priorityIncremental p = lv { lvTurns = lvTurns lv |> k }
++ | priorityIncremental p = lv { lvTurns = k Seq.<| lvTurns lv }
+
+why: an urgency with no streams left is forgotten, and which kind sent last with it (P3)
+- if S.null (lvOrdered lv') && Seq.null (lvTurns lv') then Nothing else Just lv'
++ Just lv'
+
+why: a deleted incremental stream is no longer a candidate
+- | priorityIncremental p = lv { lvTurns = Seq.filter (/= k) (lvTurns lv) }
++ | priorityIncremental p = lv { lvTurns = lvTurns lv }
+
+why: a deleted stream is no longer scheduled
+- Just p -> Schedule (M.delete k ps) (IM.update remove (priorityUrgency p) levels)
++ Just p -> Schedule ps (IM.update remove (priorityUrgency p) levels)
+
+why: an incremental stream that sent waits for the others' turns (RFC 9218 Section 10)
+- | priorityIncremental p = lv { lvTurns = Seq.filter (/= k) (lvTurns lv) |> k, lvIncrementalNext = False }
++ | priorityIncremental p = lv { lvTurns = lvTurns lv, lvIncrementalNext = False }
+
+why: after an incremental stream, a non-incremental one (P3's alternation)
+- |> k, lvIncrementalNext = False }
++ |> k, lvIncrementalNext = True }
+
+why: after a non-incremental stream, an incremental one (P3's alternation)
+- | otherwise = lv { lvIncrementalNext = True }
++ | otherwise = lv { lvIncrementalNext = False }
+
+why: the kind that did not send last goes first (P3)
+- | lvIncrementalNext lv = toList (lvTurns lv) ++ S.toAscList (lvOrdered lv)
++ | not (lvIncrementalNext lv) = toList (lvTurns lv) ++ S.toAscList (lvOrdered lv)
+
+why: urgency 0 first (RFC 9218 Section 10)
+- candidates = concatMap order . IM.elems . schLevels
++ candidates = concatMap order . reverse . IM.elems . schLevels
+
+why: non-incremental streams in ascending order of stream ID (RFC 9218 Section 10)
+- | otherwise = S.toAscList (lvOrdered lv) ++ toList (lvTurns lv)
++ | otherwise = S.toDescList (lvOrdered lv) ++ toList (lvTurns lv)

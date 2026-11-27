@@ -21,6 +21,7 @@ import FieldSyntaxTests (fieldSyntaxTests)
 import GrammarTests (grammarTests)
 import IndependentTests (independentTests)
 import MessageTests (messageTests)
+import PriorityTests (priorityTests)
 import ReviewTests (reviewTests)
 import SafePathTests (safePathTests)
 import SecurityTests (securityTests)
@@ -66,6 +67,7 @@ main = do
   , thirdPartyTests
   , grammarTests
   , structuredFields
+  , priorityTests
   , testGroup "Independent re-derivation"
       [ testProperty d (once b) | (d, b) <- independentTests ]
   , testGroup "Second independent review"

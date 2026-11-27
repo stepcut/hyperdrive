@@ -143,7 +143,8 @@ isOWS c = c == 0x20 || c == 0x09
 -- | Parse a whole field value as a type (Section 4.2's steps 1 to 8).
 parseAs :: P a -> ByteString -> Maybe a
 parseAs p input
-  -- step 1: the value must be ASCII
+  -- step 1: the value must be ASCII (each type's own checks reject
+  -- every octet above 0x7E as well; kept as the algorithm's step)
   | B.any (> 0x7F) input = Nothing
   | otherwise = case runP (discardWhile isSP >> p) input of
       Just (a, rest) | B.null (B.dropWhile isSP rest) -> Just a

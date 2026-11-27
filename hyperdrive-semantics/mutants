@@ -581,3 +581,73 @@ why: a CONNECT authority needs a port
 why: CONNECT to an IPvFuture host is refused too
 - _ <- servable authority
 + _ <- Right ()
+
+file: src/Hyperdrive/Semantics/Priority.hs
+why: urgency is 0 to 7 (RFC 9218 Section 4.1)
+- | u >= 0 && u <= 7 = Just (Priority u i)
++ | u >= 0 && u <= 8 = Just (Priority u i)
+
+why: incremental is false by default (RFC 9218 Section 4.2)
+- defaultPriority = Priority 3 False
++ defaultPriority = Priority 3 True
+
+why: an urgency out of range is ignored (RFC 9218 Section 4)
+- Just (MemberItem (Item (SFInteger u) _)) | u >= 0 && u <= 7 -> Just (fromInteger u)
++ Just (MemberItem (Item (SFInteger u) _)) | u <= 7 -> Just (fromInteger u)
+
+why: incremental is the Boolean given
+- Just (MemberItem (Item (SFBoolean i) _)) -> Just i
++ Just (MemberItem (Item (SFBoolean _) _)) -> Just True
+
+why: the parameters not named are kept (RFC 9218 Section 8)
+- Priority (maybe u0 priorityUrgency (u >>= \u' -> mkPriority u' i0)) (maybe i0 id i)
++ Priority (maybe u0 priorityUrgency (u >>= \u' -> mkPriority u' i0)) i0
+
+file: src/Hyperdrive/Semantics/StructuredField.hs
+why: a List may not end with a comma (Section 4.2.1)
+- if trailing then failP else go (m : members)
++ go (m : members)
+
+why: a key seen again keeps its place and takes the new value (Section 4.2.2)
+- | any ((== k) . fst) m = [ (k', if k' == k then v else v') | (k', v') <- m ]
++ | False = [ (k', if k' == k then v else v') | (k', v') <- m ]
+
+why: an Integer has at most 15 digits (Section 4.2.4)
+- | not isDecimal && B.length acc > 15 = failP
++ | not isDecimal && B.length acc > 16 = failP
+
+why: only DQUOTE and backslash are escaped (Section 3.3.3)
+- if next == 0x22 || next == 0x5C then go (next : acc) else failP
++ go (next : acc)
+
+why: base64 of one character more than a multiple of four is not base64 (RFC 4648)
+- | B.length body `mod` 4 == 1 = Nothing
++ | False = Nothing
+
+why: "=" only at the end of base64 (RFC 4648)
+- | B.any (== 0x3D) body = Nothing
++ | False = Nothing
+
+why: no UTF-16 surrogates in UTF-8 (RFC 3629)
+- | a == 0xED = second (<= 0x9F) 1 rest
++ | a == 0xED = cont 2 rest
+
+why: nothing above U+10FFFF (RFC 3629)
+- | a == 0xF4 = second (<= 0x8F) 2 rest
++ | a == 0xF4 = cont 3 rest
+
+why: a Display String is serialized only from Unicode (Section 4.1.11)
+- | validUtf8 u -> Just ("%\"" <> B.concatMap percent u <> "\"")
++ | True -> Just ("%\"" <> B.concatMap percent u <> "\"")
+
+why: Decimals round ties to even (Section 4.1.5)
+- thousandths = round (r * 1000) :: Integer
++ thousandths = truncate (r * 1000) :: Integer
+
+why: Boolean true is omitted from a Dictionary member (Section 3.2)
+- entry (k, MemberItem (Item (SFBoolean True) params)) = (<>) <$> keyS k <*> parametersS params
++ entry (k, MemberItem (Item (SFBoolean False) params)) = (<>) <$> keyS k <*> parametersS params
+
+why: an Integer of more than 15 digits is not serialized (Section 4.1.4)
+- | abs n > 999999999999999 = Nothing
++ | abs n > 9999999999999999 = Nothing

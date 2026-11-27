@@ -3843,22 +3843,33 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9218
     TEXT[!MAY]:    directly connected to.
 
   SECTION: [Priority Parameters](#section-4)
-    TEXT[!SHOULD]: When receiving an HTTP request that does not carry these
-    TEXT[!SHOULD]:    priority parameters, a server SHOULD act as if their default values
-    TEXT[!SHOULD]:    were specified.
-    TEXT[!MUST]: Where the Dictionary is successfully parsed,
-    TEXT[!MUST]:    this document places the additional requirement that unknown priority
-    TEXT[!MUST]:    parameters, priority parameters with out-of-range values, or values
-    TEXT[!MUST]:    of unexpected types MUST be ignored.
+    TEXT[!SHOULD,implementation]: When receiving an HTTP request that does not carry these
+    TEXT[!SHOULD,implementation]:    priority parameters, a server SHOULD act as if their default values
+    TEXT[!SHOULD,implementation]:    were specified.
+    TEXT[implementation,test]:    Receivers parse the Dictionary as described in Section 4.2 of
+    TEXT[implementation,test]:    [STRUCTURED-FIELDS].
+    TEXT[!MUST,implementation,test]: Where the Dictionary is successfully parsed,
+    TEXT[!MUST,implementation,test]:    this document places the additional requirement that unknown priority
+    TEXT[!MUST,implementation,test]:    parameters, priority parameters with out-of-range values, or values
+    TEXT[!MUST,implementation,test]:    of unexpected types MUST be ignored.
 
   SECTION: [Urgency](#section-4.1)
+    TEXT[implementation]:    The urgency (u) parameter value is Integer (see Section 3.3.1 of
+    TEXT[implementation]:    [STRUCTURED-FIELDS]), between 0 and 7 inclusive, in descending order
+    TEXT[implementation]:    of priority.  The default is 3.
     TEXT[!SHOULD]:    A client that fetches a document that likely consists of multiple
     TEXT[!SHOULD]:    HTTP resources (e.g., HTML) SHOULD assign the default urgency level
     TEXT[!SHOULD]:    to the main resource.
     TEXT[!SHOULD]: This urgency level SHOULD NOT be used
     TEXT[!SHOULD]:    for fetching responses that have any impact on user interaction.
 
+  SECTION: [Incremental](#section-4.2)
+    TEXT[implementation]:    The default value of the incremental parameter is false (0).
+
   SECTION: [The PRIORITY_UPDATE Frame](#section-7)
+    TEXT[implementation]:    A PRIORITY_UPDATE frame communicates a complete set of all priority
+    TEXT[implementation]:    parameters in the Priority Field Value field.  Omitting a priority
+    TEXT[implementation]:    parameter is a signal to use its default value.
     TEXT[!MAY]: Failure to parse the
     TEXT[!MAY]:    Priority Field Value MAY be treated as a connection error.
     TEXT[!MAY]:    A client MAY send a PRIORITY_UPDATE frame before the stream that it
@@ -3928,22 +3939,31 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9218
     TEXT[!MUST]:    client receives a PRIORITY_UPDATE frame, this MUST be treated as a
     TEXT[!MUST]:    connection error of type H3_FRAME_UNEXPECTED.
 
+  SECTION: [Merging Client- and Server-Driven Priority Parameters](#section-8)
+    TEXT[implementation]:    The absence of a priority parameter in an HTTP response indicates the
+    TEXT[implementation]:    server's disinterest in changing the client-provided value.
+    TEXT[test]:    the intermediary might alter its understanding of the urgency from 5
+    TEXT[test]:    to 1, because it prefers the server-provided value over the client's.
+    TEXT[test]:    The incremental value continues to be true, i.e., the value specified
+    TEXT[test]:    by the client, as the server did not specify the incremental (i)
+    TEXT[test]:    parameter.
+
   SECTION: [Client Scheduling](#section-9)
     TEXT[!MAY]:    A client MAY use priority values to make local processing or
     TEXT[!MAY]:    scheduling choices about the requests it initiates.
 
   SECTION: [Server Scheduling](#section-10)
-    TEXT[!SHOULD]:    It is RECOMMENDED that, when possible, servers respect the urgency
-    TEXT[!SHOULD]:    parameter (Section 4.1), sending higher-urgency responses before
-    TEXT[!SHOULD]:    lower-urgency responses.
+    TEXT[!SHOULD,implementation,test]:    It is RECOMMENDED that, when possible, servers respect the urgency
+    TEXT[!SHOULD,implementation,test]:    parameter (Section 4.1), sending higher-urgency responses before
+    TEXT[!SHOULD,implementation,test]:    lower-urgency responses.
     TEXT[!SHOULD]: It is RECOMMENDED that, when possible, servers
     TEXT[!SHOULD]:    respect the incremental parameter (Section 4.2).
-    TEXT[!SHOULD]:    Non-incremental responses of the same urgency SHOULD be served by
-    TEXT[!SHOULD]:    prioritizing bandwidth allocation in ascending order of the stream
-    TEXT[!SHOULD]:    ID, which corresponds to the order in which clients make requests.
-    TEXT[!SHOULD]:    Incremental responses of the same urgency SHOULD be served by sharing
-    TEXT[!SHOULD]:    bandwidth among them.
-    TEXT[!SHOULD]:    It is RECOMMENDED that servers avoid such starvation where possible.
+    TEXT[!SHOULD,implementation,test]:    Non-incremental responses of the same urgency SHOULD be served by
+    TEXT[!SHOULD,implementation,test]:    prioritizing bandwidth allocation in ascending order of the stream
+    TEXT[!SHOULD,implementation,test]:    ID, which corresponds to the order in which clients make requests.
+    TEXT[!SHOULD,implementation,test]:    Incremental responses of the same urgency SHOULD be served by sharing
+    TEXT[!SHOULD,implementation,test]:    bandwidth among them.
+    TEXT[!SHOULD,implementation,test]:    It is RECOMMENDED that servers avoid such starvation where possible.
 
   SECTION: [Intermediaries with Multiple Backend Connections](#section-10.1)
     TEXT[!SHOULD]:    Similarly, servers SHOULD allocate some amount of bandwidths to

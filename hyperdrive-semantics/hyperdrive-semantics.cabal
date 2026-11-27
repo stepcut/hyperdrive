@@ -39,6 +39,7 @@ library
                     Hyperdrive.Semantics.Internal
                     Hyperdrive.Semantics.Message
                     Hyperdrive.Semantics.Method
+                   Hyperdrive.Semantics.Priority
                     Hyperdrive.Semantics.SafePath
                     Hyperdrive.Semantics.Status
                    Hyperdrive.Semantics.StructuredField
@@ -62,6 +63,7 @@ test-suite hyperdrive-semantics-tests
                     GrammarTests
                     IndependentTests
                     MessageTests
+                    PriorityTests
                     ReviewTests
                     SafePathTests
                     SecurityTests

@@ -69,6 +69,27 @@ Recommended (the survey below: all seven implementations are strict
 across urgencies; only Go guards against the starvation, and the same
 way).
 
+*As built (P1-P3, 2026-11-27).* `Hyperdrive.Semantics.StructuredField`
+(all of RFC 9651; the httpwg corpus, a round-trip property, 15
+mutants). `Hyperdrive.Semantics.Priority`: `Priority` made only through
+`mkPriority` (urgency 0 to 7), `PriorityParams` for the parameters a
+value names, `parsePriorityParams` (a value that is not a Dictionary is
+`Nothing`, the field as if absent, so not a signal for P9) and
+`applyParams` (over the defaults for a request or PRIORITY_UPDATE, over
+the client's for a response; an urgency out of range made by hand is
+ignored, as one in a field is). `Hyperdrive.HTTP2.Schedule`, over any
+ordered keys: `insert` (a stream with something to send; at the same
+priority it keeps its place, moved within its urgency the alternation
+stays as it was), `sent` (after every frame, the last one too),
+`delete`, and `candidates`, the order to try streams in, so that one
+blocked by its window does not lose its place. Tested against a model
+written another way (stamps instead of a queue), with examples, and with
+properties of the order frames go out when all can send: strict by
+urgency, and an incremental stream waits at most 2I - 1 frames of its
+urgency (I the incremental streams there), the first non-incremental
+one at most one. 12 mutants. Not yet used by the core (next: P4, P5,
+P9, P10).
+
 **P4. The application's view.** The response's `Priority` field, if
 the handler sets one, overrides the request's for the parameters it
 names (Section 8's example: the server's urgency, the client's
