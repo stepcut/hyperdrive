@@ -35,7 +35,24 @@
     "root": {
       "inputs": {
         "hpack-test-case": "hpack-test-case",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "structured-field-tests": "structured-field-tests"
+      }
+    },
+    "structured-field-tests": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1794954847,
+        "narHash": "sha256-sTLT14kx+AWg/Qi4q7Fzi8Sw7mHBlqlSpJF/3TqVgzU=",
+        "owner": "httpwg",
+        "repo": "structured-field-tests",
+        "rev": "4a4782f8234512af133f6f57c4ca998578b57110",
+        "type": "github"
+      },
+      "original": {
+        "owner": "httpwg",
+        "repo": "structured-field-tests",
+        "type": "github"
       }
     }
   },

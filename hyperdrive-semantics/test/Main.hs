@@ -24,11 +24,14 @@ import MessageTests (messageTests)
 import ReviewTests (reviewTests)
 import SafePathTests (safePathTests)
 import SecurityTests (securityTests)
+import StructuredFieldTests (structuredFieldTests)
 import ThirdPartyTests (thirdPartyTests)
 import URITests (uriTests)
 
 main :: IO ()
-main = defaultMain $ testGroup "hyperdrive-semantics"
+main = do
+ structuredFields <- structuredFieldTests
+ defaultMain $ testGroup "hyperdrive-semantics"
   [ testGroup "Syntax"
     [ testProperty "tchar is VCHAR except delimiters" prop_tcharDelimiters
     , testProperty "isToken"                          prop_isToken
@@ -62,6 +65,7 @@ main = defaultMain $ testGroup "hyperdrive-semantics"
   , messageTests
   , thirdPartyTests
   , grammarTests
+  , structuredFields
   , testGroup "Independent re-derivation"
       [ testProperty d (once b) | (d, b) <- independentTests ]
   , testGroup "Second independent review"

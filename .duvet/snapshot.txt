@@ -3963,8 +3963,8 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9218
 
 SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9651
   SECTION: [Notational Conventions](#section-1.2)
-    TEXT[!MUST]: When parsing from HTTP fields, implementations MUST have
-    TEXT[!MUST]:    behavior that is indistinguishable from following the algorithms.
+    TEXT[!MUST,implementation,test]: When parsing from HTTP fields, implementations MUST have
+    TEXT[!MUST,implementation,test]:    behavior that is indistinguishable from following the algorithms.
     TEXT[!MAY]: Implementations MAY vary from the
     TEXT[!MAY]:    specified behavior so long as the output is still correctly handled
     TEXT[!MAY]:    by the parsing algorithm described in Section 4.2.
@@ -3989,30 +3989,30 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9651
     TEXT[!MUST]:    Parsers MUST support Inner Lists containing at least 256 members.
 
   SECTION: [Parameters](#section-3.1.2)
-    TEXT[!MUST]:    Implementations MUST provide access to Parameters both by index and
-    TEXT[!MUST]:    by key.
+    TEXT[!MUST,implementation]:    Implementations MUST provide access to Parameters both by index and
+    TEXT[!MUST,implementation]:    by key.
     TEXT[!MAY]: Specifications MAY use either means of accessing them.
-    TEXT[!MUST]:    Parameters whose value is Boolean (see Section 3.3.6) true MUST omit
-    TEXT[!MUST]:    that value when serialized.
+    TEXT[!MUST,implementation,test]:    Parameters whose value is Boolean (see Section 3.3.6) true MUST omit
+    TEXT[!MUST,implementation,test]:    that value when serialized.
     TEXT[!MUST]:    Parsers MUST support at least 256 parameters on an Item or Inner
     TEXT[!MUST]:    List, and support parameter keys with at least 64 characters.
 
   SECTION: [Dictionaries](#section-3.2)
-    TEXT[!MUST]:    Implementations MUST provide access to Dictionaries both by index and
-    TEXT[!MUST]:    by key.
+    TEXT[!MUST,implementation]:    Implementations MUST provide access to Dictionaries both by index and
+    TEXT[!MUST,implementation]:    by key.
     TEXT[!MAY]: Specifications MAY use either means of accessing the
     TEXT[!MAY]:    members.
     TEXT[!MUST]: Recipients MUST ignore members whose keys are undefined or
     TEXT[!MUST]:    unknown, unless the field's specification specifically disallows
     TEXT[!MUST]:    them.
-    TEXT[!MUST]:    Members whose value is Boolean (see Section 3.3.6) true MUST omit
-    TEXT[!MUST]:    that value when serialized.
+    TEXT[!MUST,implementation,test]:    Members whose value is Boolean (see Section 3.3.6) true MUST omit
+    TEXT[!MUST,implementation,test]:    that value when serialized.
     TEXT[!MUST]:    Parsers MUST support Dictionaries containing at least 1024 key/value
     TEXT[!MUST]:    pairs and keys with at least 64 characters.
 
   SECTION: [Strings](#section-3.3.3)
-    TEXT[!MUST]: Furthermore, only DQUOTE and "\" can be
-    TEXT[!MUST]:    escaped; other characters after "\" MUST cause parsing to fail.
+    TEXT[!MUST,implementation,test]: Furthermore, only DQUOTE and "\" can be
+    TEXT[!MUST,implementation,test]:    escaped; other characters after "\" MUST cause parsing to fail.
     TEXT[!MUST]:    Parsers MUST support Strings (after any decoding) with at least 1024
     TEXT[!MUST]:    characters.
 
@@ -4035,35 +4035,40 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9651
     TEXT[!SHOULD]:    and security considerations (e.g., homograph attacks) that make it
     TEXT[!SHOULD]:    more difficult to handle correctly.
 
+  SECTION: [Serializing Structured Fields](#section-4.1)
+    TEXT[test]: If the structure is a Dictionary or List and its value is empty
+    TEXT[test]:        (i.e., it has no members), do not serialize the field at all
+    TEXT[test]:        (i.e., omit both the field-name and field-value).
+
   SECTION: [Serializing a Byte Sequence](#section-4.1.8)
-    TEXT[!SHOULD]:    Likewise, encoded data SHOULD have pad bits set to zero, as per
-    TEXT[!SHOULD]:    [RFC4648], Section 3.5, unless it is not possible to do so due to
-    TEXT[!SHOULD]:    implementation constraints.
+    TEXT[!SHOULD,implementation]:    Likewise, encoded data SHOULD have pad bits set to zero, as per
+    TEXT[!SHOULD,implementation]:    [RFC4648], Section 3.5, unless it is not possible to do so due to
+    TEXT[!SHOULD,implementation]:    implementation constraints.
 
   SECTION: [Parsing Structured Fields](#section-4.2)
-    TEXT[!MUST]:    When generating input_bytes, parsers MUST combine all field lines in
-    TEXT[!MUST]:    the same section (header or trailer) that case-insensitively match
-    TEXT[!MUST]:    the field name into one comma-separated field-value, as per
-    TEXT[!MUST]:    Section 5.2 of [HTTP]; this assures that the entire field value is
-    TEXT[!MUST]:    processed correctly.
+    TEXT[!MUST,implementation,test]:    When generating input_bytes, parsers MUST combine all field lines in
+    TEXT[!MUST,implementation,test]:    the same section (header or trailer) that case-insensitively match
+    TEXT[!MUST,implementation,test]:    the field name into one comma-separated field-value, as per
+    TEXT[!MUST,implementation,test]:    Section 5.2 of [HTTP]; this assures that the entire field value is
+    TEXT[!MUST,implementation,test]:    processed correctly.
     TEXT[!MAY]:    Parsers MAY fail when processing a field value spread across multiple
     TEXT[!MAY]:    field lines, when one of those lines does not parse as that field.
-    TEXT[!MUST]:    If parsing fails, either the entire field value MUST be ignored
-    TEXT[!MUST]:    (i.e., treated as if the field were not present in the section), or
-    TEXT[!MUST]:    alternatively the complete HTTP message MUST be treated as malformed.
+    TEXT[!MUST,implementation]:    If parsing fails, either the entire field value MUST be ignored
+    TEXT[!MUST,implementation]:    (i.e., treated as if the field were not present in the section), or
+    TEXT[!MUST,implementation]:    alternatively the complete HTTP message MUST be treated as malformed.
 
   SECTION: [Parsing a Byte Sequence](#section-4.2.7)
-    TEXT[!SHOULD]:    Because some implementations of base64 do not allow rejection of
-    TEXT[!SHOULD]:    encoded data that is not properly "=" padded (see [RFC4648],
-    TEXT[!SHOULD]:    Section 3.2), parsers SHOULD NOT fail when "=" padding is not
-    TEXT[!SHOULD]:    present, unless they cannot be configured to do so.
-    TEXT[!SHOULD]:    Because some implementations of base64 do not allow rejection of
-    TEXT[!SHOULD]:    encoded data that has non-zero pad bits (see [RFC4648], Section 3.5),
-    TEXT[!SHOULD]:    parsers SHOULD NOT fail when non-zero pad bits are present, unless
-    TEXT[!SHOULD]:    they cannot be configured to do so.
-    TEXT[!MUST]:    This specification does not relax the requirements in Sections 3.1
-    TEXT[!MUST]:    and 3.3 of [RFC4648]; therefore, parsers MUST fail on characters
-    TEXT[!MUST]:    outside the base64 alphabet and on line feeds in encoded data.
+    TEXT[!SHOULD,implementation]:    Because some implementations of base64 do not allow rejection of
+    TEXT[!SHOULD,implementation]:    encoded data that is not properly "=" padded (see [RFC4648],
+    TEXT[!SHOULD,implementation]:    Section 3.2), parsers SHOULD NOT fail when "=" padding is not
+    TEXT[!SHOULD,implementation]:    present, unless they cannot be configured to do so.
+    TEXT[!SHOULD,implementation]:    Because some implementations of base64 do not allow rejection of
+    TEXT[!SHOULD,implementation]:    encoded data that has non-zero pad bits (see [RFC4648], Section 3.5),
+    TEXT[!SHOULD,implementation]:    parsers SHOULD NOT fail when non-zero pad bits are present, unless
+    TEXT[!SHOULD,implementation]:    they cannot be configured to do so.
+    TEXT[!MUST,implementation,test]:    This specification does not relax the requirements in Sections 3.1
+    TEXT[!MUST,implementation,test]:    and 3.3 of [RFC4648]; therefore, parsers MUST fail on characters
+    TEXT[!MUST,implementation,test]:    outside the base64 alphabet and on line feeds in encoded data.
 
 SPECIFICATION: .duvet/specifications/www.rfc-editor.org/rfc/rfc9218.txt
   SECTION: [Advice when Using Extensible Priorities as the Alternative](#section-2.1.1)

@@ -41,6 +41,7 @@ library
                     Hyperdrive.Semantics.Method
                     Hyperdrive.Semantics.SafePath
                     Hyperdrive.Semantics.Status
+                   Hyperdrive.Semantics.StructuredField
                     Hyperdrive.Semantics.Syntax
                     Hyperdrive.Semantics.Target
                     Hyperdrive.Semantics.URI
@@ -64,6 +65,7 @@ test-suite hyperdrive-semantics-tests
                     ReviewTests
                     SafePathTests
                     SecurityTests
+                    StructuredFieldTests
                     ThirdPartyTests
                     URITests
   default-language: GHC2021
@@ -71,6 +73,9 @@ test-suite hyperdrive-semantics-tests
                   , aeson            >= 2.0  && < 2.3
                   , bytestring
                   , containers
+                  , directory
+                  , filepath
+                  , scientific
                   , text
                   , hyperdrive-abnf
                   , hyperdrive-semantics

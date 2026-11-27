@@ -5,16 +5,21 @@
   # HPACK encodings of real header sets by several implementations, for
   # hyperdrive-http2's tests (MIT licence)
   inputs.hpack-test-case = { url = "github:http2jp/hpack-test-case"; flake = false; };
+  # the httpwg's tests of structured fields (RFC 9651), for
+  # hyperdrive-semantics's parser and serializer (BSD licence)
+  inputs.structured-field-tests = { url = "github:httpwg/structured-field-tests"; flake = false; };
 
-  outputs = { self, nixpkgs, hpack-test-case }:
+  outputs = { self, nixpkgs, hpack-test-case, structured-field-tests }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
 
       haskellPackages = pkgs: pkgs.haskellPackages.extend (final: prev: {
-        # the differential tests run Python's ipaddress module
-        hyperdrive-semantics = pkgs.haskell.lib.addTestToolDepends
-          (final.callCabal2nix "hyperdrive-semantics" ./hyperdrive-semantics { }) [ pkgs.python3 ];
+        # the differential tests run Python's ipaddress module; the tests
+        # read the structured-field corpus from SF_TESTS
+        hyperdrive-semantics = (pkgs.haskell.lib.addTestToolDepends
+          (final.callCabal2nix "hyperdrive-semantics" ./hyperdrive-semantics { }) [ pkgs.python3 ]).overrideAttrs
+          (_: { SF_TESTS = "${structured-field-tests}"; });
         hyperdrive-abnf = final.callCabal2nix "hyperdrive-abnf" ./hyperdrive-abnf { };
         hyperdrive-http1 = final.callCabal2nix "hyperdrive-http1" ./hyperdrive-http1 { };
         # the tests read the hpack-test-case corpus from HPACK_TEST_CASE
@@ -105,6 +110,7 @@
             self.packages.${pkgs.stdenv.hostPlatform.system}.duvet
           ];
           HPACK_TEST_CASE = "${hpack-test-case}";
+          SF_TESTS = "${structured-field-tests}";
         };
         # the default shell with llhttp's C library, for the differential
         # tests against it: scripts/differential-llhttp

@@ -1,4 +1,4 @@
-# Extensible priorities (RFC 9218), for HTTP/2 and later HTTP/3: proposal
+# Extensible priorities (RFC 9218), for HTTP/2 and later HTTP/3: P1-P10 decided as recommended, 2026-11-27
 
 D8 (docs/http2-core-design.md) left this for after the benchmarks
 against warp: the scheduler sends one frame at a time from each stream
