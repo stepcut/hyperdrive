@@ -450,6 +450,15 @@ prop_content = once $ conjoin
   -- # Receiving any frame other than HEADERS or PRIORITY on a stream in
   -- #    this state MUST be treated as a connection error (Section 5.4.1)
   -- #    of type PROTOCOL_ERROR.
+  -- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1.1
+  -- # Streams
+  -- # initiated by a client MUST use odd-numbered stream identifiers; those
+  -- # initiated by the server MUST use even-numbered stream identifiers.
+  , counterexample "an even stream below the highest opened is idle: DATA, WINDOW_UPDATE, RST_STREAM on it are connection errors" $
+      let [b9] = blocks [base]
+          opened = headers 9 True b9
+      in conjoin [ counterexample (show f) (seen (snd (run (received (opened <> f)))) === [SeenGoAway ProtocolError])
+                 | f <- [dataFrames 8 False "x", renderWindowUpdate (StreamId 8) 1, rst 8 Cancel] ]
   , counterexample "DATA on an idle stream: a connection error" $
       seen (snd (run (received (dataFrames 1 True "x")))) === [SeenGoAway ProtocolError]
   , counterexample "empty DATA without END_STREAM costs one" $

@@ -397,7 +397,7 @@ why: DATA beyond the connection's window is a connection error FLOW_CONTROL_ERRO
 + | False -> stop acc (goAway c FlowControlError)
 
 why: DATA on an idle stream is a connection error (Section 5.1)
-- | idle sid c -> stop acc (goAway c ProtocolError)
+- | idle sid c -> stop acc (goAway c ProtocolError) -- DATA
 + | False -> stop acc (goAway c ProtocolError)
 
 why: DATA on a half-closed (remote) stream is a stream error STREAM_CLOSED (Section 5.1)
@@ -573,8 +573,8 @@ why: content shorter than its declared length is malformed (Section 8.1.1)
 + | False ->
 
 why: RST_STREAM on an idle stream is a connection error (Section 5.1)
-- | sid > cLastStream c -> stop acc (goAway c ProtocolError)
-+ | False -> stop acc (goAway c ProtocolError)
+- | idle sid c -> stop acc (goAway c ProtocolError) -- RST_STREAM
++ | False -> stop acc (goAway c ProtocolError) -- RST_STREAM
 
 why: a client's reset before our response costs budget (rapid reset, C10)
 - charge 1 c $ \c1 -> next (andThen (ended sid st c1) (\c2 -> (c2, [RequestAborted (StreamId sid) (ResetByClient code)])))
@@ -985,6 +985,10 @@ why: the resets remembered are counted, so that the limit is reached (C4)
 why: HEADERS on a stream we reset, its handler still running, is discarded (C4)
 - | IntSet.member (fromIntegral sid) (cResetByUs c) -> result c [] -- held
 + | False -> result c [] -- held
+
+why: even streams are the server's, so idle for a server that never pushes (Section 5.1.1)
+- idle sid c = even sid || sid > cLastStream c
++ idle sid c = sid > cLastStream c
 
 why: nothing is sent with no window (Section 6.9.2)
 - in if n <= 0 then Nothing

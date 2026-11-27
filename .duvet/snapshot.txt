@@ -2960,10 +2960,9 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!SHOULD]:    PROTOCOL_ERROR.
 
   SECTION: [Stream Identifiers](#section-5.1.1)
-    TEXT[!MUST,implementation]: Streams
-    TEXT[!MUST,implementation]:    initiated by a client MUST use odd-numbered stream identifiers
-    TEXT[!MUST]: ; those
-    TEXT[!MUST]:    initiated by the server MUST use even-numbered stream identifiers.
+    TEXT[!MUST,implementation,test]: Streams
+    TEXT[!MUST,implementation,test]:    initiated by a client MUST use odd-numbered stream identifiers; those
+    TEXT[!MUST,implementation,test]:    initiated by the server MUST use even-numbered stream identifiers.
     TEXT[!MUST]:    The identifier of a newly established stream MUST be numerically
     TEXT[!MUST]:    greater than all streams that the initiating endpoint has opened or
     TEXT[!MUST]:    reserved.

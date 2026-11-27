@@ -712,7 +712,7 @@ frameOutsideBlock now c f acc = case f of
     -- # Receiving any frame other than HEADERS or PRIORITY on a stream in
     -- #    this state MUST be treated as a connection error (Section 5.4.1)
     -- #    of type PROTOCOL_ERROR.
-    | idle sid c -> stop acc (goAway c ProtocolError)
+    | idle sid c -> stop acc (goAway c ProtocolError) -- DATA
     | otherwise ->
         let c1 = c { cRecvWindow = cRecvWindow c - plen }
         in case M.lookup sid (cStreams c1) of
@@ -755,7 +755,7 @@ frameOutsideBlock now c f acc = case f of
     -- # Receiving any frame other than HEADERS or PRIORITY on a stream in
     -- #    this state MUST be treated as a connection error (Section 5.4.1)
     -- #    of type PROTOCOL_ERROR.
-    | sid > cLastStream c -> stop acc (goAway c ProtocolError)
+    | idle sid c -> stop acc (goAway c ProtocolError) -- RST_STREAM
     | otherwise -> case M.lookup sid (cStreams c) of
         Just st | sState st /= ClosedHeld ->
           -- a client's reset before our response ended (rapid reset,
@@ -955,9 +955,19 @@ wantContent sid c = case M.lookup sid (cStreams c) of
          in emit (renderHeaders (fromIntegral (peerMaxFrameSize (cPeer c1))) (StreamId sid) False block) c1 { cEncoder = enc }
   _ -> result c []
 
--- | A stream above the highest opened is idle (C4).
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-5.1.1
+-- # Streams
+-- # initiated by a client MUST use odd-numbered stream identifiers; those
+-- # initiated by the server MUST use even-numbered stream identifiers.
+
+-- | A stream the client has not opened is idle (C4): above the highest
+-- it has opened, or even, since even streams are the server's and a
+-- server that never pushes (D7) opens none. (Found by the differential
+-- test against nghttp2, 2026-11-27: even streams below the highest were
+-- taken for closed, so DATA, WINDOW_UPDATE and RST_STREAM on them were
+-- discarded instead of a connection error.)
 idle :: Word32 -> Conn -> Bool
-idle sid c = sid > cLastStream c
+idle sid c = even sid || sid > cLastStream c
 
 -- the largest encoded field block (C7): four times MAX_HEADER_LIST_SIZE
 maxEncoded :: Conn -> Int
