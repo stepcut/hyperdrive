@@ -286,7 +286,9 @@ data Conn = Conn
   { cConfig      :: !Config
   , cPhase       :: !Phase
   , cBuffer      :: !ByteString     -- ^ received and not yet used, joined
-  , cMore        :: ![ByteString]   -- ^ received after it, not yet joined, newest first
+  , cMore        :: ![(ByteString, Int)]
+    -- ^ received after it, not yet joined, newest first: each chunk, or
+    -- what is left of one, with the size of the chunk received (C3)
   , cMoreLength  :: !Int
   , cPeer        :: !PeerSettings
   , cHeadDeadline :: !(Maybe Time)  -- ^ the preface and first SETTINGS (C8)
@@ -433,7 +435,7 @@ nextDeadline c
 step :: Time -> Input -> Conn -> (Conn, [Output])
 step _ _ c | cClosed c = result c []
 step time input c0 = afterStep $ case input of
-  Received bs -> advance now c { cMore = bs : cMore c, cMoreLength = cMoreLength c + B.length bs } []
+  Received bs -> advance now c { cMore = (bs, B.length bs) : cMore c, cMoreLength = cMoreLength c + B.length bs } []
   Sent n
     | n > cUnsent c -> misuse SentMoreThanEmitted c
     | otherwise -> pump (dropWritten c { cUnsent = cUnsent c - n })
@@ -615,10 +617,36 @@ joined c
   | otherwise =
       -- a lone chunk is used as it is: concatenating it with an empty
       -- buffer would copy every chunk received
-      let b = case filter (not . B.null) (cBuffer c : reverse (cMore c)) of
+      let b = case filter (not . B.null) (cBuffer c : map fst (reverse (cMore c))) of
             [x] -> x
             xs -> B.concat xs
       in c { cBuffer = b, cMore = [], cMoreLength = 0, cSource = B.length b }
+
+-- The chunks received joined only as far as the frame being read needs
+-- (once all of it is there): with nothing left in the buffer, the next
+-- chunk as it is, at no cost; with a frame begun in the buffer, that
+-- frame's octets copied together, and the rest of the chunk it ends in
+-- left where it is. Joining everything instead copied each octet of a
+-- large upload once more, since a DATA frame of 16 KiB and its header
+-- span two receives of 16 KiB (docs/benchmarks.md, 2026-11-27).
+joinedFor :: Int -> Conn -> Conn
+joinedFor n c
+  | B.null (cBuffer c), ((x, source) : older) <- reverse (cMore c) =
+      c { cBuffer = x, cMore = reverse older, cMoreLength = cMoreLength c - B.length x, cSource = source }
+  | otherwise =
+      let (pieces, rest) = gather (n - B.length (cBuffer c)) (reverse (cMore c))
+          whole = B.concat (cBuffer c : pieces)
+      in c { cBuffer = whole, cMore = reverse rest, cMoreLength = sum (map (B.length . fst) rest)
+           , cSource = B.length whole }
+  where
+    -- the octets needed from the chunks, oldest first, and what is left
+    gather k chunks
+      | k <= 0 = ([], chunks)
+      | otherwise = case chunks of
+          [] -> ([], [])
+          ((x, source) : more)
+            | B.length x <= k -> let (ps, r) = gather (k - B.length x) more in (x : ps, r)
+            | otherwise -> ([B.take k x], (B.drop k x, source) : more)
 
 -- Use as much of the input as makes whole frames. The outputs are
 -- collected newest first, a list for each frame, and joined once at the
@@ -640,7 +668,7 @@ advance now c acc
                                  , cBuffer = B.drop (B.length connectionPreface) buf } acc
       _ -> case parseFrame (configMaxFrameSize (cConfig c)) (cBuffer c) of
         Incomplete n
-          | available c >= n && not (null (cMore c)) -> advance now (joined c) acc
+          | available c >= n && not (null (cMore c)) -> advance now (joinedFor n c) acc
           | otherwise -> done c acc
         Refused (FrameError _ code _) -> stop acc (goAway c code)
         Parsed f n ->
