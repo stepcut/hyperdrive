@@ -1,0 +1,105 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-4.2"
+
+# Parsing Structured Fields
+#
+#    When a receiving implementation parses HTTP fields that are known to
+#    be Structured Fields, it is important that care be taken, as there
+#    are a number of edge cases that can cause interoperability or even
+#    security problems.  This section specifies the algorithm for doing
+#    so.
+# 
+#    Given an array of bytes as input_bytes that represent the chosen
+#    field's field-value (which is empty if that field is not present) and
+#    field_type (one of "dictionary", "list", or "item"), return the
+#    parsed field value.
+# 
+#    1.  Convert input_bytes into an ASCII string input_string; if
+#        conversion fails, fail parsing.
+# 
+#    2.  Discard any leading SP characters from input_string.
+# 
+#    3.  If field_type is "list", let output be the result of running
+#        Parsing a List (Section 4.2.1) with input_string.
+# 
+#    4.  If field_type is "dictionary", let output be the result of
+#        running Parsing a Dictionary (Section 4.2.2) with input_string.
+# 
+#    5.  If field_type is "item", let output be the result of running
+#        Parsing an Item (Section 4.2.3) with input_string.
+# 
+#    6.  Discard any leading SP characters from input_string.
+# 
+#    7.  If input_string is not empty, fail parsing.
+# 
+#    8.  Otherwise, return output.
+# 
+#    When generating input_bytes, parsers MUST combine all field lines in
+#    the same section (header or trailer) that case-insensitively match
+#    the field name into one comma-separated field-value, as per
+#    Section 5.2 of [HTTP]; this assures that the entire field value is
+#    processed correctly.
+# 
+#    For Lists and Dictionaries, this has the effect of correctly
+#    concatenating all of the field's lines, as long as individual members
+#    of the top-level data structure are not split across multiple field
+#    instances.  The parsing algorithms for both types allow tab
+#    characters, since these might be used to combine field lines by some
+#    implementations.
+# 
+#    Strings split across multiple field lines will have unpredictable
+#    results, because one or more commas (with optional whitespace) will
+#    become part of the string output by the parser.  Since concatenation
+#    might be done by an upstream intermediary, the results are not under
+#    the control of the serializer or the parser, even when they are both
+#    under the control of the same party.
+# 
+#    Tokens, Integers, Decimals, and Byte Sequences cannot be split across
+#    multiple field lines because the inserted commas will cause parsing
+#    to fail.
+# 
+#    Parsers MAY fail when processing a field value spread across multiple
+#    field lines, when one of those lines does not parse as that field.
+#    For example, a parsing handling an Example-String field that's
+#    defined as an sf-string is allowed to fail when processing this field
+#    section:
+# 
+#    Example-String: "foo
+#    Example-String: bar"
+# 
+#    If parsing fails, either the entire field value MUST be ignored
+#    (i.e., treated as if the field were not present in the section), or
+#    alternatively the complete HTTP message MUST be treated as malformed.
+#    This is intentionally strict to improve interoperability and safety,
+#    and field specifications that use Structured Fields are not allowed
+#    to loosen this requirement.
+# 
+#    Note that this requirement does not apply to an implementation that
+#    is not parsing the field; for example, an intermediary is not
+#    required to strip a failing field from a message before forwarding
+#    it.
+
+[[spec]]
+level = "MUST"
+quote = '''
+When generating input_bytes, parsers MUST combine all field lines in
+the same section (header or trailer) that case-insensitively match
+the field name into one comma-separated field-value, as per
+Section 5.2 of [HTTP]; this assures that the entire field value is
+processed correctly.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Parsers MAY fail when processing a field value spread across multiple
+field lines, when one of those lines does not parse as that field.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If parsing fails, either the entire field value MUST be ignored
+(i.e., treated as if the field were not present in the section), or
+alternatively the complete HTTP message MUST be treated as malformed.
+'''
+

@@ -1,0 +1,64 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-3.1.2"
+
+# Parameters
+#
+#    Parameters are an ordered map of key-value pairs that are associated
+#    with an Item (Section 3.3) or Inner List (Section 3.1.1).  The keys
+#    are unique within the scope of the Parameters they occur within, and
+#    the values are bare items (i.e., they themselves cannot be
+#    parameterized; see Section 3.3).
+# 
+#    Implementations MUST provide access to Parameters both by index and
+#    by key.  Specifications MAY use either means of accessing them.
+# 
+#    Note that parameters are ordered, and parameter keys cannot contain
+#    uppercase letters.
+# 
+#    When serialized in a textual HTTP field, a Parameter is separated
+#    from its Item or Inner List and other Parameters by a semicolon.  For
+#    example:
+# 
+#    Example-List: abc;a=1;b=2; cde_456, (ghi;jk=4 l);q="9";r=w
+# 
+#    Parameters whose value is Boolean (see Section 3.3.6) true MUST omit
+#    that value when serialized.  For example, the "a" parameter here is
+#    true, while the "b" parameter is false:
+# 
+#    Example-Integer: 1; a; b=?0
+# 
+#    Note that this requirement is only on serialization; parsers are
+#    still required to correctly handle the true value when it appears in
+#    a parameter.
+# 
+#    Parsers MUST support at least 256 parameters on an Item or Inner
+#    List, and support parameter keys with at least 64 characters.  Field
+#    specifications can constrain the order of individual parameters, as
+#    well as their values' types as required.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Implementations MUST provide access to Parameters both by index and
+by key.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Specifications MAY use either means of accessing them.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Parameters whose value is Boolean (see Section 3.3.6) true MUST omit
+that value when serialized.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Parsers MUST support at least 256 parameters on an Item or Inner
+List, and support parameter keys with at least 64 characters.
+'''
+

@@ -1,0 +1,42 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-3.3.3"
+
+# Strings
+#
+#    Strings are zero or more printable ASCII [RFC0020] characters (i.e.,
+#    the range %x20 to %x7E).  Note that this excludes tabs, newlines,
+#    carriage returns, etc.
+# 
+#    Non-ASCII characters are not directly supported in Strings because
+#    they cause a number of interoperability issues, and -- with few
+#    exceptions -- field values do not require them.
+# 
+#    When it is necessary for a field value to convey non-ASCII content, a
+#    Display String (Section 3.3.8) can be specified.
+# 
+#    When serialized in a textual HTTP field, Strings are delimited with
+#    double quotes, using a backslash ("\") to escape double quotes and
+#    backslashes.  For example:
+# 
+#    Example-String: "hello world"
+# 
+#    Note that Strings only use DQUOTE as a delimiter; single quotes do
+#    not delimit Strings.  Furthermore, only DQUOTE and "\" can be
+#    escaped; other characters after "\" MUST cause parsing to fail.
+# 
+#    Parsers MUST support Strings (after any decoding) with at least 1024
+#    characters.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Furthermore, only DQUOTE and "\" can be
+escaped; other characters after "\" MUST cause parsing to fail.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Parsers MUST support Strings (after any decoding) with at least 1024
+characters.
+'''
+

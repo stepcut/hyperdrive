@@ -1,0 +1,64 @@
+target = "https://www.rfc-editor.org/rfc/rfc9218#section-4"
+
+# Priority Parameters
+#
+#    The priority information is a sequence of key-value pairs, providing
+#    room for future extensions.  Each key-value pair represents a
+#    priority parameter.
+# 
+#    The Priority HTTP header field (Section 5) is an end-to-end way to
+#    transmit this set of priority parameters when a request or a response
+#    is issued.  After sending a request, a client can change their view
+#    of response priority (Section 6) by sending HTTP-version-specific
+#    PRIORITY_UPDATE frames as defined in Sections 7.1 and 7.2.  Frames
+#    transmit priority parameters on a single hop only.
+# 
+#    Intermediaries can consume and produce priority signals in a
+#    PRIORITY_UPDATE frame or Priority header field.  An intermediary that
+#    passes only the Priority request header field to the next hop
+#    preserves the original end-to-end signal from the client; see
+#    Section 14.  An intermediary could pass the Priority header field and
+#    additionally send a PRIORITY_UPDATE frame.  This would have the
+#    effect of preserving the original client end-to-end signal, while
+#    instructing the next hop to use a different priority, per the
+#    guidance in Section 7.  An intermediary that replaces or adds a
+#    Priority request header field overrides the original client end-to-
+#    end signal, which can affect prioritization for all subsequent
+#    recipients of the request.
+# 
+#    For both the Priority header field and the PRIORITY_UPDATE frame, the
+#    set of priority parameters is encoded as a Dictionary (see
+#    Section 3.2 of [STRUCTURED-FIELDS]).
+# 
+#    This document defines the urgency (u) and incremental (i) priority
+#    parameters.  When receiving an HTTP request that does not carry these
+#    priority parameters, a server SHOULD act as if their default values
+#    were specified.
+# 
+#    An intermediary can combine signals from requests and responses that
+#    it forwards.  Note that omission of priority parameters in responses
+#    is handled differently from omission in requests; see Section 8.
+# 
+#    Receivers parse the Dictionary as described in Section 4.2 of
+#    [STRUCTURED-FIELDS].  Where the Dictionary is successfully parsed,
+#    this document places the additional requirement that unknown priority
+#    parameters, priority parameters with out-of-range values, or values
+#    of unexpected types MUST be ignored.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+When receiving an HTTP request that does not carry these
+priority parameters, a server SHOULD act as if their default values
+were specified.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Where the Dictionary is successfully parsed,
+this document places the additional requirement that unknown priority
+parameters, priority parameters with out-of-range values, or values
+of unexpected types MUST be ignored.
+'''
+

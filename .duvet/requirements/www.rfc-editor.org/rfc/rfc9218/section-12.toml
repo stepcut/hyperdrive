@@ -1,0 +1,39 @@
+target = "https://www.rfc-editor.org/rfc/rfc9218#section-12"
+
+# Retransmission Scheduling
+#
+#    Transport protocols such as TCP and QUIC provide reliability by
+#    detecting packet losses and retransmitting lost information.  In
+#    addition to the considerations in Section 10, scheduling of
+#    retransmission data could compete with new data.  The remainder of
+#    this section discusses considerations when using QUIC.
+# 
+#    Section 13.3 of [QUIC] states the following: "Endpoints SHOULD
+#    prioritize retransmission of data over sending new data, unless
+#    priorities specified by the application indicate otherwise".  When an
+#    HTTP/3 application uses the priority scheme defined in this document
+#    and the QUIC transport implementation supports application-indicated
+#    stream priority, a transport that considers the relative priority of
+#    streams when scheduling both new data and retransmission data might
+#    better match the expectations of the application.  However, there are
+#    no requirements on how a transport chooses to schedule based on this
+#    information because the decision depends on several factors and
+#    trade-offs.  It could prioritize new data for a higher-urgency stream
+#    over retransmission data for a lower-priority stream, or it could
+#    prioritize retransmission data over new data irrespective of
+#    urgencies.
+# 
+#    Section 6.2.4 of [QUIC-RECOVERY] also highlights considerations
+#    regarding application priorities when sending probe packets after
+#    Probe Timeout timer expiration.  A QUIC implementation supporting
+#    application-indicated priorities might use the relative priority of
+#    streams when choosing probe data.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+Section 13.3 of [QUIC] states the following: "Endpoints SHOULD
+prioritize retransmission of data over sending new data, unless
+priorities specified by the application indicate otherwise".
+'''
+

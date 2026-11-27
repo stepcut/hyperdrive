@@ -1,0 +1,14 @@
+target = "https://www.rfc-editor.org/rfc/rfc9218#section-9"
+
+# Client Scheduling
+#
+#    A client MAY use priority values to make local processing or
+#    scheduling choices about the requests it initiates.
+
+[[spec]]
+level = "MAY"
+quote = '''
+A client MAY use priority values to make local processing or
+scheduling choices about the requests it initiates.
+'''
+

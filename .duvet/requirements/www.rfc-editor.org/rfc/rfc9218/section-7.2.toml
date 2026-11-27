@@ -1,0 +1,134 @@
+target = "https://www.rfc-editor.org/rfc/rfc9218#section-7.2"
+
+# HTTP/3 PRIORITY_UPDATE Frame
+#
+#    The HTTP/3 PRIORITY_UPDATE frame (type=0xF0700 or 0xF0701) is used by
+#    clients to signal the initial priority of a response, or to
+#    reprioritize a response or push stream.  It carries the identifier of
+#    the element that is being prioritized and the updated priority in
+#    ASCII text that uses the same representation as that of the Priority
+#    header field value.  PRIORITY_UPDATE with a frame type of 0xF0700 is
+#    used for request streams, while PRIORITY_UPDATE with a frame type of
+#    0xF0701 is used for push streams.
+# 
+#    The PRIORITY_UPDATE frame MUST be sent on the client control stream
+#    (see Section 6.2.1 of [HTTP/3]).  Receiving a PRIORITY_UPDATE frame
+#    on a stream other than the client control stream MUST be treated as a
+#    connection error of type H3_FRAME_UNEXPECTED.
+# 
+#    HTTP/3 PRIORITY_UPDATE Frame {
+#      Type (i) = 0xF0700..0xF0701,
+#      Length (i),
+#      Prioritized Element ID (i),
+#      Priority Field Value (..),
+#    }
+# 
+#                    Figure 2: HTTP/3 PRIORITY_UPDATE Frame
+# 
+#    The PRIORITY_UPDATE frame payload has the following fields:
+# 
+#    Prioritized Element ID:  The stream ID or push ID that is the target
+#       of the priority update.
+# 
+#    Priority Field Value:  The priority update value in ASCII text,
+#       encoded using Structured Fields.  This is the same representation
+#       as the Priority header field value.
+# 
+#    The request-stream variant of PRIORITY_UPDATE (type=0xF0700) MUST
+#    reference a request stream.  If a server receives a PRIORITY_UPDATE
+#    (type=0xF0700) for a stream ID that is not a request stream, this
+#    MUST be treated as a connection error of type H3_ID_ERROR.  The
+#    stream ID MUST be within the client-initiated bidirectional stream
+#    limit.  If a server receives a PRIORITY_UPDATE (type=0xF0700) with a
+#    stream ID that is beyond the stream limits, this SHOULD be treated as
+#    a connection error of type H3_ID_ERROR.  Generating an error is not
+#    mandatory because HTTP/3 implementations might have practical
+#    barriers to determining the active stream concurrency limit that is
+#    applied by the QUIC layer.
+# 
+#    The push-stream variant of PRIORITY_UPDATE (type=0xF0701) MUST
+#    reference a promised push stream.  If a server receives a
+#    PRIORITY_UPDATE (type=0xF0701) with a push ID that is greater than
+#    the maximum push ID or that has not yet been promised, this MUST be
+#    treated as a connection error of type H3_ID_ERROR.
+# 
+#    Servers MUST NOT send PRIORITY_UPDATE frames of either type.  If a
+#    client receives a PRIORITY_UPDATE frame, this MUST be treated as a
+#    connection error of type H3_FRAME_UNEXPECTED.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The PRIORITY_UPDATE frame MUST be sent on the client control stream
+(see Section 6.2.1 of [HTTP/3]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Receiving a PRIORITY_UPDATE frame
+on a stream other than the client control stream MUST be treated as a
+connection error of type H3_FRAME_UNEXPECTED.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The request-stream variant of PRIORITY_UPDATE (type=0xF0700) MUST
+reference a request stream.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a server receives a PRIORITY_UPDATE
+(type=0xF0700) for a stream ID that is not a request stream, this
+MUST be treated as a connection error of type H3_ID_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The
+stream ID MUST be within the client-initiated bidirectional stream
+limit.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+If a server receives a PRIORITY_UPDATE (type=0xF0700) with a
+stream ID that is beyond the stream limits, this SHOULD be treated as
+a connection error of type H3_ID_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The push-stream variant of PRIORITY_UPDATE (type=0xF0701) MUST
+reference a promised push stream.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a server receives a
+PRIORITY_UPDATE (type=0xF0701) with a push ID that is greater than
+the maximum push ID or that has not yet been promised, this MUST be
+treated as a connection error of type H3_ID_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers MUST NOT send PRIORITY_UPDATE frames of either type.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a
+client receives a PRIORITY_UPDATE frame, this MUST be treated as a
+connection error of type H3_FRAME_UNEXPECTED.
+'''
+

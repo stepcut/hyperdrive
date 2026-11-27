@@ -1,0 +1,41 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-3.1"
+
+# Lists
+#
+#    Lists are arrays of zero or more members, each of which can be an
+#    Item (Section 3.3) or an Inner List (Section 3.1.1), both of which
+#    can be Parameterized (Section 3.1.2).
+# 
+#    An empty List is denoted by not serializing the field at all.  This
+#    implies that fields defined as Lists have a default empty value.
+# 
+#    When serialized as a textual HTTP field, each member is separated by
+#    a comma and optional whitespace.  For example, a field whose value is
+#    defined as a List of Tokens could look like:
+# 
+#    Example-List: sugar, tea, rum
+# 
+#    Note that Lists can have their members split across multiple lines of
+#    the same header or trailer section, as per Section 5.3 of [HTTP]; for
+#    example, the following are equivalent:
+# 
+#    Example-List: sugar, tea, rum
+# 
+#    and
+# 
+#    Example-List: sugar, tea
+#    Example-List: rum
+# 
+#    However, individual members of a List cannot be safely split between
+#    lines; see Section 4.2 for details.
+# 
+#    Parsers MUST support Lists containing at least 1024 members.  Field
+#    specifications can constrain the types and cardinality of individual
+#    List values as they require.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Parsers MUST support Lists containing at least 1024 members.
+'''
+

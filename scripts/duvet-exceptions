@@ -107,6 +107,21 @@ OVERRIDES = {
         ("7.3", ""): "registration",
         ("10.1",   "A recipient of \"message/http\" data"): "media-type",
     },
+    "rfc9218": {
+        # HTTP/3: the server's duty to check where a PRIORITY_UPDATE came;
+        # "client control stream" made it look like a client's
+        ("7.2",  "Receiving a PRIORITY_UPDATE frame on a stream other than"): None,
+        # what a client sends, worded without "client"
+        ("7.2",  "The PRIORITY_UPDATE frame MUST be sent on the client control stream"): "client",
+        ("7.2",  "The request-stream variant of PRIORITY_UPDATE"): "client",
+        ("7.2",  "The stream ID MUST be within"): "client",
+        ("7.2",  "The push-stream variant of PRIORITY_UPDATE"): "client",
+        ("4.1",  "This urgency level SHOULD NOT be used"): "client",
+        # tunnels through an intermediary (Section 10.1's subject)
+        ("10.1", "Similarly, servers SHOULD allocate some amount of bandwidths"): "intermediary",
+        # 13.2's "backend servers" stay in scope: an origin behind a proxy
+        # is one
+    },
     "rfc9113": {
         # the second half binds the server: its streams are even-numbered
         ("5.1.1",  "Streams initiated by a client"): None,

@@ -1,0 +1,41 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-3.3.8"
+
+# Display Strings
+#
+#    Display Strings are similar to Strings, in that they consist of zero
+#    or more characters, but they allow Unicode scalar values (i.e., all
+#    Unicode code points except for surrogates), unlike Strings.
+# 
+#    Display Strings are intended for use in cases where a value is
+#    displayed to end users and therefore may need to carry non-ASCII
+#    content.  It is NOT RECOMMENDED that they be used in situations where
+#    a String (Section 3.3.3) or Token (Section 3.3.4) would be adequate
+#    because Unicode has processing considerations (e.g., normalization)
+#    and security considerations (e.g., homograph attacks) that make it
+#    more difficult to handle correctly.
+# 
+#    Note that Display Strings do not indicate the language used in the
+#    value; that can be done separately if necessary (e.g., with a
+#    parameter).
+# 
+#    In textual HTTP fields, Display Strings are represented in a manner
+#    similar to Strings, except that non-ASCII characters are percent-
+#    encoded; there is a leading "%" to distinguish them from Strings.
+# 
+#    For example:
+# 
+#    Example-DisplayString: %"This is intended for display to %c3%bcsers."
+# 
+#    See Section 6 for additional security considerations when handling
+#    Display Strings.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+It is NOT RECOMMENDED that they be used in situations where
+a String (Section 3.3.3) or Token (Section 3.3.4) would be adequate
+because Unicode has processing considerations (e.g., normalization)
+and security considerations (e.g., homograph attacks) that make it
+more difficult to handle correctly.
+'''
+

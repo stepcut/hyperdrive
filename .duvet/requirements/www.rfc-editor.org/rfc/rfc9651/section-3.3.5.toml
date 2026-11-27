@@ -1,0 +1,22 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-3.3.5"
+
+# Byte Sequences
+#
+#    Byte Sequences can be conveyed in Structured Fields.
+# 
+#    When serialized in a textual HTTP field, a Byte Sequence is delimited
+#    with colons and encoded using base64 ([RFC4648], Section 4).  For
+#    example:
+# 
+#    Example-ByteSequence: :cHJldGVuZCB0aGlzIGlzIGJpbmFyeSBjb250ZW50Lg==:
+# 
+#    Parsers MUST support Byte Sequences with at least 16384 octets after
+#    decoding.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Parsers MUST support Byte Sequences with at least 16384 octets after
+decoding.
+'''
+

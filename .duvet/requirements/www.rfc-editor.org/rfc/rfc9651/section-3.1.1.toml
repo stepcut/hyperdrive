@@ -1,0 +1,32 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-3.1.1"
+
+# Inner Lists
+#
+#    An Inner List is an array of zero or more Items (Section 3.3).  Both
+#    the individual Items and the Inner List itself can be Parameterized
+#    (Section 3.1.2).
+# 
+#    When serialized in a textual HTTP field, Inner Lists are denoted by
+#    surrounding parenthesis, and their values are delimited by one or
+#    more spaces.  A field whose value is defined as a List of Inner Lists
+#    of Strings could look like:
+# 
+#    Example-List: ("foo" "bar"), ("baz"), ("bat" "one"), ()
+# 
+#    Note that the last member in this example is an empty Inner List.
+# 
+#    A header field whose value is defined as a List of Inner Lists with
+#    Parameters at both levels could look like:
+# 
+#    Example-List: ("foo"; a=1;b=2);lvl=5, ("bar" "baz");lvl=1
+# 
+#    Parsers MUST support Inner Lists containing at least 256 members.
+#    Field specifications can constrain the types and cardinality of
+#    individual Inner List members as they require.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Parsers MUST support Inner Lists containing at least 256 members.
+'''
+

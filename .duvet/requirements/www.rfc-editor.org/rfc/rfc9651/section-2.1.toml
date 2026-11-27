@@ -1,0 +1,66 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-2.1"
+
+# Example
+#
+#    A fictitious Foo-Example header field might be specified as:
+# 
+#    |  42.  Foo-Example Header Field
+#    |  
+#    |  The Foo-Example HTTP header field conveys information about how
+#    |  much Foo the message has.
+#    |  
+#    |  Foo-Example is an Item Structured Header Field [RFC9651].  Its
+#    |  value MUST be an Integer (Section 3.3.1 of [RFC9651]).
+#    |  
+#    |  Its value indicates the amount of Foo in the message, and it MUST
+#    |  be between 0 and 10, inclusive; other values MUST cause the entire
+#    |  header field to be ignored.
+#    |  
+#    |  The following parameter is defined:
+#    |  
+#    |  *  A parameter whose key is "foourl", and whose value is a String
+#    |     (Section 3.3.3 of [RFC9651]), conveying the Foo URL for the
+#    |     message.  See below for processing requirements.
+#    |  
+#    |  "foourl" contains a URI-reference (Section 4.1 of [RFC3986]).  If
+#    |  its value is not a valid URI-reference, the entire header field
+#    |  MUST be ignored.  If its value is a relative reference
+#    |  (Section 4.2 of [RFC3986]), it MUST be resolved (Section 5 of
+#    |  [RFC3986]) before being used.
+#    |  
+#    |  For example:
+#    |  
+#    |       Foo-Example: 2; foourl="https://foo.example.com/"
+
+[[spec]]
+level = "MUST"
+quote = '''
+Its
+|  value MUST be an Integer (Section 3.3.1 of [RFC9651]).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+|
+|  Its value indicates the amount of Foo in the message, and it MUST
+|  be between 0 and 10, inclusive; other values MUST cause the entire
+|  header field to be ignored.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If
+|  its value is not a valid URI-reference, the entire header field
+|  MUST be ignored.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If its value is a relative reference
+|  (Section 4.2 of [RFC3986]), it MUST be resolved (Section 5 of
+|  [RFC3986]) before being used.
+'''
+

@@ -3808,3 +3808,320 @@ SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9113
     TEXT[!MAY]:    An HTTP/2 implementation MAY treat the negotiation of any of the
     TEXT[!MAY]:    following cipher suites with TLS 1.2 as a connection error
     TEXT[!MAY]:    (Section 5.4.1) of type INADEQUATE_SECURITY:
+
+SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9218
+  SECTION: [Disabling RFC 7540 Stream Priorities](#section-2.1)
+    TEXT[!MUST]:    The value of SETTINGS_NO_RFC7540_PRIORITIES MUST be 0 or 1.
+    TEXT[!MUST]: Any
+    TEXT[!MUST]:    value other than 0 or 1 MUST be treated as a connection error (see
+    TEXT[!MUST]:    Section 5.4.1 of [HTTP/2]) of type PROTOCOL_ERROR.
+    TEXT[!MUST]:    If endpoints use SETTINGS_NO_RFC7540_PRIORITIES, they MUST send it in
+    TEXT[!MUST]:    the first SETTINGS frame.
+    TEXT[!MUST]: Senders MUST NOT change the
+    TEXT[!MUST]:    SETTINGS_NO_RFC7540_PRIORITIES value after the first SETTINGS frame.
+    TEXT[!MAY]:    Receivers that detect a change MAY treat it as a connection error of
+    TEXT[!MAY]:    type PROTOCOL_ERROR.
+    TEXT[!MUST]: A server that receives
+    TEXT[!MUST]:    SETTINGS_NO_RFC7540_PRIORITIES with a value of 1 MUST ignore HTTP/2
+    TEXT[!MUST]:    priority signals.
+
+  SECTION: [Advice when Using Extensible Priorities as the Alternative](#section-2.1.1)
+    TEXT[!SHOULD]: Therefore,
+    TEXT[!SHOULD]:    until the client receives the SETTINGS frame from the server, the
+    TEXT[!SHOULD]:    client SHOULD send both the HTTP/2 priority signals and the signals
+    TEXT[!SHOULD]:    of this prioritization scheme (see Sections 5 and 7.1).
+    TEXT[!SHOULD]:    Once the client receives the first SETTINGS frame that contains the
+    TEXT[!SHOULD]:    SETTINGS_NO_RFC7540_PRIORITIES parameter with a value of 1, it SHOULD
+    TEXT[!SHOULD]:    stop sending the HTTP/2 priority signals.
+    TEXT[!SHOULD]:    Similarly, if the client receives SETTINGS_NO_RFC7540_PRIORITIES with
+    TEXT[!SHOULD]:    a value of 0 or if the settings parameter was absent, it SHOULD stop
+    TEXT[!SHOULD]:    sending PRIORITY_UPDATE frames (Section 7.1), since those frames are
+    TEXT[!SHOULD]:    likely to be ignored.
+    TEXT[!MAY]: However, the client MAY continue sending the
+    TEXT[!MAY]:    Priority header field (Section 5), as it is an end-to-end signal that
+    TEXT[!MAY]:    might be useful to nodes behind the server that the client is
+    TEXT[!MAY]:    directly connected to.
+
+  SECTION: [Priority Parameters](#section-4)
+    TEXT[!SHOULD]: When receiving an HTTP request that does not carry these
+    TEXT[!SHOULD]:    priority parameters, a server SHOULD act as if their default values
+    TEXT[!SHOULD]:    were specified.
+    TEXT[!MUST]: Where the Dictionary is successfully parsed,
+    TEXT[!MUST]:    this document places the additional requirement that unknown priority
+    TEXT[!MUST]:    parameters, priority parameters with out-of-range values, or values
+    TEXT[!MUST]:    of unexpected types MUST be ignored.
+
+  SECTION: [Urgency](#section-4.1)
+    TEXT[!SHOULD]:    A client that fetches a document that likely consists of multiple
+    TEXT[!SHOULD]:    HTTP resources (e.g., HTML) SHOULD assign the default urgency level
+    TEXT[!SHOULD]:    to the main resource.
+    TEXT[!SHOULD]: This urgency level SHOULD NOT be used
+    TEXT[!SHOULD]:    for fetching responses that have any impact on user interaction.
+
+  SECTION: [The PRIORITY_UPDATE Frame](#section-7)
+    TEXT[!MAY]: Failure to parse the
+    TEXT[!MAY]:    Priority Field Value MAY be treated as a connection error.
+    TEXT[!MAY]:    A client MAY send a PRIORITY_UPDATE frame before the stream that it
+    TEXT[!MAY]:    references is open (except for HTTP/2 push streams; see Section 7.1).
+    TEXT[!SHOULD]:    Servers SHOULD buffer the most recently received PRIORITY_UPDATE
+    TEXT[!SHOULD]:    frame and apply it once the referenced stream is opened.
+
+  SECTION: [HTTP/2 PRIORITY_UPDATE Frame](#section-7.1)
+    TEXT[!MUST]:    The Stream Identifier field (see Section 5.1.1 of [HTTP/2]) in the
+    TEXT[!MUST]:    PRIORITY_UPDATE frame header MUST be zero (0x0).
+    TEXT[!MUST]: Receiving a
+    TEXT[!MUST]:    PRIORITY_UPDATE frame with a field of any other value MUST be treated
+    TEXT[!MUST]:    as a connection error of type PROTOCOL_ERROR.
+    TEXT[!SHOULD]:    When the PRIORITY_UPDATE frame applies to a request stream, clients
+    TEXT[!SHOULD]:    SHOULD provide a prioritized stream ID that refers to a stream in the
+    TEXT[!SHOULD]:    "open", "half-closed (local)", or "idle" state (i.e., streams where
+    TEXT[!SHOULD]:    data might still be received).
+    TEXT[!MUST]:    The number of streams that have been prioritized but remain in the
+    TEXT[!MUST]:    "idle" state plus the number of active streams (those in the "open"
+    TEXT[!MUST]:    state or in either of the "half-closed" states; see Section 5.1.2 of
+    TEXT[!MUST]:    [HTTP/2]) MUST NOT exceed the value of the
+    TEXT[!MUST]:    SETTINGS_MAX_CONCURRENT_STREAMS parameter.
+    TEXT[!MUST]: Servers that receive such
+    TEXT[!MUST]:    a PRIORITY_UPDATE MUST respond with a connection error of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!SHOULD]:    When the PRIORITY_UPDATE frame applies to a push stream, clients
+    TEXT[!SHOULD]:    SHOULD provide a prioritized stream ID that refers to a stream in the
+    TEXT[!SHOULD]:    "reserved (remote)" or "half-closed (local)" state.
+    TEXT[!MUST]: Clients MUST NOT provide a prioritized stream ID
+    TEXT[!MUST]:    that refers to a push stream in the "idle" state.
+    TEXT[!MUST]: Servers that
+    TEXT[!MUST]:    receive a PRIORITY_UPDATE for a push stream in the "idle" state MUST
+    TEXT[!MUST]:    respond with a connection error of type PROTOCOL_ERROR.
+    TEXT[!MUST]:    If a PRIORITY_UPDATE frame is received with a prioritized stream ID
+    TEXT[!MUST]:    of 0x0, the recipient MUST respond with a connection error of type
+    TEXT[!MUST]:    PROTOCOL_ERROR.
+    TEXT[!MUST]:    Servers MUST NOT send PRIORITY_UPDATE frames.
+    TEXT[!MUST]: If a client receives a
+    TEXT[!MUST]:    PRIORITY_UPDATE frame, it MUST respond with a connection error of
+    TEXT[!MUST]:    type PROTOCOL_ERROR.
+
+  SECTION: [HTTP/3 PRIORITY_UPDATE Frame](#section-7.2)
+    TEXT[!MUST]:    The PRIORITY_UPDATE frame MUST be sent on the client control stream
+    TEXT[!MUST]:    (see Section 6.2.1 of [HTTP/3]).
+    TEXT[!MUST]: Receiving a PRIORITY_UPDATE frame
+    TEXT[!MUST]:    on a stream other than the client control stream MUST be treated as a
+    TEXT[!MUST]:    connection error of type H3_FRAME_UNEXPECTED.
+    TEXT[!MUST]:    The request-stream variant of PRIORITY_UPDATE (type=0xF0700) MUST
+    TEXT[!MUST]:    reference a request stream.
+    TEXT[!MUST]: If a server receives a PRIORITY_UPDATE
+    TEXT[!MUST]:    (type=0xF0700) for a stream ID that is not a request stream, this
+    TEXT[!MUST]:    MUST be treated as a connection error of type H3_ID_ERROR.
+    TEXT[!MUST]: The
+    TEXT[!MUST]:    stream ID MUST be within the client-initiated bidirectional stream
+    TEXT[!MUST]:    limit.
+    TEXT[!SHOULD]: If a server receives a PRIORITY_UPDATE (type=0xF0700) with a
+    TEXT[!SHOULD]:    stream ID that is beyond the stream limits, this SHOULD be treated as
+    TEXT[!SHOULD]:    a connection error of type H3_ID_ERROR.
+    TEXT[!MUST]:    The push-stream variant of PRIORITY_UPDATE (type=0xF0701) MUST
+    TEXT[!MUST]:    reference a promised push stream.
+    TEXT[!MUST]: If a server receives a
+    TEXT[!MUST]:    PRIORITY_UPDATE (type=0xF0701) with a push ID that is greater than
+    TEXT[!MUST]:    the maximum push ID or that has not yet been promised, this MUST be
+    TEXT[!MUST]:    treated as a connection error of type H3_ID_ERROR.
+    TEXT[!MUST]:    Servers MUST NOT send PRIORITY_UPDATE frames of either type.
+    TEXT[!MUST]: If a
+    TEXT[!MUST]:    client receives a PRIORITY_UPDATE frame, this MUST be treated as a
+    TEXT[!MUST]:    connection error of type H3_FRAME_UNEXPECTED.
+
+  SECTION: [Client Scheduling](#section-9)
+    TEXT[!MAY]:    A client MAY use priority values to make local processing or
+    TEXT[!MAY]:    scheduling choices about the requests it initiates.
+
+  SECTION: [Server Scheduling](#section-10)
+    TEXT[!SHOULD]:    It is RECOMMENDED that, when possible, servers respect the urgency
+    TEXT[!SHOULD]:    parameter (Section 4.1), sending higher-urgency responses before
+    TEXT[!SHOULD]:    lower-urgency responses.
+    TEXT[!SHOULD]: It is RECOMMENDED that, when possible, servers
+    TEXT[!SHOULD]:    respect the incremental parameter (Section 4.2).
+    TEXT[!SHOULD]:    Non-incremental responses of the same urgency SHOULD be served by
+    TEXT[!SHOULD]:    prioritizing bandwidth allocation in ascending order of the stream
+    TEXT[!SHOULD]:    ID, which corresponds to the order in which clients make requests.
+    TEXT[!SHOULD]:    Incremental responses of the same urgency SHOULD be served by sharing
+    TEXT[!SHOULD]:    bandwidth among them.
+    TEXT[!SHOULD]:    It is RECOMMENDED that servers avoid such starvation where possible.
+
+  SECTION: [Intermediaries with Multiple Backend Connections](#section-10.1)
+    TEXT[!SHOULD]:    Similarly, servers SHOULD allocate some amount of bandwidths to
+    TEXT[!SHOULD]:    streams acting as tunnels.
+
+  SECTION: [Retransmission Scheduling](#section-12)
+    TEXT[!SHOULD]:    Section 13.3 of [QUIC] states the following: "Endpoints SHOULD
+    TEXT[!SHOULD]:    prioritize retransmission of data over sending new data, unless
+    TEXT[!SHOULD]:    priorities specified by the application indicate otherwise".
+
+  SECTION: [HTTP/1.x Back Ends](#section-13.2)
+    TEXT[!MAY]: However, backend servers MAY still use
+    TEXT[!MAY]:    client headers for request scheduling.
+    TEXT[!SHOULD]: Backend servers SHOULD only
+    TEXT[!SHOULD]:    schedule based on client priority information where that information
+    TEXT[!SHOULD]:    can be scoped to individual end clients.
+
+SPECIFICATION: https://www.rfc-editor.org/rfc/rfc9651
+  SECTION: [Notational Conventions](#section-1.2)
+    TEXT[!MUST]: When parsing from HTTP fields, implementations MUST have
+    TEXT[!MUST]:    behavior that is indistinguishable from following the algorithms.
+    TEXT[!MAY]: Implementations MAY vary from the
+    TEXT[!MAY]:    specified behavior so long as the output is still correctly handled
+    TEXT[!MAY]:    by the parsing algorithm described in Section 4.2.
+
+  SECTION: [Example](#section-2.1)
+    TEXT[!MUST]: Its
+    TEXT[!MUST]:    |  value MUST be an Integer (Section 3.3.1 of [RFC9651]).
+    TEXT[!MUST]:    |  Its value indicates the amount of Foo in the message, and it MUST
+    TEXT[!MUST]:    |  be between 0 and 10, inclusive; other values MUST cause the entire
+    TEXT[!MUST]:    |  header field to be ignored.
+    TEXT[!MUST]: If
+    TEXT[!MUST]:    |  its value is not a valid URI-reference, the entire header field
+    TEXT[!MUST]:    |  MUST be ignored.
+    TEXT[!MUST]: If its value is a relative reference
+    TEXT[!MUST]:    |  (Section 4.2 of [RFC3986]), it MUST be resolved (Section 5 of
+    TEXT[!MUST]:    |  [RFC3986]) before being used.
+
+  SECTION: [Lists](#section-3.1)
+    TEXT[!MUST]:    Parsers MUST support Lists containing at least 1024 members.
+
+  SECTION: [Inner Lists](#section-3.1.1)
+    TEXT[!MUST]:    Parsers MUST support Inner Lists containing at least 256 members.
+
+  SECTION: [Parameters](#section-3.1.2)
+    TEXT[!MUST]:    Implementations MUST provide access to Parameters both by index and
+    TEXT[!MUST]:    by key.
+    TEXT[!MAY]: Specifications MAY use either means of accessing them.
+    TEXT[!MUST]:    Parameters whose value is Boolean (see Section 3.3.6) true MUST omit
+    TEXT[!MUST]:    that value when serialized.
+    TEXT[!MUST]:    Parsers MUST support at least 256 parameters on an Item or Inner
+    TEXT[!MUST]:    List, and support parameter keys with at least 64 characters.
+
+  SECTION: [Dictionaries](#section-3.2)
+    TEXT[!MUST]:    Implementations MUST provide access to Dictionaries both by index and
+    TEXT[!MUST]:    by key.
+    TEXT[!MAY]: Specifications MAY use either means of accessing the
+    TEXT[!MAY]:    members.
+    TEXT[!MUST]: Recipients MUST ignore members whose keys are undefined or
+    TEXT[!MUST]:    unknown, unless the field's specification specifically disallows
+    TEXT[!MUST]:    them.
+    TEXT[!MUST]:    Members whose value is Boolean (see Section 3.3.6) true MUST omit
+    TEXT[!MUST]:    that value when serialized.
+    TEXT[!MUST]:    Parsers MUST support Dictionaries containing at least 1024 key/value
+    TEXT[!MUST]:    pairs and keys with at least 64 characters.
+
+  SECTION: [Strings](#section-3.3.3)
+    TEXT[!MUST]: Furthermore, only DQUOTE and "\" can be
+    TEXT[!MUST]:    escaped; other characters after "\" MUST cause parsing to fail.
+    TEXT[!MUST]:    Parsers MUST support Strings (after any decoding) with at least 1024
+    TEXT[!MUST]:    characters.
+
+  SECTION: [Tokens](#section-3.3.4)
+    TEXT[!MUST]:    Parsers MUST support Tokens with at least 512 characters.
+
+  SECTION: [Byte Sequences](#section-3.3.5)
+    TEXT[!MUST]:    Parsers MUST support Byte Sequences with at least 16384 octets after
+    TEXT[!MUST]:    decoding.
+
+  SECTION: [Dates](#section-3.3.7)
+    TEXT[!MUST]:    Parsers MUST support Dates whose values include all days in years 1
+    TEXT[!MUST]:    to 9999 (i.e., -62,135,596,800 to 253,402,214,400 delta seconds from
+    TEXT[!MUST]:    1970-01-01T00:00:00Z).
+
+  SECTION: [Display Strings](#section-3.3.8)
+    TEXT[!SHOULD]: It is NOT RECOMMENDED that they be used in situations where
+    TEXT[!SHOULD]:    a String (Section 3.3.3) or Token (Section 3.3.4) would be adequate
+    TEXT[!SHOULD]:    because Unicode has processing considerations (e.g., normalization)
+    TEXT[!SHOULD]:    and security considerations (e.g., homograph attacks) that make it
+    TEXT[!SHOULD]:    more difficult to handle correctly.
+
+  SECTION: [Serializing a Byte Sequence](#section-4.1.8)
+    TEXT[!SHOULD]:    Likewise, encoded data SHOULD have pad bits set to zero, as per
+    TEXT[!SHOULD]:    [RFC4648], Section 3.5, unless it is not possible to do so due to
+    TEXT[!SHOULD]:    implementation constraints.
+
+  SECTION: [Parsing Structured Fields](#section-4.2)
+    TEXT[!MUST]:    When generating input_bytes, parsers MUST combine all field lines in
+    TEXT[!MUST]:    the same section (header or trailer) that case-insensitively match
+    TEXT[!MUST]:    the field name into one comma-separated field-value, as per
+    TEXT[!MUST]:    Section 5.2 of [HTTP]; this assures that the entire field value is
+    TEXT[!MUST]:    processed correctly.
+    TEXT[!MAY]:    Parsers MAY fail when processing a field value spread across multiple
+    TEXT[!MAY]:    field lines, when one of those lines does not parse as that field.
+    TEXT[!MUST]:    If parsing fails, either the entire field value MUST be ignored
+    TEXT[!MUST]:    (i.e., treated as if the field were not present in the section), or
+    TEXT[!MUST]:    alternatively the complete HTTP message MUST be treated as malformed.
+
+  SECTION: [Parsing a Byte Sequence](#section-4.2.7)
+    TEXT[!SHOULD]:    Because some implementations of base64 do not allow rejection of
+    TEXT[!SHOULD]:    encoded data that is not properly "=" padded (see [RFC4648],
+    TEXT[!SHOULD]:    Section 3.2), parsers SHOULD NOT fail when "=" padding is not
+    TEXT[!SHOULD]:    present, unless they cannot be configured to do so.
+    TEXT[!SHOULD]:    Because some implementations of base64 do not allow rejection of
+    TEXT[!SHOULD]:    encoded data that has non-zero pad bits (see [RFC4648], Section 3.5),
+    TEXT[!SHOULD]:    parsers SHOULD NOT fail when non-zero pad bits are present, unless
+    TEXT[!SHOULD]:    they cannot be configured to do so.
+    TEXT[!MUST]:    This specification does not relax the requirements in Sections 3.1
+    TEXT[!MUST]:    and 3.3 of [RFC4648]; therefore, parsers MUST fail on characters
+    TEXT[!MUST]:    outside the base64 alphabet and on line feeds in encoded data.
+
+SPECIFICATION: .duvet/specifications/www.rfc-editor.org/rfc/rfc9218.txt
+  SECTION: [Advice when Using Extensible Priorities as the Alternative](#section-2.1.1)
+    TEXT[exception]:    Once the client receives the first SETTINGS frame that contains the
+    TEXT[exception]:    SETTINGS_NO_RFC7540_PRIORITIES parameter with a value of 1, it SHOULD
+    TEXT[exception]:    stop sending the HTTP/2 priority signals.
+    TEXT[exception]:    Similarly, if the client receives SETTINGS_NO_RFC7540_PRIORITIES with
+    TEXT[exception]:    a value of 0 or if the settings parameter was absent, it SHOULD stop
+    TEXT[exception]:    sending PRIORITY_UPDATE frames (Section 7.1), since those frames are
+    TEXT[exception]:    likely to be ignored.
+    TEXT[exception]: However, the client MAY continue sending the
+    TEXT[exception]:    Priority header field (Section 5), as it is an end-to-end signal that
+    TEXT[exception]:    might be useful to nodes behind the server that the client is
+    TEXT[exception]:    directly connected to.
+
+  SECTION: [Urgency](#section-4.1)
+    TEXT[exception]:    A client that fetches a document that likely consists of multiple
+    TEXT[exception]:    HTTP resources (e.g., HTML) SHOULD assign the default urgency level
+    TEXT[exception]:    to the main resource.
+    TEXT[exception]: This urgency level SHOULD NOT be used
+    TEXT[exception]:    for fetching responses that have any impact on user interaction.
+
+  SECTION: [The PRIORITY_UPDATE Frame](#section-7)
+    TEXT[exception]:    A client MAY send a PRIORITY_UPDATE frame before the stream that it
+    TEXT[exception]:    references is open (except for HTTP/2 push streams; see Section 7.1).
+
+  SECTION: [HTTP/2 PRIORITY_UPDATE Frame](#section-7.1)
+    TEXT[exception]:    When the PRIORITY_UPDATE frame applies to a request stream, clients
+    TEXT[exception]:    SHOULD provide a prioritized stream ID that refers to a stream in the
+    TEXT[exception]:    "open", "half-closed (local)", or "idle" state (i.e., streams where
+    TEXT[exception]:    data might still be received).
+    TEXT[exception]:    When the PRIORITY_UPDATE frame applies to a push stream, clients
+    TEXT[exception]:    SHOULD provide a prioritized stream ID that refers to a stream in the
+    TEXT[exception]:    "reserved (remote)" or "half-closed (local)" state.
+    TEXT[exception]: Clients MUST NOT provide a prioritized stream ID
+    TEXT[exception]:    that refers to a push stream in the "idle" state.
+    TEXT[exception]: If a client receives a
+    TEXT[exception]:    PRIORITY_UPDATE frame, it MUST respond with a connection error of
+    TEXT[exception]:    type PROTOCOL_ERROR.
+
+  SECTION: [HTTP/3 PRIORITY_UPDATE Frame](#section-7.2)
+    TEXT[exception]:    The PRIORITY_UPDATE frame MUST be sent on the client control stream
+    TEXT[exception]:    (see Section 6.2.1 of [HTTP/3]).
+    TEXT[exception]:    The request-stream variant of PRIORITY_UPDATE (type=0xF0700) MUST
+    TEXT[exception]:    reference a request stream.
+    TEXT[exception]: The
+    TEXT[exception]:    stream ID MUST be within the client-initiated bidirectional stream
+    TEXT[exception]:    limit.
+    TEXT[exception]:    The push-stream variant of PRIORITY_UPDATE (type=0xF0701) MUST
+    TEXT[exception]:    reference a promised push stream.
+    TEXT[exception]: If a
+    TEXT[exception]:    client receives a PRIORITY_UPDATE frame, this MUST be treated as a
+    TEXT[exception]:    connection error of type H3_FRAME_UNEXPECTED.
+
+  SECTION: [Client Scheduling](#section-9)
+    TEXT[exception]:    A client MAY use priority values to make local processing or
+    TEXT[exception]:    scheduling choices about the requests it initiates.
+
+  SECTION: [Intermediaries with Multiple Backend Connections](#section-10.1)
+    TEXT[exception]:    Similarly, servers SHOULD allocate some amount of bandwidths to
+    TEXT[exception]:    streams acting as tunnels.

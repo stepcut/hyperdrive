@@ -1,0 +1,109 @@
+target = "https://www.rfc-editor.org/rfc/rfc9651#section-3.2"
+
+# Dictionaries
+#
+#    Dictionaries are ordered maps of key-value pairs, where the keys are
+#    short textual strings and the values are Items (Section 3.3) or
+#    arrays of Items, both of which can be Parameterized (Section 3.1.2).
+#    There can be zero or more members, and their keys are unique in the
+#    scope of the Dictionary they occur within.
+# 
+#    Implementations MUST provide access to Dictionaries both by index and
+#    by key.  Specifications MAY use either means of accessing the
+#    members.
+# 
+#    As with Lists, an empty Dictionary is represented by omitting the
+#    entire field.  This implies that fields defined as Dictionaries have
+#    a default empty value.
+# 
+#    Typically, a field specification will define the semantics of
+#    Dictionaries by specifying the allowed type(s) for individual members
+#    by their keys, as well as whether their presence is required or
+#    optional.  Recipients MUST ignore members whose keys are undefined or
+#    unknown, unless the field's specification specifically disallows
+#    them.
+# 
+#    When serialized as a textual HTTP field, members are ordered as
+#    serialized and separated by a comma with optional whitespace.  Member
+#    keys cannot contain uppercase characters.  Keys and values are
+#    separated by "=" (without whitespace).  For example:
+# 
+#    Example-Dict: en="Applepie", da=:w4ZibGV0w6ZydGU=:
+# 
+#    Note that in this example, the final "=" is due to the inclusion of a
+#    Byte Sequence; see Section 3.3.5.
+# 
+#    Members whose value is Boolean (see Section 3.3.6) true MUST omit
+#    that value when serialized.  For example, here both "b" and "c" are
+#    true:
+# 
+#    Example-Dict: a=?0, b, c; foo=bar
+# 
+#    Note that this requirement is only on serialization; parsers are
+#    still required to correctly handle the true Boolean value when it
+#    appears in Dictionary values.
+# 
+#    A Dictionary with a member whose value is an Inner List of Tokens:
+# 
+#    Example-Dict: rating=1.5, feelings=(joy sadness)
+# 
+#    A Dictionary with a mix of Items and Inner Lists, some with
+#    parameters:
+# 
+#    Example-Dict: a=(1 2), b=3, c=4;aa=bb, d=(5 6);valid
+# 
+#    Note that Dictionaries can have their members split across multiple
+#    lines of the same header or trailer section; for example, the
+#    following are equivalent:
+# 
+#    Example-Dict: foo=1, bar=2
+# 
+#    and
+# 
+#    Example-Dict: foo=1
+#    Example-Dict: bar=2
+# 
+#    However, individual members of a Dictionary cannot be safely split
+#    between lines; see Section 4.2 for details.
+# 
+#    Parsers MUST support Dictionaries containing at least 1024 key/value
+#    pairs and keys with at least 64 characters.  Field specifications can
+#    constrain the order of individual Dictionary members, as well as
+#    their values' types as required.
+
+[[spec]]
+level = "MUST"
+quote = '''
+Implementations MUST provide access to Dictionaries both by index and
+by key.
+'''
+
+[[spec]]
+level = "MAY"
+quote = '''
+Specifications MAY use either means of accessing the
+members.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Recipients MUST ignore members whose keys are undefined or
+unknown, unless the field's specification specifically disallows
+them.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Members whose value is Boolean (see Section 3.3.6) true MUST omit
+that value when serialized.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Parsers MUST support Dictionaries containing at least 1024 key/value
+pairs and keys with at least 64 characters.
+'''
+

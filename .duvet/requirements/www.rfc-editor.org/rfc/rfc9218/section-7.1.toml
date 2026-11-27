@@ -1,0 +1,160 @@
+target = "https://www.rfc-editor.org/rfc/rfc9218#section-7.1"
+
+# HTTP/2 PRIORITY_UPDATE Frame
+#
+#    The HTTP/2 PRIORITY_UPDATE frame (type=0x10) is used by clients to
+#    signal the initial priority of a response, or to reprioritize a
+#    response or push stream.  It carries the stream ID of the response
+#    and the priority in ASCII text, using the same representation as the
+#    Priority header field value.
+# 
+#    The Stream Identifier field (see Section 5.1.1 of [HTTP/2]) in the
+#    PRIORITY_UPDATE frame header MUST be zero (0x0).  Receiving a
+#    PRIORITY_UPDATE frame with a field of any other value MUST be treated
+#    as a connection error of type PROTOCOL_ERROR.
+# 
+#    HTTP/2 PRIORITY_UPDATE Frame {
+#      Length (24),
+#      Type (8) = 0x10,
+# 
+#      Unused Flags (8),
+# 
+#      Reserved (1),
+#      Stream Identifier (31),
+# 
+#      Reserved (1),
+#      Prioritized Stream ID (31),
+#      Priority Field Value (..),
+#    }
+# 
+#                Figure 1: HTTP/2 PRIORITY_UPDATE Frame Format
+# 
+#    The Length, Type, Unused Flag(s), Reserved, and Stream Identifier
+#    fields are described in Section 4 of [HTTP/2].  The PRIORITY_UPDATE
+#    frame payload contains the following additional fields:
+# 
+#    Prioritized Stream ID:  A 31-bit stream identifier for the stream
+#       that is the target of the priority update.
+# 
+#    Priority Field Value:  The priority update value in ASCII text,
+#       encoded using Structured Fields.  This is the same representation
+#       as the Priority header field value.
+# 
+#    When the PRIORITY_UPDATE frame applies to a request stream, clients
+#    SHOULD provide a prioritized stream ID that refers to a stream in the
+#    "open", "half-closed (local)", or "idle" state (i.e., streams where
+#    data might still be received).  Servers can discard frames where the
+#    prioritized stream ID refers to a stream in the "half-closed (local)"
+#    or "closed" state (i.e., streams where no further data will be sent).
+#    The number of streams that have been prioritized but remain in the
+#    "idle" state plus the number of active streams (those in the "open"
+#    state or in either of the "half-closed" states; see Section 5.1.2 of
+#    [HTTP/2]) MUST NOT exceed the value of the
+#    SETTINGS_MAX_CONCURRENT_STREAMS parameter.  Servers that receive such
+#    a PRIORITY_UPDATE MUST respond with a connection error of type
+#    PROTOCOL_ERROR.
+# 
+#    When the PRIORITY_UPDATE frame applies to a push stream, clients
+#    SHOULD provide a prioritized stream ID that refers to a stream in the
+#    "reserved (remote)" or "half-closed (local)" state.  Servers can
+#    discard frames where the prioritized stream ID refers to a stream in
+#    the "closed" state.  Clients MUST NOT provide a prioritized stream ID
+#    that refers to a push stream in the "idle" state.  Servers that
+#    receive a PRIORITY_UPDATE for a push stream in the "idle" state MUST
+#    respond with a connection error of type PROTOCOL_ERROR.
+# 
+#    If a PRIORITY_UPDATE frame is received with a prioritized stream ID
+#    of 0x0, the recipient MUST respond with a connection error of type
+#    PROTOCOL_ERROR.
+# 
+#    Servers MUST NOT send PRIORITY_UPDATE frames.  If a client receives a
+#    PRIORITY_UPDATE frame, it MUST respond with a connection error of
+#    type PROTOCOL_ERROR.
+
+[[spec]]
+level = "MUST"
+quote = '''
+The Stream Identifier field (see Section 5.1.1 of [HTTP/2]) in the
+PRIORITY_UPDATE frame header MUST be zero (0x0).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Receiving a
+PRIORITY_UPDATE frame with a field of any other value MUST be treated
+as a connection error of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+When the PRIORITY_UPDATE frame applies to a request stream, clients
+SHOULD provide a prioritized stream ID that refers to a stream in the
+"open", "half-closed (local)", or "idle" state (i.e., streams where
+data might still be received).
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+The number of streams that have been prioritized but remain in the
+"idle" state plus the number of active streams (those in the "open"
+state or in either of the "half-closed" states; see Section 5.1.2 of
+[HTTP/2]) MUST NOT exceed the value of the
+SETTINGS_MAX_CONCURRENT_STREAMS parameter.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers that receive such
+a PRIORITY_UPDATE MUST respond with a connection error of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+When the PRIORITY_UPDATE frame applies to a push stream, clients
+SHOULD provide a prioritized stream ID that refers to a stream in the
+"reserved (remote)" or "half-closed (local)" state.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Clients MUST NOT provide a prioritized stream ID
+that refers to a push stream in the "idle" state.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers that
+receive a PRIORITY_UPDATE for a push stream in the "idle" state MUST
+respond with a connection error of type PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a PRIORITY_UPDATE frame is received with a prioritized stream ID
+of 0x0, the recipient MUST respond with a connection error of type
+PROTOCOL_ERROR.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+Servers MUST NOT send PRIORITY_UPDATE frames.
+'''
+
+[[spec]]
+level = "MUST"
+quote = '''
+If a client receives a
+PRIORITY_UPDATE frame, it MUST respond with a connection error of
+type PROTOCOL_ERROR.
+'''
+

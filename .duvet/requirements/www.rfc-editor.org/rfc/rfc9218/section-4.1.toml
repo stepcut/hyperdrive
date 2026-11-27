@@ -1,0 +1,47 @@
+target = "https://www.rfc-editor.org/rfc/rfc9218#section-4.1"
+
+# Urgency
+#
+#    The urgency (u) parameter value is Integer (see Section 3.3.1 of
+#    [STRUCTURED-FIELDS]), between 0 and 7 inclusive, in descending order
+#    of priority.  The default is 3.
+# 
+#    Endpoints use this parameter to communicate their view of the
+#    precedence of HTTP responses.  The chosen value of urgency can be
+#    based on the expectation that servers might use this information to
+#    transmit HTTP responses in the order of their urgency.  The smaller
+#    the value, the higher the precedence.
+# 
+#    The following example shows a request for a CSS file with the urgency
+#    set to 0:
+# 
+#    :method = GET
+#    :scheme = https
+#    :authority = example.net
+#    :path = /style.css
+#    priority = u=0
+# 
+#    A client that fetches a document that likely consists of multiple
+#    HTTP resources (e.g., HTML) SHOULD assign the default urgency level
+#    to the main resource.  This convention allows servers to refine the
+#    urgency using knowledge specific to the website (see Section 8).
+# 
+#    The lowest urgency level (7) is reserved for background tasks such as
+#    delivery of software updates.  This urgency level SHOULD NOT be used
+#    for fetching responses that have any impact on user interaction.
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+A client that fetches a document that likely consists of multiple
+HTTP resources (e.g., HTML) SHOULD assign the default urgency level
+to the main resource.
+'''
+
+[[spec]]
+level = "SHOULD"
+quote = '''
+This urgency level SHOULD NOT be used
+for fetching responses that have any impact on user interaction.
+'''
+
