@@ -18,6 +18,10 @@ module Hyperdrive.Server
   , ServerError(..)
     -- * Lower level
   , serveConnection
+  , serveConnectionTLS
+  , TLSSettings(..)
+  , CertificateSource(..)
+  , defaultTLSSettings
   , Timers
   , withTimers
   , beginShutdown
@@ -35,6 +39,7 @@ import Foreign.C.Error (Errno(..), eMFILE, eNFILE)
 import GHC.IO.Exception (IOException(..))
 import Hyperdrive.Server.Connection
 import Hyperdrive.Server.Timer
+import Hyperdrive.Server.TLS
 import Hyperdrive.Server.Transport
 import Network.Socket
 
@@ -71,6 +76,9 @@ startServer settings timers app = do
     listen s 1024
     pure s
   port <- socketPort listener
+  -- TLS loaded and checked now, so that a wrong key fails the start
+  tls <- traverse (\t -> newTLSServer t (maybe False (const True) (settingsHTTP2 settings))) (settingsTLS settings)
+           `onException` close listener
   live <- newTVarIO (0 :: Int)
   threads <- newTVarIO (Map.empty :: Map.Map ThreadId ())
   capabilities <- getNumCapabilities
@@ -78,7 +86,10 @@ startServer settings timers app = do
   let serve s peer = do
         local <- getSocketName s
         transport <- socketTransport s
-        serveConnection settings timers transport (Context peer local False) app
+        -- serveConnectionTLS makes the context secure
+        case tls of
+          Just server -> serveConnectionTLS settings timers server transport (Context peer local False) app
+          Nothing -> serveConnection settings timers transport (Context peer local False) app
       fork :: Int -> ((forall a. IO a -> IO a) -> IO ()) -> IO ThreadId
       fork n
         | settingsPinConnections settings = forkOnWithUnmask (n `rem` capabilities)

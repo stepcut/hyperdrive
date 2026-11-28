@@ -19,6 +19,7 @@ import Data.Maybe (fromJust)
 import Data.Word (Word64)
 import Hyperdrive.HTTP1.Connection (Config, Misuse, defaultConfig)
 import qualified Hyperdrive.HTTP2.Connection as H2
+import Hyperdrive.Server.TLS (TLSSettings)
 import Hyperdrive.Semantics.Field
 import Hyperdrive.Semantics.Message
 import Network.Socket (HostName, PortNumber, SockAddr)
@@ -46,12 +47,16 @@ data Timeouts = Timeouts
   , timeoutDiscard :: !Int  -- ^ discarding an unread body, in total
   , timeoutWrite   :: !Int  -- ^ each write, while the client does not read
   , timeoutLinger  :: !Int  -- ^ after half-closing, before closing
+  , timeoutHandshake :: !Int
+    -- ^ a TLS connection, from its accept to the handshake's end, in total
+    -- (docs/tls-design.md, T4)
   } deriving (Eq, Show)
 
 defaultTimeouts :: Timeouts
 defaultTimeouts = Timeouts
   { timeoutIdle = 60 * second, timeoutHead = 30 * second, timeoutBody = 30 * second
-  , timeoutDiscard = 5 * second, timeoutWrite = 30 * second, timeoutLinger = 2 * second }
+  , timeoutDiscard = 5 * second, timeoutWrite = 30 * second, timeoutLinger = 2 * second
+  , timeoutHandshake = 10 * second }
   where second = 1000000
 
 data Settings = Settings
@@ -81,6 +86,10 @@ data Settings = Settings
     -- ^ the HTTP/2 core's configuration, for clients that open with
     -- HTTP/2's preface (h2c with prior knowledge, D2); 'Nothing': HTTP/1.1
     -- only. On by default (docs/http2-driver-design.md, V5).
+  , settingsTLS              :: !(Maybe TLSSettings)
+    -- ^ serve TLS on this listener (docs/tls-design.md): HTTP/2 or HTTP/1.1
+    -- by ALPN, never h2c (T2); 'Nothing': cleartext. A server on 80 and 443
+    -- runs two listeners.
   , settingsHandlerGrace     :: !Int
     -- ^ microseconds an HTTP/2 connection that has ended waits for its
     -- handlers to return before killing them (C2, V4); 5 s
@@ -101,6 +110,7 @@ defaultSettings = Settings
   , settingsPinConnections = False
   , settingsTimerResolution = 100000
   , settingsHTTP2 = Just H2.defaultConfig
+  , settingsTLS = Nothing
   , settingsHandlerGrace = 5000000
   , settingsOnException = \e -> putStrLn ("hyperdrive: " ++ displayException e)
   }

@@ -18,6 +18,7 @@ module Hyperdrive.Server.Connection
   , defaultTimeouts
     -- * Serving
   , serveConnection
+  , serveConnectionTLS
   , ConnectionClosed(..)
   , ServerError(..)
   ) where
@@ -42,6 +43,7 @@ import Hyperdrive.Semantics.URI (pattern HTTP, pattern HTTPS)
 import Hyperdrive.Server.HTTP2 (serveHTTP2)
 import Hyperdrive.Server.Settings
 import Hyperdrive.Server.Timer
+import Hyperdrive.Server.TLS (TLSServer, handshakeTLS)
 import Hyperdrive.Server.Transport
 import qualified Hyperdrive.Server.Wait as Wait
 import System.IO (IOMode(..), SeekMode(..), hFileSize, hSeek, withBinaryFile)
@@ -101,6 +103,33 @@ serveConnection settings timers transport context app = do
          serveHTTP2 settings config timer wake transport context app first
        Just (_, first) -> serveHTTP1 settings timer wake transport context app first)
       `finally` transportClose transport
+
+-- | Serve a TLS connection (docs/tls-design.md): the handshake within the
+-- handshake timeout from accept (T4), then HTTP/2 if ALPN agreed @h2@,
+-- HTTP/1.1 otherwise; never h2c on TLS (T2). The socket is closed at the
+-- end whatever happens.
+--
+-- = https://www.rfc-editor.org/rfc/rfc9113#section-3.3
+-- # This only affects the
+-- # establishment of HTTP/2 connections over cleartext TCP; HTTP/2
+-- # connections over TLS MUST use protocol negotiation in TLS [TLS-ALPN].
+serveConnectionTLS :: Settings -> Timers -> TLSServer -> Transport -> Context -> Application -> IO ()
+serveConnectionTLS settings timers server sock context app = do
+  wake <- newEmptyMVar
+  withTimer timers (void . tryPutMVar wake) (transportAbort sock) $ \timer ->
+    (do deadline <- deadlineIn timer (timeoutHandshake (settingsTimeouts settings))
+        handshakeTLS server timer wake sock deadline >>= \case
+          Nothing -> pure ()
+          Just (tls, alpn) -> do
+            let context' = context { contextSecure = True }
+            -- the first plaintext, within the idle timeout: an HTTP/1.1
+            -- driver takes no input as the end
+            chooseProtocol settings { settingsHTTP2 = Nothing } timer wake tls >>= \case
+              Nothing -> pure ()
+              Just (_, first) -> case (alpn, settingsHTTP2 settings) of
+                (Just "h2", Just config) -> serveHTTP2 settings config timer wake tls context' app first
+                _ -> serveHTTP1 settings timer wake tls context' app first)
+      `finally` transportClose sock
 
 -- = https://www.rfc-editor.org/rfc/rfc9113#section-3.3
 -- # A client that knows that a server supports HTTP/2 can establish a TCP

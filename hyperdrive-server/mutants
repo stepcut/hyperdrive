@@ -233,3 +233,29 @@ file: src/Hyperdrive/Server/Timer.hs
 why: the grace period's end is seen by connections not woken by it (V5)
 - atomicWriteIORef (timerGraceOver t) True -- told
 + pure () -- told
+
+file: src/Hyperdrive/Server/Connection.hs
+why: the handshake has its own timeout, from accept (docs/tls-design.md, T4)
+- (do deadline <- deadlineIn timer (timeoutHandshake (settingsTimeouts settings))
++ (do deadline <- deadlineIn timer (timeoutIdle (settingsTimeouts settings))
+
+why: a TLS connection is secure (the request's scheme is https)
+- let context' = context { contextSecure = True }
++ let context' = context
+
+why: ALPN's h2 gives HTTP/2 (T2)
+- (Just "h2", Just config) -> serveHTTP2 settings config timer wake tls context' app first
++ (Just "h3", Just config) -> serveHTTP2 settings config timer wake tls context' app first
+
+file: src/Hyperdrive/Server/TLS.hs
+why: h2 is offered only with HTTP/2 on (T2)
+- , TLS.csALPN = ["h2" | http2] ++ ["http/1.1"]
++ , TLS.csALPN = ["h2"] ++ ["http/1.1"]
+
+why: a failed handshake's alert is sent
+- Left _ -> Nothing <$ flush
++ Left _ -> pure Nothing
+
+why: a graceful close sends close_notify (T6)
+- _ <- TLS.closeNotify sess
++ _ <- pure ()

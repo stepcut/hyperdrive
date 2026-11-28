@@ -267,6 +267,36 @@ reply; TLS 1.3 tickets would go in the server's flight with its
 Finished. Two checks of ours turned out to be AWS-LC's as well (the key
 matching the certificate, QUIC's handshake-flight bound); kept.
 
+## As built: step 2, the transport and HTTP/1.1 over TLS (2026-11-27)
+
+`Hyperdrive.Server.TLS`: `TLSSettings` (certificates and key as files or
+PEM, groups, lowest version, handshake steps at once), `newTLSServer`
+(loaded and checked when the server starts, so that a wrong key fails
+the start), `handshakeTLS` (driven by the connection's timer: the
+deadline is `timeoutHandshake` from accept, 10 s; shutdown ends it;
+each step under a semaphore, two for each capability by default; a
+failure's alert sent best effort), and the transport of T1 (receiving:
+the session's plaintext first, the socket only when it has none, what
+reads leave to send queued; sending: `trySend` reports only plaintext
+whose ciphertext the socket took and skips the part already encrypted;
+`sendMany` pushes the queue first; `shutdownWrite` sends close_notify).
+`serveConnectionTLS` in `Hyperdrive.Server.Connection`: the handshake,
+then the first plaintext within the idle timeout (an HTTP/1.1 driver
+takes no input as the end), then HTTP/2 if ALPN agreed `h2`, HTTP/1.1
+otherwise; it makes the context secure. `Settings` gains `settingsTLS`,
+`Timeouts` gains `timeoutHandshake`.
+
+Tests (7, `TLSTests`, a client from hyperdrive-tls over a socket):
+HTTP/1.1 over TLS with the context secure and the server's close_notify
+before its socket's end; ALPN `h2` giving HTTP/2's preface; `h2` alone
+refused with HTTP/2 off; the handshake timeout, for a silent client and
+for a ClientHello trickled an octet every 20 ms (the deadline is total);
+plaintext HTTP to the listener closed with no response (AWS-LC
+recognizes a plaintext request and closes without an alert) and a bad
+handshake record answered with an alert; a wrong key failing the start;
+1 MiB to a slow reader. `trySend` (HTTP/2's writes) is exercised in
+step 4, with HTTP/2 over TLS.
+
 ## Decisions in short
 
 - **T1.** TLS as a `Transport` over the socket's: decrypt what is held
