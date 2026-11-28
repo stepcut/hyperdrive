@@ -162,7 +162,9 @@ asynchronous key method, ALPN, SNI, and a QUIC handshake through the
 same shim all work. One refinement: the handshake's steps are `safe`
 calls as well as the signing, since TLS 1.3's step that answers the
 ClientHello, with AWS-LC's default hybrid group X25519MLKEM768, takes
-80 to 110 µs; record encryption and decryption stay `unsafe`.
+80 to 110 µs; record encryption and decryption stay `unsafe`. With the
+steps `safe`, the asynchronous private-key method above no longer has a
+purpose and is dropped (docs/tls-design.md, T5, 2026-11-27).
 
 **D4. Streams and threads (decided, 2026-11-24: option A).** One owner
 thread per connection holds the `Conn` and does all transport I/O; each
