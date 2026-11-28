@@ -26,6 +26,9 @@
         hyperdrive-http2 = (final.callCabal2nix "hyperdrive-http2" ./hyperdrive-http2 { }).overrideAttrs
           (_: { HPACK_TEST_CASE = "${hpack-test-case}"; });
         hyperdrive-server = final.callCabal2nix "hyperdrive-server" ./hyperdrive-server { };
+        # AWS-LC's libraries as nixpkgs names them (D3)
+        hyperdrive-tls = final.callCabal2nix "hyperdrive-tls" ./hyperdrive-tls {
+          libssl-awslc = pkgs.aws-lc; libcrypto-awslc = pkgs.aws-lc; };
         # not checked: run with `nix develop .#bench -c scripts/bench`
         hyperdrive-bench = final.callCabal2nix "hyperdrive-bench" ./bench { };
       });
@@ -59,6 +62,7 @@
         hyperdrive-http1 = (haskellPackages pkgs).hyperdrive-http1;
         hyperdrive-http2 = (haskellPackages pkgs).hyperdrive-http2;
         hyperdrive-server = (haskellPackages pkgs).hyperdrive-server;
+        hyperdrive-tls = (haskellPackages pkgs).hyperdrive-tls;
         hyperdrive-bench = (haskellPackages pkgs).hyperdrive-bench;
       });
 
@@ -103,7 +107,7 @@
 
       devShells = forAllSystems (pkgs: {
         default = (haskellPackages pkgs).shellFor {
-          packages = p: [ p.hyperdrive-semantics p.hyperdrive-abnf p.hyperdrive-http1 p.hyperdrive-http2 p.hyperdrive-server ];
+          packages = p: [ p.hyperdrive-semantics p.hyperdrive-abnf p.hyperdrive-http1 p.hyperdrive-http2 p.hyperdrive-server p.hyperdrive-tls ];
           nativeBuildInputs = [
             pkgs.cabal-install
             pkgs.python3 # for scripts/mutation-test
@@ -126,6 +130,11 @@
         # nix develop .#h2spec -c scripts/h2spec
         h2spec = self.devShells.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.h2spec ];
+        });
+        # the TLS spike's clients and certificates (docs/tls-spike-design.md,
+        # S6): nix develop .#tls -c scripts/tls-spike
+        tls = self.devShells.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.curl pkgs.nghttp2 pkgs.openssl ];
         });
         # benchmarks against warp: nix develop .#bench -c scripts/bench
         bench = pkgs.mkShell { packages = benchTools pkgs; };

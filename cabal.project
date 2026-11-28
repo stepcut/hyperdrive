@@ -3,5 +3,6 @@ packages: hyperdrive-semantics/
           hyperdrive-http1/
           hyperdrive-http2/
           hyperdrive-server/
+          hyperdrive-tls/
 
 tests: True

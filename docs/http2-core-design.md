@@ -156,6 +156,14 @@ key exchange with AEAD ciphers (Section 9.2.2 and Appendix A). A small
 spike of the shim comes well before step 7 of D12, since D3 is the
 decision costliest to reverse and the last one D12 tests.
 
+The spike's result (2026-11-27, docs/tls-spike-design.md, "Findings"):
+D3 holds. Handshakes through buffers with real clients, the
+asynchronous key method, ALPN, SNI, and a QUIC handshake through the
+same shim all work. One refinement: the handshake's steps are `safe`
+calls as well as the signing, since TLS 1.3's step that answers the
+ClientHello, with AWS-LC's default hybrid group X25519MLKEM768, takes
+80 to 110 µs; record encryption and decryption stay `unsafe`.
+
 **D4. Streams and threads (decided, 2026-11-24: option A).** One owner
 thread per connection holds the `Conn` and does all transport I/O; each
 request's handler runs in a thread of its own and talks to the owner
