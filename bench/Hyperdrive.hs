@@ -2,7 +2,9 @@
 -- | The benchmark application on hyperdrive: GET / is a small response,
 -- GET /large 1 MiB, and POST /upload reads the body and answers with
 -- its length. A second argument, @pin@, turns 'settingsPinConnections'
--- on.
+-- on. With TLS_CERT and TLS_KEY set (PEM files), it serves TLS
+-- (docs/tls-design.md, T8); TLS_GROUPS replaces the key-exchange groups
+-- (X25519 alone, say, as warp-tls offers no X25519MLKEM768).
 module Main (main) where
 
 import qualified Data.ByteString as B
@@ -15,14 +17,20 @@ import Hyperdrive.Semantics.Status (mkStatus)
 import Hyperdrive.Semantics.Target (Target(..))
 import Hyperdrive.Semantics.URI (pathBytes)
 import Hyperdrive.Server
-import System.Environment (getArgs)
+import System.Environment (getArgs, lookupEnv)
 
 main :: IO ()
 main = do
   port : options <- getArgs
+  cert <- lookupEnv "TLS_CERT"
+  key <- lookupEnv "TLS_KEY"
+  groups <- lookupEnv "TLS_GROUPS"
+  let tls = (\t -> maybe t (\g -> t { tlsGroups = C.pack g }) groups)
+              <$> (defaultTLSSettings <$> (FromFile <$> cert) <*> (FromFile <$> key))
   runServer defaultSettings
     { settingsPort = fromIntegral (read port :: Int), settingsHost = Just "127.0.0.1"
-    , settingsPinConnections = options == ["pin"] } app
+    , settingsPinConnections = options == ["pin"]
+    , settingsTLS = tls } app
 
 large :: B.ByteString
 large = B.replicate (1024 * 1024) 120

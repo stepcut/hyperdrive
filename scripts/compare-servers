@@ -14,6 +14,14 @@
 #   scripts/compare-servers base=/tmp/bins/bench-base new=/tmp/bins/bench-new
 #   scripts/compare-servers hyperdrive:-A1m hyperdrive:-A32m warp
 #
+# TLS=1 serves both over TLS (docs/tls-design.md, T8) with a fresh
+# certificate (KEY=ec, the default, ECDSA P-256; KEY=rsa, RSA-2048), and
+# adds the kind "handshake": a new connection for every request
+# (Connection: close), so that the handshake is what is measured.
+# TLS_GROUPS=X25519 limits hyperdrive's key exchange to X25519, as
+# warp-tls's (which has no X25519MLKEM768); give it to one server with
+# NAME=PATH twice, or run twice.
+#
 # Timings: ask for a quiet machine first. The server is pinned to CPUs
 # 0-7 and wrk (8 threads, 100 connections) to 8-15; each run takes
 # DURATION seconds (default 5). The browser kind sends a browser's
@@ -35,12 +43,26 @@ shift $((OPTIND - 1))
 DURATION=${DURATION:-5}
 PORT=${PORT:-18095}
 results=$(mktemp)
-trap 'rm -f "$results"' EXIT
+certs=$(mktemp -d)
+trap 'rm -rf "$results" "$certs"' EXIT
+scheme=http
+if [ "${TLS:-}" = 1 ]; then
+  case ${KEY:-ec} in
+    ec) newkey=(-newkey ec -pkeyopt ec_paramgen_curve:P-256) ;;
+    rsa) newkey=(-newkey rsa:2048) ;;
+    *) echo "KEY is ec or rsa" >&2; exit 2 ;;
+  esac
+  openssl req -x509 "${newkey[@]}" -nodes -keyout "$certs/key.pem" -out "$certs/cert.pem" -days 1 \
+    -subj /CN=localhost -addext subjectAltName=DNS:localhost 2>/dev/null
+  export TLS_CERT=$certs/cert.pem TLS_KEY=$certs/key.pem
+  scheme=https
+fi
 
 for kind in $KINDS; do
   case $kind in
     minimal) script=() ;;
     browser) script=(-s bench/wrk/browser.lua) ;;
+    handshake) script=(-H "Connection: close") ;;
     *) echo "unknown kind: $kind" >&2; exit 2 ;;
   esac
   for _ in $(seq "$ROUNDS"); do
@@ -55,7 +77,7 @@ for kind in $KINDS; do
       pid=$!
       for _ in $(seq 50); do (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && break; sleep 0.1; done
       read -r u0 s0 < <(awk '{print $14, $15}' "/proc/$pid/stat")
-      rps=$(taskset -c 8-15 wrk -t8 -c100 -d"${DURATION}s" "${script[@]}" "http://127.0.0.1:$PORT/" | awk '/Requests\/sec/ {print $2}')
+      rps=$(taskset -c 8-15 wrk -t8 -c100 -d"${DURATION}s" "${script[@]}" "$scheme://127.0.0.1:$PORT/" | awk '/Requests\/sec/ {print $2}')
       read -r u1 s1 < <(awk '{print $14, $15}' "/proc/$pid/stat")
       # clock ticks are 10 ms: microseconds a request, and cores in use
       awk -v k="$kind" -v n="$spec" -v r="$rps" -v d="$DURATION" -v u=$((u1 - u0)) -v s=$((s1 - s0)) \

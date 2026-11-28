@@ -1742,6 +1742,42 @@ HTTP/1.1's browser request about 3%. The bench now runs both servers
 with `-N8 -A2m` (the user's decision, 2026-11-27); the extra allocation
 of RFC 9218's scheduler (1.6 KB a small request) is still worth cutting.
 
+## 2026-11-28: TLS, against warp-tls (docs/tls-design.md, step 3)
+
+Both bench servers over TLS (`TLS=1` for `scripts/compare-servers` and
+`scripts/compare-h2`: a fresh certificate, ECDSA P-256 unless `KEY=rsa`;
+`-N8 -A2m`), hyperdrive on AWS-LC through hyperdrive-tls, warp-tls
+3.4.14 on Kazu Yamamoto's `tls`. Neither resumes sessions (checked with
+`openssl s_client -sess_out`/`-sess_in`, TLS 1.2 and 1.3). hyperdrive
+negotiates X25519MLKEM768 with OpenSSL 3.5 clients (wrk, h2load);
+warp-tls has no X25519MLKEM768 (a client offering only it is refused)
+and negotiates X25519, so the handshake rate is also given with
+hyperdrive limited to X25519 (`TLS_GROUPS=X25519`). Quiet machine, four
+alternating rounds (requests a second; user and kernel µs a request):
+
+| HTTP/1.1 over TLS (wrk) | hyperdrive | warp-tls | |
+|---|---|---|---|
+| minimal | 434k, 4.33 + 6.50 | 152k, 16.40 + 15.15 | 2.9x |
+| browser | 422k, 4.64 + 6.72 | 139k, 20.03 + 15.26 | 3.0x |
+| handshake (a new connection a request), ECDSA, our default groups | 13k, 240 + 86 | 5k, 771 + 184 | 2.7x |
+| the same, hyperdrive with X25519 as warp | 15k, 206 + 83 | 5k, 776 + 187 | 3x |
+| the same, RSA-2048, default groups | 7k, 589 + 91 | 2k, 1,901 + 188 | 3.5x |
+
+| HTTP/2 over TLS (h2load, h2 by ALPN) | hyperdrive | warp-tls | |
+|---|---|---|---|
+| m1 | 200.9k, 16.05 + 9.38 | 40.1k, 75.24 + 38.01 | 5.0x |
+| m10 | 435.6k, 11.74 + 1.59 | 31.5k, 91.30 + 32.92 | 13.8x |
+| m64 | 387.8k, 11.97 + 1.02 | 37.8k, 75.63 + 32.54 | 10.3x |
+| large | 6.8k | 1.3k | 5.2x |
+| upload | 4.6k | 1.0k | 4.6x |
+
+No request failed. One cost to look at: m1 over TLS costs about 16 µs of
+user time a request against about 7 in cleartext; the transport
+encrypts each piece the driver offers as a record of its own (a frame
+header, a field block, DATA), so a small HTTP/2 response is several
+small records. Coalescing the pieces into records of up to 16 KiB is
+step 4's first measurement.
+
 ## Experiments for later: what a large gain would take
 
 Not planned for soon (the user, 2026-11-24); set down so that they are

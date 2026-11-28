@@ -44,7 +44,21 @@ PORT=${PORT:-18096}
 results=$(mktemp)
 upload=$(mktemp)
 head -c 1048576 /dev/zero > "$upload"
-trap 'rm -f "$results" "$upload"' EXIT
+certs=$(mktemp -d)
+trap 'rm -rf "$results" "$upload" "$certs"' EXIT
+# TLS=1: h2 over TLS by ALPN, as for compare-servers (KEY=ec or rsa)
+scheme=http
+if [ "${TLS:-}" = 1 ]; then
+  case ${KEY:-ec} in
+    ec) newkey=(-newkey ec -pkeyopt ec_paramgen_curve:P-256) ;;
+    rsa) newkey=(-newkey rsa:2048) ;;
+    *) echo "KEY is ec or rsa" >&2; exit 2 ;;
+  esac
+  openssl req -x509 "${newkey[@]}" -nodes -keyout "$certs/key.pem" -out "$certs/cert.pem" -days 1 \
+    -subj /CN=localhost -addext subjectAltName=DNS:localhost 2>/dev/null
+  export TLS_CERT=$certs/cert.pem TLS_KEY=$certs/key.pem
+  scheme=https
+fi
 
 for kind in $KINDS; do
   case $kind in
@@ -65,7 +79,7 @@ for kind in $KINDS; do
       pid=$!
       for _ in $(seq 50); do (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && break; sleep 0.1; done
       read -r u0 s0 < <(awk '{print $14, $15}' "/proc/$pid/stat")
-      out=$(taskset -c 8-15 h2load -t8 -D"$DURATION" --warm-up-time="$WARMUP" "${args[@]}" "http://127.0.0.1:$PORT$path" 2>&1)
+      out=$(taskset -c 8-15 h2load -t8 -D"$DURATION" --warm-up-time="$WARMUP" "${args[@]}" "$scheme://127.0.0.1:$PORT$path" 2>&1)
       read -r u1 s1 < <(awk '{print $14, $15}' "/proc/$pid/stat")
       rps=$(awk '/^finished in/ {gsub(",", "", $4); print $4}' <<<"$out")
       bad=$(awk '/^requests:/ {gsub(",", ""); print $10 + $12 + $14}' <<<"$out")

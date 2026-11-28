@@ -34,7 +34,7 @@ executable bench-warp
   import:           server
   main-is:          Warp.hs
   if flag(warp)
-    build-depends:  http-types, wai, warp
+    build-depends:  http-types, wai, warp, warp-tls
   else
     buildable:      False
 

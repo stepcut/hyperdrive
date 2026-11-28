@@ -51,6 +51,7 @@
         pkgs.nghttp2 # h2load: scripts/compare-h2
         pkgs.util-linux # taskset
         pkgs.python3
+        pkgs.openssl # certificates for TLS=1
       ];
     in {
       packages = forAllSystems (pkgs: {

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# A perf profile (instructions) of one bench server while h2load runs
+# against it (100 connections, 10 streams each, 7 s; the profile taken
+# for 5 s), to be read with scripts/perf-summary. Not a timing run: the
+# shares do not need a quiet machine, the requests a second do. TLS=1
+# serves and loads over TLS (TLS_CERT and TLS_KEY must name PEM files).
+#
+#   nix develop .#bench -c nix shell nixpkgs#perf -c scripts/profile-h2 NAME BINARY
+#   scripts/perf-summary /tmp/profile-h2-NAME.data
+set -uo pipefail
+[ $# -eq 2 ] || { sed -n '2,10p' "$0"; exit 2; }
+name=$1; bin=$2; port=${PORT:-18097}
+scheme=http; [ "${TLS:-}" = 1 ] && scheme=https
+taskset -c 0-7 "$bin" "$port" +RTS -N8 -RTS >/dev/null 2>&1 &
+pid=$!
+for _ in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/$port) 2>/dev/null && break; sleep 0.1; done
+taskset -c 8-15 h2load -t8 -D7 -c100 -m10 "$scheme://127.0.0.1:$port/" > "/tmp/profile-h2-$name.h2load" 2>&1 &
+load=$!
+sleep 1
+perf record -q -e instructions:u -c 20000 -p "$pid" -o "/tmp/profile-h2-$name.data" -- sleep 5 2>/dev/null
+wait "$load"; kill "$pid"; wait "$pid" 2>/dev/null
+grep -E "finished in|requests:" "/tmp/profile-h2-$name.h2load"
+echo "profile: /tmp/profile-h2-$name.data"

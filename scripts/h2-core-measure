@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# The HTTP/2 core alone, in process (bench/h2core; docs/benchmarks.md,
+# "RFC 9218's scheduler in the HTTP/2 core"): bytes allocated and
+# instructions (perf stat, user) a small request, one at a time and 64
+# at once, and a 16 KiB DATA frame with 1, 10 and 64 streams. Allocation
+# is exact and instruction counts change little on a busy machine, so
+# this needs no quiet machine (timings do).
+#
+#   scripts/h2-core-measure [NAME]     build the working tree's core, measure
+#
+# For a comparison, run it in a worktree of the other commit:
+#   git worktree add /tmp/before <commit>; (cd /tmp/before && scripts/h2-core-measure before)
+# It needs the default dev shell and nixpkgs' perf:
+#   nix develop -c nix shell nixpkgs#perf -c scripts/h2-core-measure
+set -euo pipefail
+cd "$(dirname "$0")/.."
+name=${1:-$(git rev-parse --short HEAD)}
+out=$(mktemp -d)
+trap 'rm -rf "$out"' EXIT
+cabal build -v0 hyperdrive-http2
+for prog in Small Small64 Frames; do
+  cabal exec -v0 -- ghc -O2 -package hyperdrive-http2 -package hyperdrive-semantics -package bytestring \
+    -outputdir "$out/build-$prog" -o "$out/$prog" "bench/h2core/$prog.hs" >/dev/null
+done
+instructions() { perf stat -x, -e instructions:u "$@" 2>&1 >/dev/null | awk -F, '{print $1}'; }
+echo "== $name"
+"$out/Small" 200000
+echo "  $(( $(instructions "$out/Small" 1000000) / 1000000 )) instructions a request, one at a time"
+"$out/Small64" 64000
+echo "  $(( $(instructions "$out/Small64" 64000) / 64000 )) instructions a request, 64 at once"
+for s in 1 10 64; do "$out/Frames" "$s" 2000; done
