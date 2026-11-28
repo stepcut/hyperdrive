@@ -266,9 +266,20 @@ data StreamEntry = StreamEntry
   , sAllowance     :: !Word64        -- ^ the minimum rate's allowance, in thousandths of an octet
   , sIdleLeft      :: !Time          -- ^ what is left of the idle timer
   , sTimer         :: !(Maybe Time)  -- ^ the stream's entry in 'cTimers'
-  , sClientPriority :: !Priority     -- ^ the request's, or the latest PRIORITY_UPDATE's (P5, P9, P10)
-  , sServerParams  :: !PriorityParams -- ^ the response's @priority@ field, over the client's (P4)
+  , sPriority      :: !StreamPriority
   }
+
+-- | A stream's priority, apart from 'StreamEntry' since it seldom
+-- changes: each field of 'StreamEntry' is copied on most of its updates.
+data StreamPriority = StreamPriority
+  { prScheduled :: !Priority       -- ^ the second over the first: what the schedule uses
+  , prClient    :: !Priority       -- ^ the request's, or the latest PRIORITY_UPDATE's (P5, P9, P10)
+  , prServer    :: !PriorityParams -- ^ the response's @priority@ field, over the client's (P4)
+  }
+
+-- | A stream's priority from the client's and the server's parts (P4).
+streamPriorityOf :: Priority -> PriorityParams -> StreamPriority
+streamPriorityOf client server = StreamPriority (applyParams server client) client server
 
 -- | Where a stream's response is (C12).
 data Response
@@ -319,10 +330,7 @@ data Conn = Conn
   , cSendWindow  :: !Int            -- ^ what we may still send on the connection (C5)
   , cBuffered    :: !Int            -- ^ response content buffered, all streams (C5)
   , cSchedule    :: !(Schedule Word32) -- ^ streams with something to send (D8, RFC 9218)
-  , cUpdates     :: !(M.Map Word32 PriorityParams)
-    -- ^ the latest PRIORITY_UPDATE for each stream not yet opened (P5)
-  , cSignalled   :: !Bool           -- ^ the client has sent a priority signal (P9)
-  , cProxied     :: !Bool           -- ^ a request came through a proxy (P10)
+  , cSignals     :: !Signals        -- ^ what the client has said of priorities (P5, P9, P10)
   , cEncoder     :: !Encoder
   , cNow         :: !Time           -- ^ the latest time a step was given
   , cTimers      :: !(Set (Time, Word32))
@@ -335,6 +343,15 @@ data Conn = Conn
   , cPeerGoAway  :: !Bool           -- ^ the client sent GOAWAY (C11)
   , cAcceptLimit :: !Word32         -- ^ the last stream of our final GOAWAY, or 2^31-1 (D10)
   , cClosed      :: !Bool
+  }
+
+-- | The client's priority signals, apart from 'Conn' since they seldom
+-- change: each field of 'Conn' is copied on most of its updates.
+data Signals = Signals
+  { gUpdates   :: !(M.Map Word32 PriorityParams)
+    -- ^ the latest PRIORITY_UPDATE for each stream not yet opened (P5)
+  , gSignalled :: !Bool             -- ^ the client has sent a priority signal (P9)
+  , gProxied   :: !Bool             -- ^ a request came through a proxy (P10)
   }
 
 -- | Graceful shutdown (D10).
@@ -397,9 +414,7 @@ newConn config now =
         , cSendWindow = 65535
         , cBuffered = 0
         , cSchedule = Sch.empty
-        , cUpdates = M.empty
-        , cSignalled = False
-        , cProxied = False
+        , cSignals = Signals M.empty False False
         , cEncoder = newEncoder 4096
         , cNow = now
         , cTimers = S.empty
@@ -917,9 +932,9 @@ frameOutsideBlock now c f acc = case f of
           | otherwise -> case M.lookup target (cStreams c) of
               Just st | sState st /= ClosedHeld ->
                 let p = applyParams params defaultPriority
-                    c1 = c { cSignalled = True }
-                in if p == sClientPriority st then charge 1 c1 $ \c2 -> next (c2, [])
-                   else next (reprioritize target st { sClientPriority = p } c1, [])
+                    c1 = markSignalled c
+                in if p == prClient (sPriority st) then charge 1 c1 $ \c2 -> next (c2, [])
+                   else next (reprioritize target st { sPriority = streamPriorityOf p (prServer (sPriority st)) } c1, [])
               -- = https://www.rfc-editor.org/rfc/rfc9218#section-7.1
               -- # Servers can discard frames where the
               -- # prioritized stream ID refers to a stream in the "half-closed (local)"
@@ -942,7 +957,7 @@ frameOutsideBlock now c f acc = case f of
 priorityUpdateIdle :: Word32 -> PriorityParams -> Conn -> [[Output]] -> (Conn, [Output])
 priorityUpdateIdle target params c acc
   -- the same again: does nothing, and is charged (C10)
-  | M.lookup target (cUpdates c) == Just params = charge 1 c $ \c1 -> advance (cNow c1) c1 ([] : acc)
+  | M.lookup target (gUpdates (cSignals c)) == Just params = charge 1 c $ \c1 -> advance (cNow c1) c1 ([] : acc)
   -- = https://www.rfc-editor.org/rfc/rfc9218#section-7.1
   -- # The number of streams that have been prioritized but remain in the
   -- # "idle" state plus the number of active streams (those in the "open"
@@ -953,8 +968,14 @@ priorityUpdateIdle target params c acc
   -- # PROTOCOL_ERROR.
   | fromIntegral (M.size updates) + activeStreams c > configMaxConcurrentStreams (cConfig c) =
       stop acc (goAway c ProtocolError)
-  | otherwise = advance (cNow c) c { cUpdates = updates, cSignalled = True } ([] : acc)
-  where updates = M.insert target params (cUpdates c)
+  | otherwise = advance (cNow c) c { cSignals = (cSignals c) { gUpdates = updates, gSignalled = True } } ([] : acc)
+  where updates = M.insert target params (gUpdates (cSignals c))
+
+-- | The client has sent a priority signal (P9).
+markSignalled :: Conn -> Conn
+markSignalled c
+  | gSignalled (cSignals c) = c
+  | otherwise = c { cSignals = (cSignals c) { gSignalled = True } }
 
 -- | The streams open or half-closed (Section 5.1.2): those in the map but
 -- the ones closed while their handlers run.
@@ -1128,8 +1149,7 @@ forStream :: Conn -> Word32 -> Bool -> Decoded -> (Conn, [Output])
 forStream c sid endStream decoded
   -- the updates kept for this stream and those below it, now open or
   -- closed, taken out (P5)
-  | sid > cLastStream c = newStream c { cLastStream = sid, cUpdates = M.dropWhileAntitone (<= sid) (cUpdates c) }
-                                    (M.lookup sid (cUpdates c)) sid endStream decoded
+  | sid > cLastStream c = newStream (dropUpdates c { cLastStream = sid }) (M.lookup sid (gUpdates (cSignals c))) sid endStream decoded
   | otherwise = case M.lookup sid (cStreams c) of
       Just st -> case sState st of
         -- a second field block on an open stream: its trailers (C7)
@@ -1165,6 +1185,14 @@ forStream c sid endStream decoded
         -- client sends nothing more on it), or that the client reset:
         -- as nine of the ten implementations surveyed (C4)
         | otherwise -> goAway c ProtocolError
+
+-- | The updates kept for streams up to the highest opened taken out:
+-- those streams are open now, or closed (P5).
+dropUpdates :: Conn -> Conn
+dropUpdates c
+  | M.null (gUpdates g) = c
+  | otherwise = c { cSignals = g { gUpdates = M.dropWhileAntitone (<= cLastStream c) (gUpdates g) } }
+  where g = cSignals c
 
 newStream :: Conn -> Maybe PriorityParams -> Word32 -> Bool -> Decoded -> (Conn, [Output])
 newStream c update sid endStream decoded
@@ -1230,11 +1258,11 @@ newStream c update sid endStream decoded
                 , sAllowance = configMinRate cfg * configMinRateGrace cfg
                 , sIdleLeft = configStreamIdleTimeout cfg
                 , sTimer = Nothing
-                , sClientPriority = priority
-                , sServerParams = noParams }
+                , sPriority = StreamPriority priority priority noParams }
               requests = cRequests c + 1
               c1 = c { cStreams = M.insert sid st (cStreams c), cRequests = requests
-                     , cSignalled = signalled, cProxied = proxied }
+                     , cSignals = if signalled == gSignalled g && proxied == gProxied g then g
+                                  else g { gSignalled = signalled, gProxied = proxied } }
               out = [NewRequest (StreamId sid) (RequestHead rc (not endStream))]
           -- D9's optional limit (nginx's keepalive_requests): the last
           -- request accepted, the final GOAWAY at once, so that the
@@ -1246,9 +1274,18 @@ newStream c update sid endStream decoded
       where
         -- C9: Expect stays in the fields; any expectation but
         -- 100-continue is answered with 417, as HTTP/1.1 answers it
-        expectations = [ C.map toLower (fieldValueBytes v)
-                       | (n, v) <- fieldsToList (controlFields rc), fieldNameBytes n == "expect" ]
-        named name = [ fieldValueBytes v | (n, v) <- fieldsToList (controlFields rc), fieldNameBytes n == name ]
+        expectations = map (C.map toLower) expects
+        -- the fields this needs, in one pass: a name is compared only if
+        -- its length is one of theirs
+        (expects, priorityLines, viaProxy) = foldr pick ([], [], False) (fieldsToList (controlFields rc))
+        pick (n, v) acc@(es, ps, px) = case B.length name of
+          6 | name == "expect" -> (fieldValueBytes v : es, ps, px)
+          8 | name == "priority" -> (es, fieldValueBytes v : ps, px)
+          3 | name == "via" -> (es, ps, True)
+          9 | name == "forwarded" -> (es, ps, True)
+          15 | name == "x-forwarded-for" -> (es, ps, True)
+          _ -> acc
+          where name = fieldNameBytes n
         -- = https://www.rfc-editor.org/rfc/rfc9218#section-13.2
         -- # Backend
         -- # servers SHOULD only schedule based on client priority information
@@ -1256,12 +1293,13 @@ newStream c update sid endStream decoded
         --
         -- Once a request says it came through a proxy, which multiplexes
         -- many clients, request priority fields are ignored (P10)
-        proxied = cProxied c || any (not . null . named) ["via", "forwarded", "x-forwarded-for"]
-        fieldParams = case named "priority" of
+        g = cSignals c
+        proxied = gProxied g || viaProxy
+        fieldParams = case priorityLines of
           [] -> Nothing
           ls | proxied -> Nothing
              | otherwise -> parsePriorityParams ls
-        signalled = cSignalled c || isJust fieldParams || isJust update
+        signalled = gSignalled g || isJust fieldParams || isJust update
         -- = https://www.rfc-editor.org/rfc/rfc9218#section-7
         -- # To solve this condition, for the purposes of scheduling,
         -- # the most recently received PRIORITY_UPDATE frame can be considered as
@@ -1289,7 +1327,7 @@ unsignalledPriority = fromJust (mkPriority 3 True)
 -- | The priority a stream is scheduled at: the response's parameters
 -- over the client's (P4).
 streamPriority :: StreamEntry -> Priority
-streamPriority st = applyParams (sServerParams st) (sClientPriority st)
+streamPriority = prScheduled . sPriority
 
 -- | A stream's entry stored with a new priority, and moved in the
 -- schedule if it is there.
@@ -1490,9 +1528,11 @@ respondHandler sid h c = case M.lookup sid (cStreams c) of
           server = case [ fieldValueBytes v | (n, v) <- fieldsToList (respFields h), fieldNameBytes n == "priority" ] of
             [] -> noParams
             ls -> maybe noParams id (parsePriorityParams ls)
+          withServer = if server == noParams then sPriority st
+                       else streamPriorityOf (prClient (sPriority st)) server
       in if headerOnly then andThen (emit frames c1) (finished sid st)
          else emit frames c1 { cStreams = M.insert sid st { sResponse = Sending (respLength h) 0 Nothing
-                                                          , sServerParams = server } (cStreams c1) }
+                                                          , sPriority = withServer } (cStreams c1) }
     _ -> misuse RespondTwice c
   -- a stream no longer served: the handler raced a reset (C2)
   _ -> result c []
@@ -1516,7 +1556,7 @@ writeBody sid d c = case M.lookup sid (cStreams c) of
                        , sOut = if B.null d then sOut st else sOut st |> d
                        , sOutLength = sOutLength st + B.length d
                        , sWaiting = True }
-          in pump (schedule sid (putStream sid 0 st' c { cBuffered = cBuffered c + B.length d }))
+          in pump (putStream sid 0 st' c { cBuffered = cBuffered c + B.length d, cSchedule = scheduled sid st' c })
       where written' = written + fromIntegral (B.length d)
   -- a header-only response, or a stream no longer served
   _ -> result c [Writable (StreamId sid)]
@@ -1529,7 +1569,7 @@ endBody sid tr c = case M.lookup sid (cStreams c) of
     Awaiting -> misuse BodyBeforeRespond c -- EndBody
     Sending decl written Nothing
       | maybe False (/= written) decl -> abort sid c
-      | otherwise -> pump (schedule sid (putStream sid 0 st { sResponse = Sending decl written (Just tr) } c))
+      | otherwise -> pump (putStream sid 0 st { sResponse = Sending decl written (Just tr) } c { cSchedule = scheduled sid st c })
     Sending {} -> result c []
   _ -> result c []
 
@@ -1543,23 +1583,23 @@ abort sid c = case M.lookup sid (cStreams c) of
       in result c2 (RequestAborted (StreamId sid) (ResetByServer InternalError) : outs)
   _ -> result c []
 
--- | A stream's response is complete. A request still sending is told to
--- stop (D6: RST_STREAM NO_ERROR, which Section 8.1 allows); the stream is
+-- | A stream's response is complete: out of the schedule, its last frame
+-- counted as its turn (a stream that was not there is left as it is). A
+-- request still sending is told to stop (D6: RST_STREAM NO_ERROR, which Section 8.1 allows); the stream is
 -- closed, its slot freed, the credit of content never consumed given
 -- back.
 finished :: Word32 -> StreamEntry -> Conn -> (Conn, [Output])
 finished sid st c =
   let stillSending = sState st == Open
-      c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
+      c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st
+                          , cSchedule = Sch.done sid (cSchedule c) }
   in andThen (if stillSending then resetStream sid NoError c1 else result c1 [])
              (giveBack (sQueued st))
 
--- | A stream with something to send into the schedule, at its priority;
--- one already there keeps its place (D8, P3).
-schedule :: Word32 -> Conn -> Conn
-schedule sid c = case M.lookup sid (cStreams c) of
-  Just st -> c { cSchedule = Sch.insert sid (streamPriority st) (cSchedule c) }
-  Nothing -> c
+-- | The schedule with a stream that has something to send, at its
+-- priority; one already there keeps its place (D8, P3).
+scheduled :: Word32 -> StreamEntry -> Conn -> Schedule Word32
+scheduled sid st c = Sch.insert sid (streamPriority st) (cSchedule c)
 
 -- the stream's buffer, or the connection's, is full (C5)
 full :: StreamEntry -> Conn -> Bool
@@ -1571,7 +1611,9 @@ full st c = sOutLength st >= configStreamBuffer (cConfig c) || cBuffered c >= co
 -- bound (C5). Then 'Writable' for the streams waiting whose buffers have
 -- room again.
 pump :: Conn -> (Conn, [Output])
-pump c0 = go c0 []
+pump c0
+  | Sch.null (cSchedule c0) = writable c0
+  | otherwise = go c0 []
   where
     finish c acc = andThen (result c (concat (reverse acc))) writable
     go c acc
@@ -1585,23 +1627,15 @@ pump c0 = go c0 []
           Nothing -> try c acc rest
           Just (c', outs)
             | cClosed c' -> result c' (concat (reverse (outs : acc)))
-            | otherwise -> go (afterFrame sid c') (outs : acc)
+            | otherwise -> go c' (outs : acc)
       -- a stream no longer sending: out of the schedule
       _ -> try c { cSchedule = Sch.delete sid (cSchedule c) } acc rest
 
--- | A stream has sent a frame: its turn taken (a last one counts too),
--- and out of the schedule if it has nothing left to send.
-afterFrame :: Word32 -> Conn -> Conn
-afterFrame sid c = c { cSchedule = if more then taken else Sch.delete sid taken }
-  where
-    taken = Sch.sent sid (cSchedule c)
-    more = case M.lookup sid (cStreams c) of
-      Just st | sState st /= ClosedHeld, Sending _ _ end <- sResponse st -> sOutLength st > 0 || isJust end
-      _ -> False
-
 -- | One frame of a stream's response, if the windows allow: DATA (with
 -- END_STREAM when it carries the last of the content and there are no
--- trailers), or the trailers' HEADERS.
+-- trailers), or the trailers' HEADERS. The stream's turn is taken (a
+-- last frame counts too), and it leaves the schedule if it has nothing
+-- left to send, in the update the frame makes anyway.
 sendOne :: Word32 -> StreamEntry -> Conn -> Maybe (Conn, [Output])
 sendOne sid st c = case sResponse st of
   Sending _ _ end
@@ -1618,7 +1652,9 @@ sendOne sid st c = case sResponse st of
                  lastOne = n == sOutLength st
                  endHere = lastOne && maybe False isEmptyFields end
                  st' = st { sOut = rest, sOutLength = sOutLength st - n, sSendWindow = sSendWindow st - n }
-                 c1 = putStream sid n st' c { cSendWindow = cSendWindow c - n, cBuffered = cBuffered c - n }
+                 more = not lastOne || isJust end && not endHere
+                 c1 = putStream sid n st' c { cSendWindow = cSendWindow c - n, cBuffered = cBuffered c - n
+                                            , cSchedule = if more || endHere then taken else Sch.done sid (cSchedule c) }
                  (c2, outs) = emit (renderDataPieces (StreamId sid) endHere pieces) c1
              in Just $ if endHere then andThen (c2, outs) (finished sid st')
                        else result c2 outs
@@ -1633,6 +1669,7 @@ sendOne sid st c = case sResponse st of
             in Just (andThen (emit frames c { cEncoder = enc }) (finished sid st))
     | otherwise -> Nothing
   Awaiting -> Nothing
+  where taken = Sch.sent sid (cSchedule c)
 
 -- | DATA frames carry at most 16 KiB, whatever larger frames the client
 -- allows, so that streams take turns finely (D8) and one frame never

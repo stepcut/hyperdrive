@@ -585,8 +585,8 @@ why: a handler that returns without responding failed: 500 (C2)
 + (\c1 -> result c1 [])
 
 why: a new stream raises the highest identifier, which tells idle from closed (C4)
-- | sid > cLastStream c = newStream c { cLastStream = sid, cUpdates = M.dropWhileAntitone (<= sid) (cUpdates c) }
-+ | sid > cLastStream c = newStream c { cUpdates = M.dropWhileAntitone (<= sid) (cUpdates c) }
+- newStream (dropUpdates c { cLastStream = sid })
++ newStream (dropUpdates c)
 
 why: HEADERS on a half-closed (remote) stream is a stream error STREAM_CLOSED (Section 5.1)
 - HalfClosedRemote -> streamError c sid st StreamClosed
@@ -653,8 +653,8 @@ why: a response complete before the request is asks the client to stop (Section 
 + let stillSending = False
 
 why: a complete response frees its stream's slot
-- c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
-+ c1 = (forget sid c) { cBuffered = cBuffered c - sOutLength st }
+- c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st
++ c1 = (forget sid c) { cBuffered = cBuffered c - sOutLength st
 
 why: a handler that returns mid-response is aborted (D10 case 4)
 - Sending _ _ Nothing -> abort sid c
@@ -697,12 +697,12 @@ why: sending spends the stream's window
 + st' = st { sOut = rest, sOutLength = sOutLength st - n }
 
 why: sending spends the connection's window
-- c1 = putStream sid n st' c { cSendWindow = cSendWindow c - n, cBuffered = cBuffered c - n }
-+ c1 = putStream sid n st' c { cBuffered = cBuffered c - n }
+- c1 = putStream sid n st' c { cSendWindow = cSendWindow c - n, cBuffered = cBuffered c - n
++ c1 = putStream sid n st' c { cBuffered = cBuffered c - n
 
 why: sending frees the connection's buffer
-- , cBuffered = cBuffered c - n }
-+ }
+- c { cSendWindow = cSendWindow c - n, cBuffered = cBuffered c - n
++ c { cSendWindow = cSendWindow c - n, cBuffered = cBuffered c
 
 why: END_STREAM goes on the last DATA when there are no trailers
 - endHere = lastOne && maybe False isEmptyFields end
@@ -899,8 +899,8 @@ why: a stream reset leaves no deadline behind (C8)
 + let c0 = c { cBuffered = cBuffered c - sOutLength st }
 
 why: a stream finished leaves no deadline behind (C8)
-- c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
-+ c1 = c { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st }
+- c1 = (forget sid c) { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st
++ c1 = c { cStreams = M.delete sid (cStreams c), cBuffered = cBuffered c - sOutLength st
 
 why: handlers that have returned are not told the connection ended (C2)
 - | (sid, st) <- M.toList (cStreams c), sHandler st, sState st /= ClosedHeld ]
@@ -1005,12 +1005,32 @@ why: an urgency with no streams left is forgotten, and which kind sent last with
 + Just lv'
 
 why: a deleted incremental stream is no longer a candidate
-- | priorityIncremental p = lv { lvTurns = Seq.filter (/= k) (lvTurns lv) }
-+ | priorityIncremental p = lv { lvTurns = lvTurns lv }
+- k' Seq.:< rest | k' == k -> rest -- taken out
++ k' Seq.:< rest | k' == k -> lvTurns lv -- taken out
+
+why: a deleted incremental stream not first in the turns is no longer a candidate
+- _ -> Seq.filter (/= k) (lvTurns lv) }
++ _ -> lvTurns lv }
+
+why: a stream inserted into an empty schedule is a candidate
+- | M.null ps = Schedule (M.singleton k p) (IM.singleton u (put fresh))
++ | M.null ps = Schedule (M.singleton k p) (IM.singleton u fresh)
+
+why: the last stream done leaves the schedule empty
+- Just _ | M.size ps == 1 -> empty -- done
++ Just _ | M.size ps == 1 -> s -- done
+
+why: the last stream deleted leaves the schedule empty
+- Just _ | M.size ps == 1 -> empty -- delete
++ Just _ | M.size ps == 1 -> s -- delete
+
+why: after a stream's last frame, the other kind goes first (P3)
+- | otherwise = Just lv' { lvIncrementalNext = not (priorityIncremental p) }
++ | otherwise = Just lv' { lvIncrementalNext = priorityIncremental p }
 
 why: a deleted stream is no longer scheduled
-- Just p -> Schedule (M.delete k ps) (IM.update remove (priorityUrgency p) levels)
-+ Just p -> Schedule ps (IM.update remove (priorityUrgency p) levels)
+- Just p -> Schedule (M.delete k ps) (IM.update remove (priorityUrgency p) levels) -- delete
++ Just p -> Schedule ps (IM.update remove (priorityUrgency p) levels) -- delete
 
 why: an incremental stream that sent waits for the others' turns (RFC 9218 Section 10)
 - | priorityIncremental p = lv { lvTurns = rotate (lvTurns lv), lvIncrementalNext = False }
@@ -1054,11 +1074,11 @@ why: a PRIORITY_UPDATE for a stream not yet opened is kept (RFC 9218 Section 7)
 + | False -> priorityUpdateIdle target params c acc
 
 why: a PRIORITY_UPDATE that changes nothing costs one (P5, C10)
-- in if p == sClientPriority st then charge 1 c1 $ \c2 -> next (c2, [])
+- in if p == prClient (sPriority st) then charge 1 c1 $ \c2 -> next (c2, [])
 + in if False then charge 1 c1 $ \c2 -> next (c2, [])
 
 why: a PRIORITY_UPDATE on an open stream is a signal (P9)
-- c1 = c { cSignalled = True }
+- c1 = markSignalled c
 + c1 = c
 
 why: a PRIORITY_UPDATE for a closed stream costs one (P5, C10)
@@ -1066,7 +1086,7 @@ why: a PRIORITY_UPDATE for a closed stream costs one (P5, C10)
 + _ -> next (c, []) -- closed
 
 why: a PRIORITY_UPDATE repeated for a stream not yet opened costs one (P5, C10)
-- | M.lookup target (cUpdates c) == Just params = charge 1 c $ \c1 -> advance (cNow c1) c1 ([] : acc)
+- | M.lookup target (gUpdates (cSignals c)) == Just params = charge 1 c $ \c1 -> advance (cNow c1) c1 ([] : acc)
 + | False = charge 1 c $ \c1 -> advance (cNow c1) c1 ([] : acc)
 
 why: prioritized idle streams and active ones at most MAX_CONCURRENT_STREAMS (RFC 9218 Section 7.1)
@@ -1075,23 +1095,31 @@ why: prioritized idle streams and active ones at most MAX_CONCURRENT_STREAMS (RF
 
 why: a stream updated again is counted once (RFC 9218 Section 7.1)
 - | fromIntegral (M.size updates) + activeStreams c > configMaxConcurrentStreams (cConfig c) =
-+ | fromIntegral (M.size (cUpdates c) + 1) + activeStreams c > configMaxConcurrentStreams (cConfig c) =
++ | fromIntegral (M.size (gUpdates (cSignals c)) + 1) + activeStreams c > configMaxConcurrentStreams (cConfig c) =
 
 why: a PRIORITY_UPDATE for a stream not yet opened is a signal (P9)
-- | otherwise = advance (cNow c) c { cUpdates = updates, cSignalled = True } ([] : acc)
-+ | otherwise = advance (cNow c) c { cUpdates = updates } ([] : acc)
+- | otherwise = advance (cNow c) c { cSignals = (cSignals c) { gUpdates = updates, gSignalled = True } } ([] : acc)
++ | otherwise = advance (cNow c) c { cSignals = (cSignals c) { gUpdates = updates } } ([] : acc)
 
 why: the updates of streams passed over are dropped (RFC 9218 Section 7.1's bound)
-- | sid > cLastStream c = newStream c { cLastStream = sid, cUpdates = M.dropWhileAntitone (<= sid) (cUpdates c) }
-+ | sid > cLastStream c = newStream c { cLastStream = sid }
+- newStream (dropUpdates c { cLastStream = sid })
++ newStream c { cLastStream = sid }
 
 why: the update kept for a stream is applied when it opens (RFC 9218 Section 7)
-- (M.lookup sid (cUpdates c)) sid endStream decoded
+- (M.lookup sid (gUpdates (cSignals c))) sid endStream decoded
 + Nothing sid endStream decoded
 
 why: once a request came through a proxy, request priority fields are ignored on the connection (P10)
-- proxied = cProxied c || any (not . null . named) ["via", "forwarded", "x-forwarded-for"]
-+ proxied = any (not . null . named) ["via", "forwarded", "x-forwarded-for"]
+- proxied = gProxied g || viaProxy
++ proxied = viaProxy
+
+why: via, forwarded and x-forwarded-for each mark a request through a proxy (P10)
+- 9 | name == "forwarded" -> (es, ps, True)
++ 9 | name == "forwarded" -> (es, ps, px)
+
+why: the priority field's lines are read (RFC 9218 Section 5)
+- 8 | name == "priority" -> (es, fieldValueBytes v : ps, px)
++ 8 | name == "priority" -> (es, ps, px)
 
 why: request priority fields through a proxy are ignored (P10)
 - ls | proxied -> Nothing
@@ -1110,12 +1138,12 @@ why: before any signal, incremental (P9)
 + unsignalledPriority = fromJust (mkPriority 3 False)
 
 why: the response's priority field is applied (P4)
-- , sServerParams = server } (cStreams c1) }
-+ , sServerParams = noParams } (cStreams c1) }
+- , sPriority = withServer } (cStreams c1) }
++ , sPriority = sPriority st } (cStreams c1) }
 
 why: the response's parameters over the client's (P4)
-- streamPriority st = applyParams (sServerParams st) (sClientPriority st)
-+ streamPriority st = sClientPriority st
+- streamPriorityOf client server = StreamPriority (applyParams server client) client server
++ streamPriorityOf client server = StreamPriority client client server
 
 why: a stream reprioritized while it waits to send moves in the schedule
 - , cSchedule = if Sch.member sid (cSchedule c) then Sch.insert sid (streamPriority st) (cSchedule c) else cSchedule c }
@@ -1126,8 +1154,12 @@ why: a stream's turn is taken as it sends a frame (RFC 9218 Section 10)
 + taken = cSchedule c
 
 why: a stream with only its trailers left stays in the schedule
-- Just st | sState st /= ClosedHeld, Sending _ _ end <- sResponse st -> sOutLength st > 0 || isJust end
-+ Just st | sState st /= ClosedHeld, Sending _ _ end <- sResponse st -> sOutLength st > 0
+- more = not lastOne || isJust end && not endHere
++ more = not lastOne
+
+why: a finished stream's last frame counts as its turn, and it leaves the schedule (P3)
+- , cSchedule = Sch.done sid (cSchedule c) }
++ , cSchedule = cSchedule c }
 
 file: src/Hyperdrive/HTTP2/Frame.hs
 why: PRIORITY_UPDATE is parsed (RFC 9218 Section 7.1)

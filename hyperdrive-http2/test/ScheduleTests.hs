@@ -15,6 +15,7 @@ import Test.Tasty.QuickCheck (testProperty)
 scheduleTests :: TestTree
 scheduleTests = testGroup "Schedule (RFC 9218)"
   [ testProperty "candidates as the model orders them, after every operation" (withMaxSuccess 2000 prop_model)
+  , testProperty "done is sent, then delete" prop_done
   , testProperty "examples of the order frames go out" (once examples)
   , testProperty "no frame of an urgency while a more urgent stream can send" prop_strict
   , testProperty "incremental streams, and the first non-incremental, wait at most a round" prop_noStarvation
@@ -121,6 +122,9 @@ examples = conjoin
     -- after a non-incremental frame, the incremental streams first
   , Sch.candidates (foldl (flip applyOp) Sch.empty
       [Insert 6 (prio 7 False), Sent 6, Insert 6 (prio 7 True), Insert 1 (prio 7 False)]) === [6, 1]
+    -- the only stream done, or deleted: nothing left
+  , Sch.null (Sch.done 1 (Sch.insert 1 (prio 3 True) Sch.empty)) === True
+  , Sch.null (Sch.delete 1 (Sch.insert 1 (prio 3 False) Sch.empty)) === True
     -- strictly by urgency
   , run [(1, prio 7 True, 2), (3, prio 0 False, 2), (5, prio 3 False, 1)] === [3, 3, 5, 1, 1]
   ]
@@ -174,3 +178,11 @@ prop_noStarvation = forAll genStreams $ \streams ->
     splitOn k xs = case break (== k) xs of
       (a, []) -> [a]
       (a, _ : rest) -> a : splitOn k rest
+
+prop_done :: [Op] -> Property
+prop_done ops = forAll (choose (1, 8)) $ \k ->
+  let s = foldl (flip applyOp) Sch.empty ops
+      viaDone = Sch.done k s
+      viaBoth = Sch.delete k (Sch.sent k s)
+  in Sch.null viaDone === Sch.null viaBoth .&&. conjoin [ Sch.candidates (applyOp o viaDone) === Sch.candidates (applyOp o viaBoth)
+             | o <- [Delete 0, Insert 1 (prio 3 False), Insert 9 (prio 3 True), Sent 1] ]

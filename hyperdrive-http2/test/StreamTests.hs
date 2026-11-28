@@ -989,6 +989,19 @@ prop_priorityOrder = once $ conjoin
       sendOrder "" [(1, [("priority", "u=1, i")]), (3, [("priority", "u=1, i")]), (5, [("priority", "u=2")])]
                    [(1, [("priority", "u=2")])] ""
         === [3, 3, 5, 1, 5, 1]
+  , counterexample "an end with nothing left to send, which needs no window, counts as its stream's turn" $
+      let bs = blocks [ base ++ [("priority", "u=3")], base ++ [("priority", "u=3, i")]
+                      , base ++ [("priority", "u=3")], base ++ [("priority", "u=0")] ]
+          opened = B.concat [ headers s True b | (s, b) <- zip [1, 3, 5, 7] bs ]
+          (c, _) = feedAll (serve [] opened)
+                     [ respondOn 1 (ok Nothing), write 1 "x"
+                     -- stream 7 takes all the connection's window
+                     , respondOn 7 (ok Nothing), write 7 (B.replicate 65534 0x61)
+                     , respondOn 3 (ok Nothing), write 3 (B.replicate 20000 0x62)
+                     , respondOn 5 (ok Nothing), write 5 (B.replicate 20000 0x63)
+                     -- stream 1's end goes at once: incremental streams next
+                     , endOn 1 ]
+      in [ s | (s, _, _) <- datas (from (c, []) [windowUpdate 0 100000]) ] === [3, 5, 3, 5]
   , counterexample "the response's field is sent as it is" $
       let [b] = blocks [base]
           outs = from (serve [] (headers 1 True b)) [respondOn 1 (response 200 [("priority", "u=6")] Nothing)]

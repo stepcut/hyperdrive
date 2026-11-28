@@ -1649,29 +1649,67 @@ the skipped receives (without them the same), and the counts of system
 calls are as before; perhaps the TCP stack, with the owner acting at
 other moments. Open, for a profile of the kernel.
 
-## 2026-11-27 (evening): RFC 9218's scheduler in the HTTP/2 core, allocation only
+## 2026-11-27 (evening): RFC 9218's scheduler in the HTTP/2 core
 
 The core's round robin (`cOrder`) became `Hyperdrive.HTTP2.Schedule`
-(docs/priorities-design.md). No timings yet (they wait for a quiet
-machine); allocation, exact, in process, through `step` alone with the
-transport writing everything (throwaway programs, not in the tree):
+(docs/priorities-design.md, a5a53b0). `scripts/compare-h2`, six
+alternating rounds, quiet machine, before (408f103) and a5a53b0:
 
-| | before (408f103) | after |
+| | before | a5a53b0 | |
+|---|---|---|---|
+| m1 | 420.2k (409.2k to 428.3k), user 6.19 µs | 380.2k (346.2k to 391.6k), user 7.54 µs | -10% |
+| m10 | 536.6k, user 8.41 µs | 476.6k, user 9.74 µs | -11% |
+| m64 | 748.6k, user 7.42 µs | 658.3k, user 8.75 µs | -12% |
+| large | 7.8k | 7.8k | level |
+| upload | 6.2k | 6.2k | level |
+
+Small requests lost 10-12%, about 1.3 µs of user time a request.
+Measured in process through `step` alone (throwaway programs: GETs
+answered with 13 octets, one after another, or 64 at once; the transport
+writing all; instructions counted with `perf stat`, which a busy
+machine hardly changes, and allocation exact):
+
+| | one at a time: instructions, bytes | 64 at once: instructions, bytes |
 |---|---|---|
-| a small request (GET, 13 octets of content, one after another) | 2,316 B | 1,775 B |
-| a 16 KiB DATA frame, 1 stream writing | 6,099 B | 7,531 B |
-| the same, 10 streams | 7,535 B | 8,967 B |
-| the same, 64 streams | 14,761 B | 16,193 B |
+| before (408f103) | 39,223, 22,687 | 60,841, 32,850 |
+| a5a53b0 | 43,503, 25,711 | |
+| after the work below | 41,488, 24,335 | 63,187, 34,427 |
 
-The first version cost 2.2 KB more a DATA frame: the schedule was
-updated before and after each frame (two copies of the connection's
-record, about 330 bytes each) and the incremental turns filtered on
-every frame. Taking the turn and leaving the schedule in one update
-after the frame, and rotating the turns when the stream is first in
-them (the usual case), brought it to 1.4 KB. What is left is the
-schedule's own work for a stream whose buffer empties on each frame:
-in on the write, its turn, out after the frame. Small requests allocate
-less than before (the old round's `elem` and `Seq` work per write).
+(A first version of the one-at-a-time program sent its first field
+block wrongly, so the connection ended at once; its numbers, 2,316 and
+1,775 bytes a request, which a5a53b0's message repeats, were wrong.)
+
+What the extra cost was, from ticky counts and from `perf` by source
+line (a `-g` build): the scheduler called through its `Ord` dictionary
+(`INLINABLE` lets the core specialize it to `Word32`); copies of `Conn`
+and `StreamEntry`, which the new fields made larger and which are copied
+on most of their updates (the client's signals and a stream's priority
+moved into records of their own, which seldom change); a copy of
+`Conn` after each frame only to update the schedule (now done in the
+update `sendOne`, `finished`, `writeBody` and `endBody` make anyway);
+five scans of the request's fields (now one, comparing a name only when
+its length matches); and the schedule's maps for one stream at a time
+(fast paths for inserting into an empty schedule and taking out its
+only stream). Left: about 2,300 instructions a request (6% one at a
+time, 4% with 64 at once), spread thinly: the schedule's maps with
+several streams, the signals' bookkeeping in `newStream`, the larger
+records. Keeping a stream in the schedule between its writes (instead
+of out after each frame and in again on the next write) did not help.
+
+Then `scripts/compare-h2`, six alternating rounds of the three, quiet
+machine (requests a second; user µs a request):
+
+| | before | a5a53b0 | optimized | optimized against before |
+|---|---|---|---|---|
+| m1 | 424.2k, 6.02 | 394.3k, 7.37 | 409.0k, 6.72 | -3.6% |
+| m10 | 545.7k, 8.26 | 473.6k, 9.76 | 507.5k, 9.17 | -7.0% |
+| m64 | 743.9k, 7.43 | 662.1k, 8.67 | 699.9k, 8.12 | -5.9% |
+| large | 7.9k | 7.7k | 7.7k | within the range |
+| upload | 6.4k | 6.4k | 6.4k | level |
+
+About half of what a5a53b0 lost came back; 0.7 to 0.9 µs of user time a
+small request is left, more than the core alone shows (instructions
++4% to +6%).
 
 ## Experiments for later: what a large gain would take
 

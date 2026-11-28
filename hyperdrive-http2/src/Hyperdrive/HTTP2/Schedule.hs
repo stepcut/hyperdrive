@@ -17,6 +17,7 @@ module Hyperdrive.HTTP2.Schedule
   , insert
   , delete
   , sent
+  , done
   , candidates
   ) where
 
@@ -48,9 +49,11 @@ empty = Schedule M.empty IM.empty
 null :: Schedule k -> Bool
 null = M.null . schPriorities
 
+{-# INLINABLE member #-}
 member :: Ord k => k -> Schedule k -> Bool
 member k = M.member k . schPriorities
 
+{-# INLINABLE priorityOf #-}
 priorityOf :: Ord k => k -> Schedule k -> Maybe Priority
 priorityOf k = M.lookup k . schPriorities
 
@@ -66,14 +69,18 @@ priorityOf k = M.lookup k . schPriorities
 -- | A stream with something to send, at this priority. One already
 -- there at the same priority keeps its place; at another, it moves (an
 -- incremental one to the end of its urgency's turns).
+{-# INLINABLE insert #-}
 insert :: Ord k => k -> Priority -> Schedule k -> Schedule k
-insert k p s@(Schedule ps levels) = case M.lookup k ps of
-  Just p0
-    | p0 == p -> s
-    -- within one urgency, the level stays, and with it which kind is next
-    | priorityUrgency p0 == u -> Schedule ps' (IM.adjust (put . takeOut k p0) u levels)
-  Just _ -> add (delete k s)
-  Nothing -> add s
+insert k p s@(Schedule ps levels)
+  -- the usual case: nothing else waiting
+  | M.null ps = Schedule (M.singleton k p) (IM.singleton u (put fresh))
+  | otherwise = case M.lookup k ps of
+      Just p0
+        | p0 == p -> s
+        -- within one urgency, the level stays, and with it which kind is next
+        | priorityUrgency p0 == u -> Schedule ps' (IM.adjust (put . takeOut k p0) u levels)
+      Just _ -> add (delete k s)
+      Nothing -> add s
   where
     u = priorityUrgency p
     ps' = M.insert k p ps
@@ -85,22 +92,29 @@ insert k p s@(Schedule ps levels) = case M.lookup k ps of
 
 -- | A stream with nothing more to send, or gone. After its last frame,
 -- 'sent' first, so that the frame counts as its turn.
+{-# INLINABLE delete #-}
 delete :: Ord k => k -> Schedule k -> Schedule k
 delete k s@(Schedule ps levels) = case M.lookup k ps of
   Nothing -> s
-  Just p -> Schedule (M.delete k ps) (IM.update remove (priorityUrgency p) levels)
+  Just _ | M.size ps == 1 -> empty -- delete
+  Just p -> Schedule (M.delete k ps) (IM.update remove (priorityUrgency p) levels) -- delete
     where
       remove lv = let lv' = takeOut k p lv in
         if S.null (lvOrdered lv') && Seq.null (lvTurns lv') then Nothing else Just lv'
 
 -- a stream out of its urgency's level
+{-# INLINABLE takeOut #-}
 takeOut :: Ord k => k -> Priority -> Level k -> Level k
 takeOut k p lv
-  | priorityIncremental p = lv { lvTurns = Seq.filter (/= k) (lvTurns lv) }
+  | priorityIncremental p = lv { lvTurns = case Seq.viewl (lvTurns lv) of
+                                  -- usually it is first
+                                  k' Seq.:< rest | k' == k -> rest -- taken out
+                                  _ -> Seq.filter (/= k) (lvTurns lv) }
   | otherwise = lv { lvOrdered = S.delete k (lvOrdered lv) }
 
 -- | A stream sent a frame: an incremental one waits for its next turn,
 -- and its urgency's other kind goes first next time.
+{-# INLINABLE sent #-}
 sent :: Ord k => k -> Schedule k -> Schedule k
 sent k s@(Schedule ps levels) = case M.lookup k ps of
   Nothing -> s
@@ -113,6 +127,20 @@ sent k s@(Schedule ps levels) = case M.lookup k ps of
       rotate q = case Seq.viewl q of
         k' Seq.:< rest | k' == k -> rest |> k
         _ -> Seq.filter (/= k) q |> k
+
+-- | A stream sent its last frame: 'sent', then 'delete', in one pass.
+{-# INLINABLE done #-}
+done :: Ord k => k -> Schedule k -> Schedule k
+done k s@(Schedule ps levels) = case M.lookup k ps of
+  Nothing -> s
+  -- the usual case: nothing else waiting
+  Just _ | M.size ps == 1 -> empty -- done
+  Just p -> Schedule (M.delete k ps) (IM.update remove (priorityUrgency p) levels)
+    where
+      remove lv
+        | S.null (lvOrdered lv') && Seq.null (lvTurns lv') = Nothing
+        | otherwise = Just lv' { lvIncrementalNext = not (priorityIncremental p) }
+        where lv' = takeOut k p lv
 
 -- = https://www.rfc-editor.org/rfc/rfc9218#section-10
 -- # It is RECOMMENDED that, when possible, servers respect the urgency
