@@ -243,6 +243,30 @@ later. Recommended.
 5. OpenSSL 3.5 behind the interface, and the benchmarks that pick the
    default (T9).
 
+## As built: step 1, the shim (2026-11-27)
+
+`hyperdrive-tls` rewritten: errors as values (each failing call keeps
+its own message); the asynchronous key method gone, the library signing
+with the key, which must be the certificate's; certificate chain and
+key from PEM octets (an encrypted key refused); ALPN, groups, versions
+(and, for test clients, TLS 1.2 ciphers) from the configuration;
+resumption off (`SSL_OP_NO_TICKET`, `SSL_SESS_CACHE_OFF`) and
+`SSL_OP_CIPHER_SERVER_PREFERENCE`; a bound on ciphertext buffered;
+close_notify told from an error; `Hyperdrive.TLS`, a Haskell API whose
+configurations and sessions are freed by finalizers. Tests (14,
+`hyperdrive-tls-tests`) with committed test certificates (ECDSA P-256
+and P-384, RSA-2048, Ed25519, an encrypted key, a mismatched key, a
+chain). Found on the way, all as AWS-LC documents: in TLS 1.2 an ECDSA
+certificate's curve must be one the client offers (a P-384 certificate
+fails with `BAD_ECC_CERT` against a client offering only P-256), and
+the ECDSA code points do not tie curve to hash; AWS-LC's client accepts
+no Ed25519 signature unless asked (browsers none at all); a KeyUpdate,
+and the reply to one, go with their sender's next write (`SSL_key_update`
+"does not _send_ the message itself"), which RFC 8446 allows for the
+reply; TLS 1.3 tickets would go in the server's flight with its
+Finished. Two checks of ours turned out to be AWS-LC's as well (the key
+matching the certificate, QUIC's handshake-flight bound); kept.
+
 ## Decisions in short
 
 - **T1.** TLS as a `Transport` over the socket's: decrypt what is held

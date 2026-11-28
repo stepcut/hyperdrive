@@ -75,6 +75,7 @@
         hyperdrive-http1 = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-http1;
         hyperdrive-http2 = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-http2;
         hyperdrive-server = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-server;
+        hyperdrive-tls = self.packages.${pkgs.stdenv.hostPlatform.system}.hyperdrive-tls;
 
         # hyperdrive-abnf's and hyperdrive-http2's tests read RFCs from
         # their own copies, which must be the text duvet checks citations

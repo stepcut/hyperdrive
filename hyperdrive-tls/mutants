@@ -1,0 +1,85 @@
+# Deliberate bugs that the test suite must catch. See scripts/mutation-test.
+#
+# Not mutated, since AWS-LC makes the same check itself (each tried: it
+# survived): SSL_CTX_check_private_key (SSL_CTX_use_PrivateKey refuses a
+# key that is not the certificate's) and the QUIC flight bound
+# (SSL_provide_quic_data refuses more). Both kept, as checks that do not
+# depend on the library's.
+
+file: cbits/hd_tls.c
+why: our order of ciphers and groups, not the client's (T2)
+- SSL_CTX_set_options(c->ctx, SSL_OP_CIPHER_SERVER_PREFERENCE | SSL_OP_NO_TICKET);
++ SSL_CTX_set_options(c->ctx, SSL_OP_NO_TICKET);
+
+why: no TLS 1.3 session tickets (T7)
+- SSL_CTX_set_options(c->ctx, SSL_OP_CIPHER_SERVER_PREFERENCE | SSL_OP_NO_TICKET);
++ SSL_CTX_set_options(c->ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
+
+why: no TLS 1.2 session cache, so no session ID to resume with (T7)
+- SSL_CTX_set_session_cache_mode(c->ctx, SSL_SESS_CACHE_OFF);
++ SSL_CTX_set_session_cache_mode(c->ctx, SSL_SESS_CACHE_SERVER);
+
+why: TLS 1.2 with ECDHE and AEAD only, for the whole listener (RFC 9113 Section 9.2.2, T2)
+- "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305")) {
++ "ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-RSA-AES128-SHA")) {
+
+why: an encrypted key is refused, not decrypted with a passphrase (T3)
+- (void)buf; (void)size; (void)rwflag; (void)userdata;
++ (void)rwflag; (void)userdata; if (size >= 6) { memcpy(buf, "secret", 6); return 6; }
+
+why: the rest of the chain is sent
+- if (!SSL_CTX_add0_chain_cert(c->ctx, x)) {
++ if (X509_free(x), 0) {
+
+why: a server with no protocols configured agrees none
+- if (c->alpn_len == 0) return SSL_TLSEXT_ERR_NOACK;
++ if (c->alpn_len == 0) return SSL_TLSEXT_ERR_ALERT_FATAL;
+
+why: the server's order of protocols, not the client's (RFC 7301)
+- if (SSL_select_next_proto(&selected, out_len, c->alpn, (unsigned)c->alpn_len, in, in_len)
++ if (SSL_select_next_proto(&selected, out_len, in, in_len, c->alpn, (unsigned)c->alpn_len)
+
+why: no protocol in common: no_application_protocol (RFC 7301)
+- return SSL_TLSEXT_ERR_ALERT_FATAL;
++ return SSL_TLSEXT_ERR_NOACK;
+
+why: input beyond the bound is refused (T1)
+- if (BIO_ctrl_pending(rbio) + len > t->max_buffered) {
++ if (BIO_ctrl_pending(rbio) + len > t->max_buffered + 1) {
+
+why: the peer's close_notify is the end, not an error (T1)
+- case SSL_ERROR_ZERO_RETURN: return HD_CLOSED;
++ case SSL_ERROR_ZERO_RETURN: return HD_ERROR;
+
+why: a failed read is an error, not "wait for more"
+- default: take_error(t->error, sizeof t->error, "read"); return HD_ERROR;
++ default: return 0;
+
+why: each secret is reported with its direction (QUIC)
+- return add_secret(ssl, level, 1, secret, len);
++ return add_secret(ssl, level, 0, secret, len);
+
+why: QUIC handshake octets go out at their own level
+- return buf_append(&of(ssl)->out[level], data, len);
++ return buf_append(&of(ssl)->out[0], data, len);
+
+why: an empty read BIO means wait for more, not the end
+- BIO_set_mem_eof_return(rbio, -1);
++ BIO_set_mem_eof_return(rbio, 0);
+
+file: src/Hyperdrive/TLS.hs
+why: an ALPN protocol must be 1 to 255 octets
+- bad = any (\a -> B.null a || B.length a > 255) (csALPN cs)
++ bad = any (\a -> B.length a > 255) (csALPN cs)
+
+why: QUIC needs TLS 1.3 at least
+- in if lo > hi || (csQuic cs && lo < TLS13) then pure (Left (TLSError "versions out of order, or below TLS 1.3 for QUIC"))
++ in if lo > hi then pure (Left (TLSError "versions out of order, or below TLS 1.3 for QUIC"))
+
+why: a server needs a certificate
+- (Server, Nothing) -> pure (Left (TLSError "a server needs a certificate and a key"))
++ (Server, Nothing) -> pure (Right ())
+
+why: the peer's close_notify is reported as such
+- -2 -> pure PeerClosed
++ -2 -> pure NeedInput

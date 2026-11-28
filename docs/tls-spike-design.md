@@ -154,7 +154,9 @@ Recommended.
 
 Built as decided: `hyperdrive-tls` (the shim `cbits/hd_tls.c`, about
 400 lines; `Hyperdrive.TLS.Shim`; the program `tls-spike`), the `.#tls`
-shell, and `scripts/tls-spike`, which reproduces everything below. The
+shell, and `scripts/tls-spike`, which reproduces everything below (the
+program and the script were removed when the shim was rewritten for
+step 7, docs/tls-design.md; both are at ca9a4ef). The
 machine was not quiet: the numbers are for orders of magnitude.
 
 1. Handshakes through buffers work: with real clients, `openssl
