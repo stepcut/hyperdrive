@@ -564,11 +564,8 @@ about 0.3 µs), then `lookupAll`.
 
 Not yet tried, with rough expectations:
 
-- RTS options. Both servers run with only `+RTS -N8`; a larger
-  allocation area (`-A`), or `-qg` / `-qn`, might be worth a few per
-  cent to hyperdrive, which allocates about 6.5 KB a small request
-  (warp about 5.8). Try on both servers; it would be a deployment
-  default to document or set with `-with-rtsopts`.
+- RTS options. Tried 2026-11-27 (above, "the allocation area, for
+  HTTP/2"): `-A2m` for both servers now; `-qg` and `-qn` are worse.
 - Splitting the core's fields (Host and the protocol fields) from the
   application's during the scan, instead of `partitionFields`
   afterwards and eight `lookupAll`s over the result: perhaps 0.05 to
@@ -1710,6 +1707,40 @@ machine (requests a second; user µs a request):
 About half of what a5a53b0 lost came back; 0.7 to 0.9 µs of user time a
 small request is left, more than the core alone shows (instructions
 +4% to +6%).
+
+## 2026-11-27 (night): the allocation area, for HTTP/2
+
+A perf profile of the server under h2load (m10) showed the garbage
+collector's copying (`evacuate`, `scavenge_block`) at a fifth of its
+instructions, which the in-process measurements above never showed (they
+hardly collect). Both servers ran with `-N8 -A1m`, chosen on HTTP/1.1.
+Quiet machine, four alternating rounds each (requests a second):
+
+| hyperdrive, HTTP/2 | -A1m | -A2m | -A4m | -qn2 | -qg |
+|---|---|---|---|---|---|
+| m1 | 407.8k | 424.5k (+4%) | 415.2k (+2%) | 367.7k | 345.8k |
+| m10 | 508.5k | 586.4k (+15%) | 645.7k (+27%) | 309.6k | 267.8k |
+| m64 | 698.1k | 785.9k (+13%) | 797.4k (+14%) | 541.5k | 442.3k |
+
+| hyperdrive, HTTP/1.1 (wrk) | -A1m | -A2m | -A4m |
+|---|---|---|---|
+| minimal | 756k, user 1.34 µs | 750k, 1.36 | 755k, 1.44 |
+| browser | 756k, 1.84 | 751k, 1.86 | 732k, 1.98 |
+
+| warp, HTTP/2 | -A1m | -A4m |
+|---|---|---|
+| m1 | 57.4k | 68.0k (+18%) |
+| m10 | 36.8k | 40.2k (+9%) |
+| m64 | 44.1k | 49.8k (+13%) |
+
+Fewer threads for the collector (`-qn2`, `-qg`) is much worse. A larger
+area helps HTTP/2, whose connections keep more state alive between
+collections (the core's records, the streams, the decoder's table),
+and warp's as much: a property of the runtime, not of our code. -A2m
+leaves HTTP/1.1 within its range; -A4m gains more on m10 but costs
+HTTP/1.1's browser request about 3%. The bench now runs both servers
+with `-N8 -A2m` (the user's decision, 2026-11-27); the extra allocation
+of RFC 9218's scheduler (1.6 KB a small request) is still worth cutting.
 
 ## Experiments for later: what a large gain would take
 
